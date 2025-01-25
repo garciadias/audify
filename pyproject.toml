@@ -6,8 +6,10 @@ readme = "README.md"
 requires-python = ">=3.9,<=3.12"
 authors = ["Rafael Dias <rafaelagd@gmail.com>"]
 dependencies = [
+    "bs4>=0.0.2",
     "ebooklib>=0.18",
     "markdown>=3.7",
+    "pydub>=0.25.1",
     "tts>=0.22.0",
 ]
 

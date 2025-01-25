@@ -10,21 +10,24 @@ MODULE_PATH = Path(__file__).parents[1]
 device = "cuda" if torch.cuda.is_available() else False
 # %%
 
-# List available 🐸TTS models
-TTS().models
-# %%
-
-LOADED_MODEL = TTS("tts_models/en/jenny/jenny", gpu=device)
+LOADED_MODEL = TTS("tts_models/es/mai/tacotron2-DDC", gpu=device)
 # %%
 
 
 def sentence_to_speech(
     sentence: str,
-    file_path: str = f"{MODULE_PATH}/data/output/speech.mp3",
+    file_path: str = f"{MODULE_PATH}/data/output/speech.wav",
 ) -> None:
     if Path(file_path).parent.is_dir() is False:
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    LOADED_MODEL.tts_to_file(
-        text=sentence,
-        file_path=file_path,
-    )
+    try:
+        LOADED_MODEL.tts_to_file(
+            text=sentence,
+            file_path=file_path,
+        )
+    except Exception as e:
+        error_message = "Error: " + str(e)
+        LOADED_MODEL.tts_to_file(
+            text=error_message,
+            file_path=file_path,
+        )
