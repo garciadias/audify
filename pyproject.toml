@@ -1,0 +1,55 @@
+[project]
+name = "audify"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = ["Rafael Dias <rafaelagd@gmail.com>"]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.3",
+    "taskipy>=1.13.0",
+    "isort>=5.13.2",
+    "mypy>=1.11.2",
+    "ipykernel>=6.29.5",
+]
+
+[tool.coverage.report]
+exclude_lines = ["if __name__ == .__main__.:"]
+omit = ["*/audify/exploratory_analysis/*"]
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "*_test.py"]
+addopts = ["--cov=audify", "--cov-report=term-missing"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+exclude = [
+    "*/migrations/*",
+    "*/settings.py",
+    "*/wsgi.py",
+    "*/asgi.py",
+    "*/mlflwo/*",
+    "*/__pycache__/*",
+]
+
+[tool.ruff.lint]
+preview = true
+select = ['I', 'F', 'E', 'W', 'PT']
+
+
+[tool.mypy]
+ignore_missing_imports = true
+exclude = ["audify/domain/services/data/combine_fits.py"]
+
+
+[tool.taskipy.tasks]
+test = "pytest"
+format = "ruff check . --fix"
+pre_test = "task format && mypy ."
+post_test = "coverage html"
+train = "python audify/train.py"
