@@ -60,6 +60,7 @@ exclude = ["audify/domain/services/data/combine_fits.py"]
 
 [tool.taskipy.tasks]
 test = "uv run pytest"
-format = "ruff check . --fix"
+format = "black .; isort .; ruff check . --fix"
 pre_test = "task format && mypy ."
 post_test = "uv run coverage html"
+run = "uv run python -m audify.start"
