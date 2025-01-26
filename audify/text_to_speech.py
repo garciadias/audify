@@ -2,7 +2,7 @@
 import subprocess
 import wave
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import torch
 from pydub import AudioSegment
@@ -22,7 +22,7 @@ LOADED_MODEL = TTS("tts_models/es/mai/tacotron2-DDC", gpu=device)
 
 def sentence_to_speech(
     sentence: str,
-    file_path: str = f"{MODULE_PATH}/data/output/speech.wav",
+    file_path: str = 'tmp/speech.wav',
 ) -> None:
     if Path(file_path).parent.is_dir() is False:
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
@@ -39,28 +39,24 @@ def sentence_to_speech(
         )
 
 
-def process_sentence(sentence):
-    sentence_to_speech(sentence=sentence)
-    audio = AudioSegment.from_wav(f"{MODULE_PATH}/data/output/speech.wav")
-    return audio
-
-
-def synthesize_chapter(chapter: str, chapter_number: int) -> None:
+def synthesize_chapter(
+            chapter: str, chapter_number: int, audiobook_path: str | Path
+        ) -> None:
     chapter_txt = ebook_read.extract_text_from_epub_chapter(chapter)
     sentences = ebook_read.break_text_into_sentences(chapter_txt)
     sentence_to_speech(
         sentence=sentences[0],
-        file_path=f"{MODULE_PATH}/data/output/chapter_{chapter_number}.wav",
+        file_path=f"{audiobook_path}/chapter_{chapter_number}.wav",
     )
     combined_audio = AudioSegment.from_wav(
-        f"{MODULE_PATH}/data/output/chapter_{chapter_number}.wav"
+        f"{audiobook_path}/chapter_{chapter_number}.wav"
     )
     for sentence in sentences[1:]:
         sentence_to_speech(sentence=sentence)
-        audio = AudioSegment.from_wav(f"{MODULE_PATH}/data/output/speech.wav")
+        audio = AudioSegment.from_wav("/tmp/speech.wav")
         combined_audio += audio
         combined_audio.export(
-            f"{MODULE_PATH}/data/output/chapter_{chapter_number}.wav", format="wav"
+            f"{audiobook_path}/chapter_{chapter_number}.wav", format="wav"
         )
 
 
@@ -142,14 +138,29 @@ def log_on_chapter_file(
     return end
 
 
-def process_chapter(i, chapter, chapter_start):
-    if len(chapter) < 1000:
+def process_chapter(i, chapter, chapter_start, audiobook_path):
+    if len(chapter) < 1000 or Path(f"{audiobook_path}/chapter_{i}.txt").exists():
+        if Path(f"{audiobook_path}/chapter_{i}.txt").exists():
+            duration = get_wav_duration(f"{audiobook_path}/chapter_{i}.wav")
+            chapter_start += int(duration * 1000)
         return chapter_start
     print(f"Synthesizing chapter: {i}")
-    synthesize_chapter(chapter, i)
+    synthesize_chapter(chapter, i, audiobook_path)
     title = f"Chapter {i}: {ebook_read.get_chapter_title(chapter)}"
-    duration = get_wav_duration(f"{MODULE_PATH}/data/output/chapter_{i}.wav")
+    duration = get_wav_duration(f"{audiobook_path}/chapter_{i}.wav")
     chapter_start = log_on_chapter_file(
-        f"{MODULE_PATH}/data/output/chapter_{i}.txt", title, chapter_start, duration
+        f"{audiobook_path}/chapter_{i}.txt", title, chapter_start, duration
     )
     return chapter_start
+
+
+def process_chapters(chapters: list[str], audiobook_path: str | Path) -> None:
+    chapter_start = 0
+    chapter_id = 1
+    for chapter in chapters:
+        if len(chapter) < 1000:
+            continue
+        chapter_start = process_chapter(
+            chapter_id, chapter, chapter_start, audiobook_path
+        )
+        chapter_id += 1

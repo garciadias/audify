@@ -64,3 +64,8 @@ def save_book_cover_image(book: epub.EpubBook) -> str:
     with open(cover_path, "wb") as f:
         f.write(cover_image.content)
     return cover_path
+
+
+def get_ebook_language(book: epub.EpubBook) -> str:
+    language = book.get_metadata("DC", "language")[0][0]
+    return language
