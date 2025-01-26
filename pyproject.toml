@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9,<=3.12"
-authors = ["Rafael Dias <rafaelagd@gmail.com>"]
 dependencies = [
     "bs4>=0.0.2",
     "ebooklib>=0.18",
@@ -12,6 +11,11 @@ dependencies = [
     "pydub>=0.25.1",
     "tts>=0.22.0",
 ]
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "setuptools>=44.1.0", "wheel>=0.34.2"]
+build-backend = "poetry.core.masonry.api"
+
 
 [dependency-groups]
 dev = [
@@ -41,6 +45,7 @@ exclude = [
     "*/asgi.py",
     "*/mlflwo/*",
     "*/__pycache__/*",
+    "data/*",
 ]
 
 [tool.ruff.lint]

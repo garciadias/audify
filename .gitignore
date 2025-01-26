@@ -175,6 +175,4 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 data/audio.wav
-data/output/speech.mp3
-data/output/chapter.wav
-data/output/speech.wav
+data/output/

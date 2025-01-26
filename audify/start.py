@@ -1,23 +1,31 @@
+# %%
 from pathlib import Path
-
-from pydub import AudioSegment
 
 from audify import ebook_read, text_to_speech
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
+# %%
 if __name__ == "__main__":
+    # %%
     text = ebook_read.read_chapters(f"{MODULE_PATH}/data/test.epub")
-    text = ebook_read.extract_text_from_epub_chapter(text[10])
-    sentences = ebook_read.break_text_into_sentences(text)
-    text_to_speech.sentence_to_speech(
-        sentence=sentences[0], file_path=f"{MODULE_PATH}/data/output/chapter.wav"
+    with open(f"{MODULE_PATH}/data/output/chapters.txt", "w") as f:
+        for i, chapter in enumerate(text, start=1):
+            print(f"Synthesizing chapter: {i}")
+            text_to_speech.synthesize_chapter(chapter, i)
+            title = ebook_read.get_chapter_title(chapter)
+            f.write(f"Chapter {i}: {title}\n")
+    print("All chapters synthesized.")
+    # %%
+    book_title = "dust"
+    # Create M4B file
+    chapter_files = Path(f"{MODULE_PATH}/data/output/{book_title}").rglob("*.wav")
+    text_to_speech.create_m4b(
+        chapter_files=chapter_files,
+        filename=f"{MODULE_PATH}/data/test.epub",
+        cover_image_path=f"{MODULE_PATH}/data/output/dust/cover.jpg"
     )
-    combined_audio = AudioSegment.from_wav(f"{MODULE_PATH}/data/output/chapter.wav")
-    for sentence in sentences[1:]:
-        text_to_speech.sentence_to_speech(sentence=sentence)
-        audio = AudioSegment.from_wav(f"{MODULE_PATH}/data/output/speech.wav")
-        combined_audio += audio
-        combined_audio.export(f"{MODULE_PATH}/data/output/chapter.wav", format="wav")
-    print("Chapter audio generated.")
+    print("M4B file created.")
+
+# %%
