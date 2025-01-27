@@ -21,7 +21,16 @@ def extract_text_from_epub_chapter(chapter: str) -> tuple[str, str]:
 
 
 def break_text_into_sentences(text: str) -> list[str]:
-    return text.split(".")
+    sentences = re.split(r'(?<=[.!?;:¿¡]) +', text)
+    result = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        while len(sentence) > 239:
+            result.append(sentence[:239])
+            sentence = sentence[239:]
+        if sentence:
+            result.append(sentence)
+    return result
 
 
 def get_chapter_title(chapter: str) -> str:

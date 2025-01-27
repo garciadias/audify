@@ -2,7 +2,7 @@
 import subprocess
 import wave
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import NamedTemporaryFile
 
 import torch
 from pydub import AudioSegment
@@ -13,16 +13,18 @@ from audify import ebook_read
 MODULE_PATH = Path(__file__).parents[1]
 
 # Get device
-device = "cuda" if torch.cuda.is_available() else False
+device = "cuda" if torch.cuda.is_available() else 'cpu'
 # %%
-
-LOADED_MODEL = TTS("tts_models/es/mai/tacotron2-DDC", gpu=device)
+LOADED_MODEL = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
+LOADED_MODEL.to(device)
 # %%
 
 
 def sentence_to_speech(
     sentence: str,
     file_path: str = 'tmp/speech.wav',
+    language: str = "es",
+    speaker: str | Path = "data/Jennifer_16khz.wav",
 ) -> None:
     if Path(file_path).parent.is_dir() is False:
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
@@ -30,12 +32,16 @@ def sentence_to_speech(
         LOADED_MODEL.tts_to_file(
             text=sentence,
             file_path=file_path,
+            language=language,
+            speaker_wav=speaker,
         )
     except Exception as e:
         error_message = "Error: " + str(e)
         LOADED_MODEL.tts_to_file(
             text=error_message,
             file_path=file_path,
+            language=language,
+            speaker_wav=speaker,
         )
 
 
@@ -53,7 +59,7 @@ def synthesize_chapter(
     )
     for sentence in sentences[1:]:
         sentence_to_speech(sentence=sentence)
-        audio = AudioSegment.from_wav("/tmp/speech.wav")
+        audio = AudioSegment.from_wav("tmp/speech.wav")
         combined_audio += audio
         combined_audio.export(
             f"{audiobook_path}/chapter_{chapter_number}.wav", format="wav"
