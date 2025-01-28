@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import torch
+from ebooklib.epub import EpubBook
 from pydub import AudioSegment
 from TTS.api import TTS
 
@@ -13,7 +14,7 @@ from audify import ebook_read
 MODULE_PATH = Path(__file__).parents[1]
 
 # Get device
-device = "cuda" if torch.cuda.is_available() else 'cpu'
+device = "cuda" if torch.cuda.is_available() else "cpu"
 # %%
 LOADED_MODEL = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
 LOADED_MODEL.to(device)
@@ -22,7 +23,7 @@ LOADED_MODEL.to(device)
 
 def sentence_to_speech(
     sentence: str,
-    file_path: str = 'tmp/speech.wav',
+    file_path: str = "tmp/speech.wav",
     language: str = "es",
     speaker: str | Path = "data/Jennifer_16khz.wav",
 ) -> None:
@@ -46,19 +47,20 @@ def sentence_to_speech(
 
 
 def synthesize_chapter(
-            chapter: str, chapter_number: int, audiobook_path: str | Path
-        ) -> None:
+    chapter: str, chapter_number: int, audiobook_path: str | Path, language: str
+) -> None:
     chapter_txt = ebook_read.extract_text_from_epub_chapter(chapter)
     sentences = ebook_read.break_text_into_sentences(chapter_txt)
     sentence_to_speech(
         sentence=sentences[0],
         file_path=f"{audiobook_path}/chapter_{chapter_number}.wav",
+        language=language,
     )
     combined_audio = AudioSegment.from_wav(
         f"{audiobook_path}/chapter_{chapter_number}.wav"
     )
     for sentence in sentences[1:]:
-        sentence_to_speech(sentence=sentence)
+        sentence_to_speech(sentence=sentence, language=language)
         audio = AudioSegment.from_wav("tmp/speech.wav")
         combined_audio += audio
         combined_audio.export(
@@ -85,7 +87,7 @@ def create_m4b(chapter_files, filename, cover_image_path: str = None):
         cover_image_file = NamedTemporaryFile("wb")
         cover_image_file.write(cover_image)
         cover_image_args = ["-i", cover_image_file.name, "-map", "0:a", "-map", "2:v"]
-    else:
+    else:``
         cover_image_args = []
     cover_image_path = Path(cover_image_path)
     subprocess.run(
@@ -135,23 +137,23 @@ def log_on_chapter_file(
     if isinstance(chapter_file_path, str):
         chapter_file_path = Path(chapter_file_path)
     with open(chapter_file_path.parent / "chapters.txt", "a") as f:
-        f.write(f"[CHAPTER]{chapter_file_path.stem}\n")
-        f.write(f"TITLE={title}\n")
+        f.write("[CHAPTER]\n")
         f.write("TIMEBASE=1/1000\n")
         f.write(f"START={start}\n")
         f.write(f"END={end}\n")
+        f.write(f"TITLE={title}\n")
         f.write("\n")
     return end
 
 
-def process_chapter(i, chapter, chapter_start, audiobook_path):
+def process_chapter(i, chapter, chapter_start, audiobook_path, language):
     if len(chapter) < 1000 or Path(f"{audiobook_path}/chapter_{i}.txt").exists():
         if Path(f"{audiobook_path}/chapter_{i}.txt").exists():
             duration = get_wav_duration(f"{audiobook_path}/chapter_{i}.wav")
             chapter_start += int(duration * 1000)
         return chapter_start
     print(f"Synthesizing chapter: {i}")
-    synthesize_chapter(chapter, i, audiobook_path)
+    synthesize_chapter(chapter, i, audiobook_path, language)
     title = f"Chapter {i}: {ebook_read.get_chapter_title(chapter)}"
     duration = get_wav_duration(f"{audiobook_path}/chapter_{i}.wav")
     chapter_start = log_on_chapter_file(
@@ -160,13 +162,15 @@ def process_chapter(i, chapter, chapter_start, audiobook_path):
     return chapter_start
 
 
-def process_chapters(chapters: list[str], audiobook_path: str | Path) -> None:
+def process_chapters(book: EpubBook, audiobook_path: str | Path) -> None:
     chapter_start = 0
     chapter_id = 1
+    chapters = ebook_read.read_chapters(book)
+    language = ebook_read.get_language(book)
     for chapter in chapters:
         if len(chapter) < 1000:
             continue
         chapter_start = process_chapter(
-            chapter_id, chapter, chapter_start, audiobook_path
+            chapter_id, chapter, chapter_start, audiobook_path, language
         )
         chapter_id += 1

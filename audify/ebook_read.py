@@ -21,7 +21,7 @@ def extract_text_from_epub_chapter(chapter: str) -> tuple[str, str]:
 
 
 def break_text_into_sentences(text: str) -> list[str]:
-    sentences = re.split(r'(?<=[.!?;:¿¡]) +', text)
+    sentences = re.split(r"(?<=[.!?;:¿¡]) +", text)
     result = []
     for sentence in sentences:
         sentence = sentence.strip()
@@ -75,6 +75,6 @@ def save_book_cover_image(book: epub.EpubBook) -> str:
     return cover_path
 
 
-def get_ebook_language(book: epub.EpubBook) -> str:
+def get_language(book: epub.EpubBook) -> str:
     language = book.get_metadata("DC", "language")[0][0]
     return language
