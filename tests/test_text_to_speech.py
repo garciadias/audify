@@ -3,12 +3,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from audify.text_to_speech import LOADED_MODEL, BookSynthesizer
+from audify.text_to_speech import LOADED_MODEL, TextToSpeech
 
 
 @pytest.fixture
 def synthesizer():
-    return BookSynthesizer(LOADED_MODEL, "cpu")
+    return TextToSpeech(LOADED_MODEL, "cpu")
 
 
 def test_sentence_to_speech(synthesizer):

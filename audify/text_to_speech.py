@@ -9,7 +9,7 @@ from ebooklib.epub import EpubBook
 from pydub import AudioSegment
 from TTS.api import TTS
 
-from audify import ebook_read
+from audify.ebook_read import BookReader
 
 MODULE_PATH = Path(__file__).parents[1]
 
@@ -21,7 +21,7 @@ LOADED_MODEL.to(device)
 # %%
 
 
-class BookSynthesizer:
+class TextToSpeech:
     def __init__(self, model, device):
         self.model = model
         self.device = device
@@ -51,15 +51,13 @@ class BookSynthesizer:
                 speaker_wav=speaker,
             )
 
-    def synthesize_chapter(
+    def chapter_to_speech(
         self,
-        chapter: str,
+        sentences: list[str],
         chapter_number: int,
         audiobook_path: str | Path,
         language: str,
     ) -> None:
-        chapter_txt = ebook_read.extract_text_from_epub_chapter(chapter)
-        sentences = ebook_read.break_text_into_sentences(chapter_txt)
         self.sentence_to_speech(
             sentence=sentences[0],
             file_path=f"{audiobook_path}/chapter_{chapter_number}.wav",
@@ -76,7 +74,7 @@ class BookSynthesizer:
                 f"{audiobook_path}/chapter_{chapter_number}.wav", format="wav"
             )
 
-    def create_m4b(self, chapter_files, filename, cover_image_path: str = None):
+    def create_m4b(self, chapter_files, filename, cover_image_path: str | None = None):
         tmp_filename = filename.replace(".epub", ".tmp.mp4")
         if not Path(tmp_filename).exists():
             combined_audio = AudioSegment.empty()
@@ -90,9 +88,11 @@ class BookSynthesizer:
         final_filename = filename.replace(".epub", ".m4b")
         print("Creating M4B file...")
 
-        with open(cover_image_path, "rb") as f:
-            cover_image = f.read()
-
+        if cover_image_path is not None:
+            with open(cover_image_path, "rb") as f:
+                cover_image = f.read()
+        else:
+            cover_image = None
         if cover_image:
             cover_image_file = NamedTemporaryFile("wb")
             cover_image_file.write(cover_image)
@@ -106,7 +106,6 @@ class BookSynthesizer:
             ]
         else:
             cover_image_args = []
-        cover_image_path = Path(cover_image_path)
         subprocess.run(
             [
                 "ffmpeg",
@@ -176,12 +175,12 @@ class BookSynthesizer:
         return chapter_start
 
 
-def process_chapters(book: EpubBook, audiobook_path: str | Path) -> None:
+def process_chapters(book: BookReader, audiobook_path: str | Path) -> None:
     chapter_start = 0
     chapter_id = 1
-    chapters = ebook_read.read_chapters(book)
-    language = ebook_read.get_language(book)
-    synthesizer = BookSynthesizer(LOADED_MODEL, device)
+    chapters = book.read_chapters()
+    language = book.get_language()
+    synthesizer = TextToSpeech(LOADED_MODEL, device)
     for chapter in chapters:
         if len(chapter) < 1000:
             continue

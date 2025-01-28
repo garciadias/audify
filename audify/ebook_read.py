@@ -8,7 +8,7 @@ from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-class BookSynthesizer:
+class BookReader:
     def __init__(self, book: epub.EpubBook):
         self.book = book
 
@@ -55,7 +55,7 @@ class BookSynthesizer:
         title = re.sub(r"(?<!^)(?=[A-Z])", "_", title).lower()
         return title
 
-    def save_book_cover_image(self) -> str:
+    def save_book_cover_image(self) -> str | None:
         # If ITEM_COVER is available, use it
         cover_image = next(
             (item for item in self.book.get_items() if item.get_type() == ITEM_COVER),

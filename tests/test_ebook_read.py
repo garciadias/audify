@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from ebooklib import epub
 
-from audify.ebook_read import BookSynthesizer
+from audify.ebook_read import BookReader
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -18,11 +18,11 @@ def book():
 
 @pytest.fixture
 def synthesizer(book):
-    return BookSynthesizer(book)
+    return BookReader(book)
 
 
 def test_read_chapters(synthesizer):
-    item = epub.EpubHtml(title="Chapter 1", file_name="chap_01.xhtml", lang="en")
+    item = epub.EpubHtml(title="Chapter s1", file_name="chap_01.xhtml", lang="en")
     item.set_content("<h1>Chapter 1</h1><p>This is the first chapter.</p>")
     synthesizer.book.add_item(item)
     chapters = synthesizer.read_chapters()

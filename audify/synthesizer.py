@@ -1,21 +1,20 @@
 from pathlib import Path
 
-from ebooklib import epub
-
-from audify import ebook_read, text_to_speech
+from audify import text_to_speech
+from audify.ebook_read import BookReader
 
 
 class BookSynthesizer:
     def __init__(self, book_path: str):
-        self.book_path = book_path
-        self.book = epub.read_epub(book_path)
-        self.book_title = ebook_read.get_book_title(self.book)
+
+        self.book = BookReader(book_path)
+        self.book_title = self.book.get_book_title()
         self.audio_book_path = Path(
             f"{Path(book_path).parent}/output/{self.book_title}"
         )
         self.audio_book_path.mkdir(parents=True, exist_ok=True)
-        self.cover_path = ebook_read.save_book_cover_image(self.book)
-        self.language = ebook_read.get_language(self.book)
+        self.cover_path = self.book.save_book_cover_image()
+        self.language = self.book.get_language()
         self._initialize_metadata()
 
     def _initialize_metadata(self):
@@ -33,7 +32,7 @@ class BookSynthesizer:
     def _process_chapters(self):
         chapter_start = 0
         chapter_id = 1
-        chapters = ebook_read.read_chapters(self.book)
+        chapters = self.book.read_chapters()
         for chapter in chapters:
             if len(chapter) < 1000:
                 continue
