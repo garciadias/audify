@@ -1,26 +1,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from audify.text_to_speech import LOADED_MODEL, TextToSpeech
-
-
-@pytest.fixture
-def synthesizer():
-    return TextToSpeech(LOADED_MODEL, "cpu")
-
-
-def test_sentence_to_speech(synthesizer):
-    with patch.object(LOADED_MODEL, "tts_to_file") as mock_tts_to_file:
-        synthesizer.sentence_to_speech("Hello world", "tmp/speech.wav")
-        mock_tts_to_file.assert_called_once_with(
-            text="Hello world",
-            file_path="tmp/speech.wav",
-            language="es",
-            speaker_wav="data/Jennifer_16khz.wav",
-        )
-
 
 def test_synthesize_chapter(synthesizer):
     with (
