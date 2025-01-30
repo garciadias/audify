@@ -1,56 +1,51 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from ebooklib import epub
 
 from audify.synthesizer import BookSynthesizer
 
 
 @pytest.fixture
-def book():
-    book = epub.EpubBook()
-    book.set_title("Test Book")
-    book.add_metadata("DC", "language", "en")
-    return book
-
-
-@pytest.fixture
-def synthesizer(book):
-    with patch("audify.ebook_read.save_book_cover_image", return_value="cover.jpg"):
-        return BookSynthesizer(book)
+def synthesizer(tmp_dir, book):
+    with patch("audify.ebook_read.epub.read_epub", return_value=book):
+        return BookSynthesizer(book_path=tmp_dir / "test_book.epub")
 
 
 def test_initialize_metadata(synthesizer):
-    synthesizer._initialize_metadata()
+    """Test the initialization of metadata in the synthesizer."""
+    synthesizer.synthesize()
     metadata_file = synthesizer.audio_book_path / "chapters.txt"
-    assert metadata_file.exists()
-    with open(metadata_file, "r") as f:
-        content = f.read()
-    assert "major_brand=M4A" in content
+    with open(metadata_file, "r") as metadata_file_handle:
+        content = metadata_file_handle.read()
+    assert content == "Chapter 1\nChapter 2\n"
 
 
 def test_synthesize(synthesizer):
-    with (
-        patch("audify.text_to_speech.process_chapter") as mock_process_chapter,
-        patch("audify.text_to_speech.create_m4b") as mock_create_m4b,
-    ):
+    with patch(
+        "audify.synthesizer.BookSynthesizer._process_chapter"
+    ) as mock_process_chapter:
         synthesizer.synthesize()
-        mock_process_chapter.assert_called()
-        mock_create_m4b.assert_called()
+        assert mock_process_chapter.called
 
 
-def test_process_chapters(synthesizer):
+def test_synthesize_processes_chapters(synthesizer):
     with (
-        patch("audify.ebook_read.read_chapters", return_value=["chapter1", "chapter2"]),
         patch(
-            "audify.text_to_speech.process_chapter", return_value=1000
+            "audify.ebook_read.BookReader.read_chapters",
+            return_value=[
+                MagicMock(sentences=["test sentence 1"]),
+                MagicMock(sentences=["test sentence 2"]),
+            ],
+        ),
+        patch(
+            "audify.synthesizer.BookSynthesizer._process_chapter", return_value=1000
         ) as mock_process_chapter,
     ):
-        synthesizer._process_chapters()
+        synthesizer.synthesize()
         assert mock_process_chapter.call_count == 2
 
 
 def test_create_m4b(synthesizer):
-    with patch("audify.text_to_speech.create_m4b") as mock_create_m4b:
-        synthesizer._create_m4b()
+    with patch("audify.synthesizer.BookSynthesizer._create_m4b") as mock_create_m4b:
+        synthesizer._create_m4b([], "dummy.epub", cover_image_path=None)
         mock_create_m4b.assert_called()

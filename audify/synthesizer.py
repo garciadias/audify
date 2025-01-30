@@ -4,6 +4,7 @@ import wave
 from pathlib import Path
 
 import torch
+from ebooklib import epub
 from pydub import AudioSegment
 from TTS.api import TTS
 
@@ -15,15 +16,15 @@ class BookSynthesizer:
         self,
         book_path: str | Path,
     ):
-        self.book = BookReader(book_path)
-        self.book_title = self.book.get_book_title()
-        self.cover_path = self.book.save_book_cover_image()
-        self.language = self.book.get_language()
+        self.book = epub.read_epub(book_path)
+        self.book_reader = BookReader(self.book)
+        self.book_title = self.book_reader.get_book_title()
+        self.cover_path = self.book_reader.save_book_cover_image()
+        self.language = self.book_reader.get_language()
         self.tmp_dir = tempfile.TemporaryDirectory()
-        self._initialize_metadata()
 
     def _initialize_metadata(self):
-        with open(self.audio_book_path / "chapters.txt", "w") as f:
+        with open(self.audiobook_path / "chapters.txt", "w") as f:
             f.write(";FFMETADATA1\n")
             f.write("major_brand=M4A\n")
             f.write("minor_version=512\n")
@@ -33,18 +34,19 @@ class BookSynthesizer:
     def synthesize(
         self,
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
-        output_path: str | Path = "/data/output/",
+        output_path: str | Path = "./data/output/",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         self.model_name = model_name
         self.model = TTS(model_name=model_name)
         self.device = device
         self.model.to(self.device)
-        self.audio_book_path = Path(f"{output_path}/{self.book_title}")
-        self.audio_book_path.mkdir(parents=True, exist_ok=True)
+        self.audiobook_path = Path(f"{output_path}/{self.book_title}")
+        self.audiobook_path.mkdir(parents=True, exist_ok=True)
+        self._initialize_metadata()
         chapter_id = 1
         chapter_start = 0
-        for chapter in self.book.read_chapters():
+        for chapter in self.book_reader.read_chapters():
             chapter_start = self._process_chapter(
                 chapter_id,
                 chapter.sentences,
@@ -78,7 +80,7 @@ class BookSynthesizer:
 
     def _log_on_chapter_file(self, title: str, start: int, duration: float) -> int:
         end = start + int(duration * 1000)
-        with open(self.audio_book_path / "chapters.txt", "a") as f:
+        with open(self.audiobook_path / "chapters.txt", "a") as f:
             f.write("[CHAPTER]\n")
             f.write("TIMEBASE=1/1000\n")
             f.write(f"START={start}\n")
@@ -154,7 +156,7 @@ class BookSynthesizer:
                 "-i",
                 f"{tmp_filename}",
                 "-i",
-                f"{self.audio_book_path}/chapters.txt",
+                f"{self.audiobook_path}/chapters.txt",
                 *cover_image_args,
                 "-map",
                 "0",

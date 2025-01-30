@@ -46,7 +46,7 @@ class BookReader:
         return result
 
     def get_book_title(self) -> str:
-        title = self.book.title or self.book.get_metadata("DC", "title")[0][0]
+        title = self.book.get_metadata("DC", "title")[0][0]
         title = re.sub(r"(?<!^)(?=[A-Z])", "_", title).lower()
         return title
 
@@ -90,6 +90,6 @@ class BookReader:
         soup = bs4.BeautifulSoup(chapter, "html.parser")
         h1_tag = soup.find(possible_titles)
         if h1_tag:
-            return h1_tag.text
+            return h1_tag.get_text()
         else:
             return "Unknown"
