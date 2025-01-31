@@ -12,18 +12,18 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 
 class EpubReader(Reader):
 
-    def __init__(self, path: str):
+    def __init__(self, path: str | Path):
         self.book = epub.read_epub(path)
         self.title = self.get_title()
 
-    def get_chapters(self, book: epub.EpubBook) -> list[str]:
+    def get_chapters(self) -> list[str]:
         chapters = []
-        for item in book.get_items():
+        for item in self.book.get_items():
             if item.get_type() == ITEM_DOCUMENT:
                 chapters.append(item.get_body_content())
         return chapters
 
-    def extract_text(self, chapter: str) -> tuple[str, str]:
+    def extract_text(self, chapter: str) -> str:
         return bs4.BeautifulSoup(chapter, "html.parser").get_text()
 
     def break_text_into_sentences(self, text: str) -> list[str]:
@@ -62,12 +62,18 @@ class EpubReader(Reader):
     def get_cover_image(self) -> str | None:
         # If ITEM_COVER is available, use it
         cover_image = next(
-            (item for item in self.book.get_items() if item.get_type() == ITEM_COVER), None
+            (item for item in self.book.get_items() if item.get_type() == ITEM_COVER),
+            None,
         )
         if not cover_image:
             # If not, use the first image
             cover_image = next(
-                (item for item in self.book.get_items() if item.get_type() == ITEM_IMAGE), None
+                (
+                    item
+                    for item in self.book.get_items()
+                    if item.get_type() == ITEM_IMAGE
+                ),
+                None,
             )
         if not cover_image:
             return None
