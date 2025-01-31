@@ -11,7 +11,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 if __name__ == "__main__":
     # %%
     # Read the EPUB file and extract Metadata
-    book = epub.read_epub(f"{MODULE_PATH}/data/test.epub")
+    book = epub.read_epub(f"{MODULE_PATH}/data/federated.epub")
     book_title = ebook_read.get_book_title(book)
     # Prepare the output directory
     audio_book_path = Path(f"{MODULE_PATH}/data/output/{book_title}")

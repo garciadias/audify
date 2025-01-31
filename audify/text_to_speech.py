@@ -87,7 +87,7 @@ def create_m4b(chapter_files, filename, cover_image_path: str = None):
         cover_image_file = NamedTemporaryFile("wb")
         cover_image_file.write(cover_image)
         cover_image_args = ["-i", cover_image_file.name, "-map", "0:a", "-map", "2:v"]
-    else:``
+    else:
         cover_image_args = []
     cover_image_path = Path(cover_image_path)
     subprocess.run(
@@ -167,6 +167,8 @@ def process_chapters(book: EpubBook, audiobook_path: str | Path) -> None:
     chapter_id = 1
     chapters = ebook_read.read_chapters(book)
     language = ebook_read.get_language(book)
+    if language not in ["es", "en", 'pt']:
+        language = input("Enter the language code: ")
     for chapter in chapters:
         if len(chapter) < 1000:
             continue
