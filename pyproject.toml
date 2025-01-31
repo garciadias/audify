@@ -55,7 +55,6 @@ select = ['I', 'F', 'E', 'W', 'PT']
 
 [tool.mypy]
 ignore_missing_imports = true
-exclude = ["audify/domain/services/data/combine_fits.py"]
 
 
 [tool.taskipy.tasks]

@@ -49,7 +49,7 @@ def sentence_to_speech(
 def synthesize_chapter(
     chapter: str, chapter_number: int, audiobook_path: str | Path, language: str
 ) -> None:
-    chapter_txt = ebook_read.extract_text_from_epub_chapter(chapter)
+    chapter_txt = ebook_read.extract_text(chapter)
     sentences = ebook_read.break_text_into_sentences(chapter_txt)
     sentence_to_speech(
         sentence=sentences[0],
@@ -68,7 +68,7 @@ def synthesize_chapter(
         )
 
 
-def create_m4b(chapter_files, filename, cover_image_path: str = None):
+def create_m4b(chapter_files, filename, cover_image_path: str | None = None):
     tmp_filename = filename.replace(".epub", ".tmp.mp4")
     if not Path(tmp_filename).exists():
         combined_audio = AudioSegment.empty()
@@ -80,8 +80,9 @@ def create_m4b(chapter_files, filename, cover_image_path: str = None):
     final_filename = filename.replace(".epub", ".m4b")
     print("Creating M4B file...")
 
-    with open(cover_image_path, "rb") as f:
-        cover_image = f.read()
+    if cover_image_path:
+        with open(cover_image_path, "rb") as f:
+            cover_image = f.read()
 
     if cover_image:
         cover_image_file = NamedTemporaryFile("wb")
@@ -165,7 +166,7 @@ def process_chapter(i, chapter, chapter_start, audiobook_path, language):
 def process_chapters(book: EpubBook, audiobook_path: str | Path) -> None:
     chapter_start = 0
     chapter_id = 1
-    chapters = ebook_read.read_chapters(book)
+    chapters = ebook_read.get_chapters(book)
     language = ebook_read.get_language(book)
     if language not in ["es", "en", 'pt']:
         language = input("Enter the language code: ")
