@@ -30,7 +30,7 @@ dev = [
 
 [tool.coverage.report]
 exclude_lines = ["if __name__ == .__main__.:"]
-omit = ["*/audify/exploratory_analysis/*"]
+omit = ["*.venv/*"]
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py", "*_test.py"]
@@ -51,6 +51,7 @@ exclude = [
 [tool.ruff.lint]
 preview = true
 select = ['I', 'F', 'E', 'W', 'PT']
+exclude = ['.venv']
 
 
 [tool.mypy]
