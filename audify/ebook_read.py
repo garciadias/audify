@@ -27,7 +27,22 @@ class EpubReader(Reader):
         return bs4.BeautifulSoup(chapter, "html.parser").get_text()
 
     def break_text_into_sentences(self, text: str) -> list[str]:
+        # Replace @ with 'a' to avoid TTS errors
+        text = text.replace("@", "a")
         sentences = re.split(r"(?<=[.!?;:¿¡]) +", text)
+        # Remove all special characters, except for periods, commas, question marks,
+        # exclamation marks, brackets, and quotes
+        sentences = [
+            re.sub(r"[^a-zA-Z0-9.,!?;:¿¡'\"()]", " ", sentence)
+            for sentence in sentences
+        ]
+        # Remove extra spaces
+        sentences = [re.sub(r" +", " ", sentence) for sentence in sentences]
+        # Remove leading and trailing spaces
+        sentences = [sentence.strip() for sentence in sentences]
+        # Remove empty sentences
+        sentences = [sentence for sentence in sentences if sentence]
+        # Split long sentences into smaller ones to avoid TTS errors
         result = []
         for sentence in sentences:
             sentence = sentence.strip()
