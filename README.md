@@ -11,11 +11,9 @@ Convert ebooks to audiobooks using AI text-to-speech.
 
 ## Quick Start
 
-### Install UV if you haven't already:
+### Install UV if you haven't already
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+Follow the instructions [here](https://docs.astral.sh/uv/getting-started/installation/)
 
 ### Create virtual environment and install dependencies
 
