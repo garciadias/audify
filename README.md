@@ -1,55 +1,56 @@
 # Audify
 
-Audify is a tool that converts eBooks into audiobooks using text-to-speech technology.
+Convert ebooks to audiobooks using AI text-to-speech.
 
-## Installation
+## Prerequisites
 
-To install the project, you need to have [UV](https://github.com/uv-org/uv) installed. Follow the steps below:
+- Python 3.9-3.12
+- UV package manager
+- CUDA-capable GPU
+- CUDA toolkit
 
-1. Clone the repository:
+## Quick Start
 
-    ```sh
-    git clone https://github.com/garciadias/audify.git
-    cd audify
-    ```
+### Install UV if you haven't already:
 
-2. Install the dependencies:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-    ```sh
-    uv venv
-    uv sync
-    ```
+### Create virtual environment and install dependencies
 
-## Usage
-
-### Load uv environment
-
-To load the uv environment, use the following command:
-
-```sh
+```bash
+uv venv
 source .venv/bin/activate
+uv sync
 ```
 
-To run the main code and convert an eBook to an audiobook, use the following command:
+### Convert an ebook
 
-```sh
-task run
+```bash
+task run path/to/book.epub
 ```
 
-## Running Tests
+## Available Tasks
 
-To run the tests, use the following command:
-
-```sh
-task test
+```bash
+task test      # Run tests with coverage
+task format    # Format code with black, isort and ruff
+task run       # Convert ebook to audiobook
 ```
+
+## Contributing
+
+- [Contributing Guide](docs/CONTRIBUTING.md)
 
 ## Project Structure
 
-- `audify/start.py`: The main entry point for the application.
-- `audify/ebook_read.py`: Contains functions for reading and processing eBook content.
-- `audify/text_to_speech.py`: Contains functions for converting text to speech and creating audiobook files.
-
-## Configuration
-
-The project uses `taskipy` for task management. The tasks are defined in the `pyproject.toml` file under `[tool.taskipy.tasks]`.
+```bash
+audify/
+├── audify/
+│   ├── ebook_read.py    # Ebook processing
+│   ├── text_to_speech.py # TTS conversion
+│   └── start.py         # Entry point
+├── tests/               # Test suite
+└── data/               # Output directory
+```

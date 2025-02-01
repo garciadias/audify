@@ -175,6 +175,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "bs4" },
+    { name = "click" },
     { name = "ebooklib" },
     { name = "markdown" },
     { name = "pydub" },
@@ -195,6 +196,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bs4", specifier = ">=0.0.2" },
+    { name = "click", specifier = ">=8.1.8" },
     { name = "ebooklib", specifier = ">=0.18" },
     { name = "markdown", specifier = ">=3.7" },
     { name = "pydub", specifier = ">=0.25.1" },

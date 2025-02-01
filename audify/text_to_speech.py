@@ -95,8 +95,7 @@ class EpubSynthesizer(Synthesizer):
         sentences = self.reader.break_text_into_sentences(chapter_txt)
         chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
         announcement = (
-            f"Chapter {chapter_number}: "
-            f"{self.reader.get_chapter_title(chapter)}"
+            f"Chapter {chapter_number}: " f"{self.reader.get_chapter_title(chapter)}"
         )
         with nostdout():
             self.model.tts_to_file(
