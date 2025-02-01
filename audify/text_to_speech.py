@@ -13,10 +13,6 @@ from audify.ebook_read import EpubReader
 
 MODULE_PATH = Path(__file__).parents[1]
 # Get device
-device = "cuda" if torch.cuda.is_available() else "cpu"
-LOADED_MODEL = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
-LOADED_MODEL.to(device)
-# %%
 
 
 class EpubSynthesizer(Synthesizer):
@@ -36,6 +32,9 @@ class EpubSynthesizer(Synthesizer):
         self.audiobook_path.mkdir(parents=True, exist_ok=True)
         self.filename = self.reader.title
         self.cover_image = self.reader.get_cover_image()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
+        self.model.to(device)
 
         with open(self.audiobook_path / "chapters.txt", "w") as f:
             f.write(";FFMETADATA1\n")
@@ -48,7 +47,7 @@ class EpubSynthesizer(Synthesizer):
         if Path(self.tmp_dir).parent.is_dir() is False:
             Path(self.tmp_dir).parent.mkdir(parents=True, exist_ok=True)
         try:
-            LOADED_MODEL.tts_to_file(
+            self.model.tts_to_file(
                 text=sentence,
                 file_path=self.tmp_dir / "speech.wav",
                 language=self.reader,
@@ -56,7 +55,7 @@ class EpubSynthesizer(Synthesizer):
             )
         except Exception as e:
             error_message = "Error: " + str(e)
-            LOADED_MODEL.tts_to_file(
+            self.model.tts_to_file(
                 text=error_message,
                 file_path=self.tmp_dir / "speech.wav",
                 language=self.language,
@@ -105,7 +104,7 @@ class EpubSynthesizer(Synthesizer):
             with open(self.cover_image, "rb") as f:
                 cover_image = f.read()
 
-        if cover_image:
+        if self.cover_image:
             cover_image_file = NamedTemporaryFile("wb")
             cover_image_file.write(cover_image)
             cover_image_args = [
