@@ -177,3 +177,4 @@ pyrightconfig.json
 data/
 tmp/speech.wav
 *.m4b
+trash

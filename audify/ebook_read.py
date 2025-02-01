@@ -83,6 +83,12 @@ class EpubReader(Reader):
             f.write(cover_image.content)
         return cover_path
 
-    def get_language(book: epub.EpubBook) -> str:
-        language = book.get_metadata("DC", "language")[0][0]
+    def get_language(self) -> str:
+        language = self.book.get_metadata("DC", "language")[0][0]
         return language
+
+    def get_file_name_title(self) -> str:
+        # Make title snake_case and remove special characters and spaces
+        title = self.get_title()
+        title = re.sub(r"[^a-zA-Z0-9]", "", title)
+        return title

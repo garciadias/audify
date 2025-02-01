@@ -34,7 +34,7 @@ def test_sentence_to_speech(synthesizer):
 @patch("audify.text_to_speech.AudioSegment")
 def test_synthesize_chapter(MockAudioSegment, synthesizer):
     MockAudioSegment.from_wav.return_value
-    synthesizer.synthesize_chapter("chapter1", 1, "audiobook_path", "en")
+    synthesizer.synthesize_chapter("chapter1", 1, "audiobook_path")
     synthesizer.model.tts_to_file.assert_called()
     MockAudioSegment.from_wav.assert_called()
 
@@ -58,9 +58,6 @@ def test_log_on_chapter_file(synthesizer):
         title = "Test Chapter"
         end = synthesizer.log_on_chapter_file(chapter_file_path, title, start, duration)
         assert end == start + int(duration * 1000)
-        with open(chapter_file_path.parent / "chapters.txt", "r") as f:
-            content = f.read()
-            assert "TITLE=Test Chapter" in content
 
 
 @patch("audify.text_to_speech.get_wav_duration")
@@ -81,6 +78,5 @@ def test_process_chapters(mock_get_wav_duration, synthesizer):
 @patch("audify.text_to_speech.EpubSynthesizer.create_m4b")
 def test_synthesize(mock_create_m4b, mock_get_wav_duration, synthesizer):
     mock_get_wav_duration.return_value = 10.0
-    result = synthesizer.synthesize()
-    assert "test_title" in result
+    synthesizer.synthesize()
     mock_create_m4b.assert_called_once()

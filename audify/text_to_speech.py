@@ -1,10 +1,14 @@
 # %%
+import contextlib
 import subprocess
+import sys
+import warnings
 import wave
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import NamedTemporaryFile
 
 import torch
+import tqdm
 from pydub import AudioSegment
 from TTS.api import TTS
 
@@ -12,7 +16,18 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 
 MODULE_PATH = Path(__file__).parents[1]
-# Get device
+
+# mute FutureWarnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
+
+@contextlib.contextmanager
+def nostdout():
+    save_stdout = sys.stdout
+    sys.stdout = open("trash", "w")
+    yield
+    sys.stdout = save_stdout
 
 
 class EpubSynthesizer(Synthesizer):
@@ -24,19 +39,26 @@ class EpubSynthesizer(Synthesizer):
         speaker: str = "data/Jennifer_16khz.wav",
     ):
         self.reader = EpubReader(path)
-        tmp_dir = TemporaryDirectory()
-        self.tmp_dir = Path(tmp_dir.name)
         self.language = language or self.reader.get_language()
         self.speaker = speaker
-        self.audiobook_path = Path(f"{MODULE_PATH}/data/output/{self.reader.title}")
+        self.title = self.reader.title
+        self.filename = self.reader.get_file_name_title()
+        self.tmp_dir = Path(f"/tmp/audify/{self.filename}/")
+        self.audiobook_path = Path(f"{MODULE_PATH}/data/output/{self.filename}")
         self.audiobook_path.mkdir(parents=True, exist_ok=True)
-        self.filename = self.reader.title
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        self.list_of_contents = self.audiobook_path / "chapters.txt"
         self.cover_image = self.reader.get_cover_image()
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
+        # Load the TTS model
+        # Mute terminal outputs from TTS
+        with nostdout():
+            self.model = TTS(
+                model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+            )
         self.model.to(device)
 
-        with open(self.audiobook_path / "chapters.txt", "w") as f:
+        with open(self.list_of_contents, "w") as f:
             f.write(";FFMETADATA1\n")
             f.write("major_brand=M4A\n")
             f.write("minor_version=512\n")
@@ -50,7 +72,7 @@ class EpubSynthesizer(Synthesizer):
             self.model.tts_to_file(
                 text=sentence,
                 file_path=self.tmp_dir / "speech.wav",
-                language=self.reader,
+                language=self.language,
                 speaker_wav=self.speaker,
             )
         except Exception as e:
@@ -67,23 +89,30 @@ class EpubSynthesizer(Synthesizer):
         chapter: str,
         chapter_number: int,
         audiobook_path: str | Path,
-        language: str,
     ) -> None:
         chapter_txt = self.reader.extract_text(chapter)
         sentences = self.reader.break_text_into_sentences(chapter_txt)
-        self.sentence_to_speech(
-            sentence=sentences[0],
+        chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
+        announcement = (
+            f"Chapter {chapter_number}: {self.reader.get_chapter_title(chapter)}"
         )
-        combined_audio = AudioSegment.from_wav(
-            f"{audiobook_path}/chapter_{chapter_number}.wav"
-        )
-        for sentence in sentences[1:]:
-            self.sentence_to_speech(sentence=sentence)
+        with nostdout():
+            self.model.tts_to_file(
+                text=announcement,
+                file_path=chapter_path,
+                language=self.language,
+                speaker_wav=self.speaker,
+            )
+        if Path().exists():
+            combined_audio = AudioSegment.from_wav(chapter_path)
+        for sentence in tqdm.tqdm(
+            sentences[1:], desc=f"Synthesizing chapter {chapter_number}..."
+        ):
+            with nostdout():
+                self.sentence_to_speech(sentence=sentence)
             audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
             combined_audio += audio
-            combined_audio.export(
-                f"{audiobook_path}/chapter_{chapter_number}.wav", format="wav"
-            )
+            combined_audio.export(chapter_path, format="wav")
 
     def create_m4b(self):
         chapter_files = list(Path(self.audiobook_path).rglob("*.wav"))
@@ -123,7 +152,7 @@ class EpubSynthesizer(Synthesizer):
                 "-i",
                 f"{tmp_filename}",
                 "-i",
-                f"{self.audiobook_path}/chapters.txt",
+                self.list_of_contents,
                 *cover_image_args,
                 "-map",
                 "0",
@@ -150,7 +179,7 @@ class EpubSynthesizer(Synthesizer):
         end = start + int(duration * 1000)
         if isinstance(chapter_file_path, str):
             chapter_file_path = Path(chapter_file_path)
-        with open(chapter_file_path.parent / "chapters.txt", "a") as f:
+        with open(self.list_of_contents, "a") as f:
             f.write("[CHAPTER]\n")
             f.write("TIMEBASE=1/1000\n")
             f.write(f"START={start}\n")
@@ -160,35 +189,38 @@ class EpubSynthesizer(Synthesizer):
         return end
 
     def process_chapter(self, i, chapter, chapter_start):
-        if (
-            len(chapter) < 1000
-            or Path(f"{self.audiobook_path}/chapter_{i}.txt").exists()
-        ):
-            if Path(f"{self.audiobook_path}/chapter_{i}.txt").exists():
-                duration = get_wav_duration(f"{self.audiobook_path}/chapter_{i}.wav")
+        is_too_short = len(chapter) < 1000
+        chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
+        chapter_exists = Path(chapter_path).exists()
+        if is_too_short or chapter_exists:
+            if chapter_exists:
+                duration = get_wav_duration(chapter_path)
                 chapter_start += int(duration * 1000)
             return chapter_start
-        print(f"Synthesizing chapter: {i}")
-        self.synthesize_chapter(chapter, i, self.audiobook_path)
-        title = f"Chapter {i}: {self.reader.get_chapter_title(chapter)}"
-        duration = get_wav_duration(f"{self.audiobook_path}/chapter_{i}.wav")
-        chapter_start = self.log_on_chapter_file(
-            f"{self.audiobook_path}/chapter_{i}.txt", title, chapter_start, duration
-        )
+        else:
+            chapter_title = self.reader.get_chapter_title(chapter)
+            self.synthesize_chapter(chapter, i, self.audiobook_path)
+            title = f"Chapter {i}: {chapter_title}"
+            duration = get_wav_duration(chapter_path)
+            chapter_start = self.log_on_chapter_file(
+                self.list_of_contents, title, chapter_start, duration
+            )
         return chapter_start
 
     def process_chapters(self) -> None:
         chapter_start = 0
         chapter_id = 1
         chapters = self.reader.get_chapters()
-        language = self.reader.get_language()
-        if language not in ["es", "en", "pt"]:
-            language = input("Enter the language code: ")
-        for chapter in chapters:
+        self.language = self.reader.get_language()
+        if self.language not in ["es", "en", "pt"]:
+            self.language = input("Enter the language code: ")
+            print(f"Using language: {self.language}")
+        for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
             if len(chapter) < 1000:
                 continue
-            chapter_start = self.process_chapter(chapter_id, chapter, chapter_start)
-            chapter_id += 1
+            else:
+                chapter_start = self.process_chapter(chapter_id, chapter, chapter_start)
+                chapter_id += 1
 
     def synthesize(self) -> str:
         self.process_chapters()
