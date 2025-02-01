@@ -92,7 +92,7 @@ class EpubReader(Reader):
             )
         if not cover_image:
             return None
-        title = self.get_title()
+        title = self.get_file_name_title()
         cover_path = f"{MODULE_PATH}/data/output/{title}/cover.jpg"
         with open(cover_path, "wb") as f:
             f.write(cover_image.content)
@@ -106,4 +106,9 @@ class EpubReader(Reader):
         # Make title snake_case and remove special characters and spaces
         title = self.get_title()
         title = re.sub(r"[^a-zA-Z0-9]", "", title)
+        title.replace(" ", "_")
+        # Remove leading and trailing underscores
+        title = title.strip("_")
+        # Remove letter accents
+        title = title.encode("ascii", "ignore").decode("utf-8")
         return title

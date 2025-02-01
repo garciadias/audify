@@ -52,6 +52,7 @@ class EpubSynthesizer(Synthesizer):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # Load the TTS model
         # Mute terminal outputs from TTS
+        print("Loading TTS model...")
         with nostdout():
             self.model = TTS(
                 model_name="tts_models/multilingual/multi-dataset/xtts_v2",
@@ -62,7 +63,7 @@ class EpubSynthesizer(Synthesizer):
             f.write(";FFMETADATA1\n")
             f.write("major_brand=M4A\n")
             f.write("minor_version=512\n")
-            f.write("compatible_brands=M4A isomiso2\n")
+            f.write("compatible_brands=M4A isis2\n")
             f.write("encoder=Lavf61.7.100\n")
 
     def sentence_to_speech(self, sentence: str) -> None:
@@ -94,7 +95,8 @@ class EpubSynthesizer(Synthesizer):
         sentences = self.reader.break_text_into_sentences(chapter_txt)
         chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
         announcement = (
-            f"Chapter {chapter_number}: {self.reader.get_chapter_title(chapter)}"
+            f"Chapter {chapter_number}: "
+            f"{self.reader.get_chapter_title(chapter)}"
         )
         with nostdout():
             self.model.tts_to_file(
@@ -215,6 +217,19 @@ class EpubSynthesizer(Synthesizer):
         if self.language not in ["es", "en", "pt"]:
             self.language = input("Enter the language code: ")
             print(f"Using language: {self.language}")
+
+        print("=====================================")
+        print(f"Processing book: {self.title}")
+        print("=====================================")
+        print("Confirm details:")
+        print(f"Title: {self.title}")
+        print(f"Language: {self.language}")
+        print(f"Speaker: {self.speaker}")
+        print(f"Output: {self.audiobook_path}")
+        confirmation = input("Do you want to proceed? (y/n): [y]")
+        if confirmation.lower() not in ["y", "yes", ""]:
+            print("Exiting...")
+            sys.exit(0)
         for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
             if len(chapter) < 1000:
                 continue
