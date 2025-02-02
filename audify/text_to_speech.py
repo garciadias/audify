@@ -44,7 +44,9 @@ class EpubSynthesizer(Synthesizer):
         self.title = self.reader.title
         self.filename = self.reader.get_file_name_title()
         self.tmp_dir = Path(f"/tmp/audify/{self.filename}/")
-        self.audiobook_path = Path(f"{MODULE_PATH}/data/output/{self.filename}")
+        self.audiobook_path: str | Path = Path(
+            f"{MODULE_PATH}/data/output/{self.filename}"
+        )
         self.audiobook_path.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.list_of_contents = self.audiobook_path / "chapters.txt"
@@ -53,10 +55,9 @@ class EpubSynthesizer(Synthesizer):
         # Load the TTS model
         # Mute terminal outputs from TTS
         print("Loading TTS model...")
-        with nostdout():
-            self.model = TTS(
-                model_name="tts_models/multilingual/multi-dataset/xtts_v2",
-            )
+        self.model = TTS(
+            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+        )
         self.model.to(device)
 
         with open(self.list_of_contents, "w") as f:
@@ -213,22 +214,6 @@ class EpubSynthesizer(Synthesizer):
         chapter_id = 1
         chapters = self.reader.get_chapters()
         self.language = self.reader.get_language()
-        if self.language not in ["es", "en", "pt"]:
-            self.language = input("Enter the language code: ")
-            print(f"Using language: {self.language}")
-
-        print("=====================================")
-        print(f"Processing book: {self.title}")
-        print("=====================================")
-        print("Confirm details:")
-        print(f"Title: {self.title}")
-        print(f"Language: {self.language}")
-        print(f"Speaker: {self.speaker}")
-        print(f"Output: {self.audiobook_path}")
-        confirmation = input("Do you want to proceed? (y/n): [y]")
-        if confirmation.lower() not in ["y", "yes", ""]:
-            print("Exiting...")
-            sys.exit(0)
         for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
             if len(chapter) < 1000:
                 continue
@@ -240,6 +225,32 @@ class EpubSynthesizer(Synthesizer):
         self.process_chapters()
         self.create_m4b()
         return f"{self.audiobook_path}/{self.filename}"
+
+    def check_job_proposition(self) -> None:
+        if self.language not in ["es", "en", "pt"]:
+            self.language = input("Enter the language code: ")
+            print(f"Confirm language: You are using {self.language}")
+
+        print("=====================================")
+        print(f"Processing book: {self.title}")
+        print("=====================================")
+        print("Confirm details:")
+        print(f"Title: {self.title}")
+        print(f"Language: {self.language}")
+        print(f"Speaker: {self.speaker}")
+        print(f"Output: {self.audiobook_path}")
+        confirmation = input("Do you want to proceed? (y/n): [y]")
+        if confirmation.lower() not in ["y", "yes", ""]:
+            self.title = input("Enter the title: ") or self.title
+            self.language = input("Enter the language code: ") or self.language
+            self.speaker = input("Enter the speaker: ") or self.speaker
+            self.audiobook_path = (
+                input("Enter the output path: ") or self.audiobook_path
+            )
+            abort = input("Abort? (y/n): [n]")
+            if abort.lower() in ["y", "yes"]:
+                sys.exit(0)
+            self.check_job_proposition()
 
 
 def get_wav_duration(file_path):
