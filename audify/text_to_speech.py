@@ -214,6 +214,7 @@ class EpubSynthesizer(Synthesizer):
         chapter_id = 1
         chapters = self.reader.get_chapters()
         self.language = self.reader.get_language()
+        self.check_job_proposition()
         for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
             if len(chapter) < 1000:
                 continue
