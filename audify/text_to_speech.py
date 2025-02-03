@@ -152,7 +152,7 @@ class EpubSynthesizer(Synthesizer):
             [
                 "ffmpeg",
                 "-i",
-                f"{tmp_filename}",
+                f"{tmp_filename}.m4b",
                 "-i",
                 self.list_of_contents,
                 *cover_image_args,
@@ -240,7 +240,7 @@ class EpubSynthesizer(Synthesizer):
         print(f"Language: {self.language}")
         print(f"Speaker: {self.speaker}")
         print(f"Output: {self.audiobook_path}")
-        confirmation = input("Do you want to proceed? (y/n): [y]")
+        confirmation = input("Do you want to proceed? (y/n): [y] ")
         if confirmation.lower() not in ["y", "yes", ""]:
             self.title = input("Enter the title: ") or self.title
             self.language = input("Enter the language code: ") or self.language
@@ -248,7 +248,7 @@ class EpubSynthesizer(Synthesizer):
             self.audiobook_path = (
                 input("Enter the output path: ") or self.audiobook_path
             )
-            abort = input("Abort? (y/n): [n]")
+            abort = input("Abort? (y/n): [n] ")
             if abort.lower() in ["y", "yes"]:
                 sys.exit(0)
             self.check_job_proposition()
