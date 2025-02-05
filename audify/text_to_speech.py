@@ -37,6 +37,7 @@ class EpubSynthesizer(Synthesizer):
         path: str | Path,
         language: str | None = None,
         speaker: str = "data/Jennifer_16khz.wav",
+        model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
     ):
         self.reader = EpubReader(path)
         self.language = language or self.reader.get_language()
@@ -56,7 +57,7 @@ class EpubSynthesizer(Synthesizer):
         # Mute terminal outputs from TTS
         print("Loading TTS model...")
         self.model = TTS(
-            model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+            model_name=model_name,
         )
         self.model.to(device)
 
@@ -118,18 +119,18 @@ class EpubSynthesizer(Synthesizer):
 
     def create_m4b(self):
         chapter_files = list(Path(self.audiobook_path).rglob("*.wav"))
-        tmp_filename = self.filename.replace(".epub", ".tmp.mp4")
+        tmp_filename = f"{self.audiobook_path}/{self.filename}.tmp.m4b"
+        final_filename = f"{self.audiobook_path}/{self.filename}.m4b"
+        combined_audio = AudioSegment.empty()
+        for wav_file in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
+            audio = AudioSegment.from_wav(wav_file)
+            combined_audio += audio
+        print("Converting to M4b...")
         if not Path(tmp_filename).exists():
-            combined_audio = AudioSegment.empty()
-            for wav_file in chapter_files:
-                audio = AudioSegment.from_wav(wav_file)
-                combined_audio += audio
-            print("Converting to M4b...")
             combined_audio.export(
                 tmp_filename, format="mp4", codec="aac", bitrate="64k"
             )
-        final_filename = self.filename.replace(".epub", ".m4b")
-        print("Creating M4B file...")
+        print("Adding M4B file metadata...")
 
         if self.cover_image:
             with open(self.cover_image, "rb") as f:
@@ -148,32 +149,34 @@ class EpubSynthesizer(Synthesizer):
             ]
         else:
             cover_image_args = []
+        command = [
+            "ffmpeg",
+            "-i",
+            f"{tmp_filename}",
+            "-i",
+            self.list_of_contents,
+            *cover_image_args,
+            "-map",
+            "0",
+            "-map_metadata",
+            "1",
+            "-c:a",
+            "copy",
+            "-c:v",
+            "copy",
+            "-disposition:v",
+            "attached_pic",
+            "-c",
+            "copy",
+            "-f",
+            "mp4",
+            f"{final_filename}",
+        ]
+        command = [str(arg) for arg in command]
+        print(" ".join(command))
         subprocess.run(
-            [
-                "ffmpeg",
-                "-i",
-                f"{tmp_filename}.m4b",
-                "-i",
-                self.list_of_contents,
-                *cover_image_args,
-                "-map",
-                "0",
-                "-map_metadata",
-                "1",
-                "-c:a",
-                "copy",
-                "-c:v",
-                "copy",
-                "-disposition:v",
-                "attached_pic",
-                "-c",
-                "copy",
-                "-f",
-                "mp4",
-                f"{final_filename}",
-            ]
+            command,
         )
-        Path(tmp_filename).unlink()
 
     def log_on_chapter_file(
         self, chapter_file_path: Path | str, title: str, start: int, duration: float
@@ -186,23 +189,25 @@ class EpubSynthesizer(Synthesizer):
             f.write("TIMEBASE=1/1000\n")
             f.write(f"START={start}\n")
             f.write(f"END={end}\n")
-            f.write(f"TITLE={title}\n")
-            f.write("\n")
+            f.write(f"title={title}\n")
         return end
 
     def process_chapter(self, i, chapter, chapter_start):
         is_too_short = len(chapter) < 1000
         chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
         chapter_exists = Path(chapter_path).exists()
+        chapter_title = self.reader.get_chapter_title(chapter)
+        title = f"Chapter {i}: {chapter_title}"
         if is_too_short or chapter_exists:
             if chapter_exists:
                 duration = get_wav_duration(chapter_path)
                 chapter_start += int(duration * 1000)
+                chapter_start = self.log_on_chapter_file(
+                    self.list_of_contents, title, chapter_start, duration
+                )
             return chapter_start
         else:
-            chapter_title = self.reader.get_chapter_title(chapter)
             self.synthesize_chapter(chapter, i, self.audiobook_path)
-            title = f"Chapter {i}: {chapter_title}"
             duration = get_wav_duration(chapter_path)
             chapter_start = self.log_on_chapter_file(
                 self.list_of_contents, title, chapter_start, duration
@@ -232,9 +237,13 @@ class EpubSynthesizer(Synthesizer):
             self.language = input("Enter the language code: ")
             print(f"Confirm language: You are using {self.language}")
 
-        print("=====================================")
+        print(
+            "=========================================================================="
+        )
         print(f"Processing book: {self.title}")
-        print("=====================================")
+        print(
+            "=========================================================================="
+        )
         print("Confirm details:")
         print(f"Title: {self.title}")
         print(f"Language: {self.language}")

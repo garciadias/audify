@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import click
+from TTS.api import TTS
 
 from audify.text_to_speech import EpubSynthesizer
 
@@ -15,6 +16,13 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     required=True,
 )
 @click.option(
+    "--model",
+    "-m",
+    type=str,
+    default="tts_models/multilingual/multi-dataset/xtts_v2",
+    help="Path to the TTS model.",
+)
+@click.option(
     "--language",
     "-l",
     type=click.Choice(["en", "es", "pt"], case_sensitive=False),
@@ -27,10 +35,40 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     type=str,
     default="data/Jennifer_16khz.wav",
     help="Path to the speaker's voice.",
+)
+@click.option(
+    "--list-languages",
+    "-ll",
+    is_flag=True,
+)
+@click.option(
+    "--list-models",
+    "-lm",
+    is_flag=True,
+)
+def main(
+    epub_path: str,
+    language: str,
+    voice: str,
+    list_languages: bool,
+    list_models: bool,
+    model: str,
+):
+    book_synthesizer = EpubSynthesizer(
+        epub_path, language=language, speaker=voice, model_name=model
     )
-def main(epub_path: str, language: str, voice: str):
-    book_synthesizer = EpubSynthesizer(epub_path, language=language, speaker=voice)
-    book_synthesizer.synthesize()
+    if list_languages:
+        print("====================")
+        print("Available languages:")
+        print("====================")
+        print(", ".join(book_synthesizer.model.languages))
+    elif list_models:
+        print("=================")
+        print("Available models:")
+        print("=================")
+        print(", ".join(TTS().list_models().list_models()))
+    else:
+        book_synthesizer.synthesize()
 
 
 if __name__ == "__main__":

@@ -65,7 +65,6 @@ class EpubReader(Reader):
 
     def get_title(self) -> str:
         title = self.book.title or self.book.get_metadata("DC", "title")[0][0]
-        title = re.sub(r"(?<!^)(?=[A-Z])", "_", title).lower()
         return title
 
     def get_cover_image(self) -> str | None:
@@ -99,6 +98,8 @@ class EpubReader(Reader):
     def get_file_name_title(self) -> str:
         # Make title snake_case and remove special characters and spaces
         title = self.get_title().lower().replace(" ", "_")
+        # replace multiple underscores with a single one
+        title = re.sub(r"_+", "_", title)
         # Remove leading and trailing underscores
         title = title.strip("_")
         # Remove letter accents
