@@ -1,5 +1,6 @@
 # %%
 import contextlib
+import logging
 import subprocess
 import sys
 import warnings
@@ -14,7 +15,9 @@ from TTS.api import TTS
 
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
+from audify.pdf_read import PdfReader
 
+logger = logging.getLogger(__name__)
 MODULE_PATH = Path(__file__).parents[1]
 
 # mute FutureWarnings
@@ -273,3 +276,106 @@ def get_wav_duration(file_path):
         # Calculate the duration in seconds
         duration = frames / float(frame_rate)
         return duration
+
+
+class PdfSynthesizer:
+    def __init__(
+        self,
+        pdf_path: str | Path,
+        language: str = "en",
+        model_name: str = "tts_models/en/ljspeech/tacotron2-DDC",
+    ):
+        self.pdf_path = Path(pdf_path).resolve()
+        if not self.pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found at {pdf_path}")
+
+        # TTS engine will be initialized later with specific language
+        self.tts = TTS(model_name=model_name)
+        self.tts.to("cuda" if torch.cuda.is_available() else "cpu")
+        self.speech_rate = 1.0  # Default speed multiplier
+        self.language = language
+
+    def _setup_tts(self, language: str = "en"):
+        """Initialize TTS engine with appropriate language model"""
+        try:
+            model_name = self._get_model_for_language(language)
+            logger.info(f"Loading TTS model: {model_name}")
+            self.tts = TTS(model_name=model_name)
+        except Exception as e:
+            logger.error(f"Failed to initialize TTS engine: {str(e)}")
+            raise
+
+    def _get_model_for_language(self, language: str) -> str:
+        """Map language codes to appropriate TTS models"""
+        language = language.lower()
+        model_map = {
+            "en": "tts_models/en/ljspeech/tacotron2-DDC",
+            "fr": "tts_models/fr/css10/vits",
+            "de": "tts_models/de/css10/vits",
+            "es": "tts_models/es/css10/vits",
+            # Add more language mappings as needed
+        }
+        return model_map.get(language, model_map["en"])
+
+    def _set_speech_rate(self, rate: float = 1.0):
+        """Set speech rate (speed multiplier)"""
+        self.speech_rate = max(0.5, min(2.0, rate))  # Clamp between 0.5-2.0
+
+    def synthesize(
+        self,
+        output_dir: str | Path = "outputs",
+        output_name: str = "output.wav",
+        language: str = "en",
+        speech_rate: float = 1.0,
+    ) -> Path:
+        """Synthesize PDF content into audio file using TTS"""
+        try:
+            # Extract and clean text from PDF
+            reader = PdfReader(self.pdf_path)
+            cleaned_text = reader.get_cleaned_text()
+
+            if not cleaned_text:
+                logger.warning("No cleaned text available for synthesis")
+                return None
+
+            # Setup TTS engine
+            self._setup_tts(language=language)
+            self._set_speech_rate(speech_rate)
+
+            # Prepare output path
+            output_path = Path(output_dir) / output_name
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"Generating audio file: {output_path}")
+
+            # Generate speech with TTS
+            self.tts.tts_to_file(
+                text=cleaned_text,
+                file_path=str(output_path),
+                speed=self.speech_rate,
+                language=language,
+            )
+
+            logger.info(f"Successfully generated audio file at: {output_path}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"Error in synthesis: {str(e)}")
+            raise
+        finally:
+            # Clean up TTS resources
+            self.tts = None
+
+    @classmethod
+    def from_config(cls, config: dict):
+        """Create instance from configuration dictionary"""
+        defaults = {
+            "output_dir": "outputs",
+            "output_name": "output.wav",
+            "language": "en",
+            "speech_rate": 1.0,
+        }
+        params = {**defaults, **config}
+        instance = cls(pdf_path=params["pdf_path"])
+        instance._set_speech_rate(params["speech_rate"])
+        return instance
