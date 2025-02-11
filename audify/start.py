@@ -47,7 +47,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     is_flag=True,
 )
 def main(
-    epub_path: str,
+    file_path: str,
     language: str,
     voice: str,
     list_languages: bool,
@@ -55,7 +55,7 @@ def main(
     model: str,
 ):
     book_synthesizer = EpubSynthesizer(
-        epub_path, language=language, speaker=voice, model_name=model
+        file_path, language=language, speaker=voice, model_name=model
     )
     if list_languages:
         print("====================")

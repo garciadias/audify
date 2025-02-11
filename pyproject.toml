@@ -9,8 +9,10 @@ dependencies = [
     "click>=8.1.8",
     "ebooklib>=0.18",
     "markdown>=3.7",
+    "ollama>=0.4.7",
     "pydub>=0.25.1",
     "pypdf2>=3.0.1",
+    "transformers[torch]>=4.48.1",
     "tts>=0.22.0",
 ]
 
