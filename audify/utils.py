@@ -70,8 +70,14 @@ def get_wav_duration(file_path):
 
 
 def sentence_to_speech(
-    sentence: str, tmp_dir: Path, language: str, speaker: str | Path, model: TTS
+    sentence: str,
+    model: TTS,
+    tmp_dir: Path | str = ("/tmp/"),
+    language: str = "en",
+    speaker: str | Path = "data/Jennifer_16khz.wav",
 ) -> None:
+    if isinstance(tmp_dir, str):
+        tmp_dir = Path(tmp_dir)
     if Path(tmp_dir).parent.is_dir() is False:
         Path(tmp_dir).parent.mkdir(parents=True, exist_ok=True)
     try:
