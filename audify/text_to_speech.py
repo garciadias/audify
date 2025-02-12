@@ -1,9 +1,9 @@
 # %%
 import contextlib
+import logging
 import subprocess
 import sys
 import warnings
-import wave
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -14,7 +14,10 @@ from TTS.api import TTS
 
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
+from audify.pdf_read import PdfReader
+from audify.utils import break_text_into_sentences, get_wav_duration, sentence_to_speech
 
+logger = logging.getLogger(__name__)
 MODULE_PATH = Path(__file__).parents[1]
 
 # mute FutureWarnings
@@ -43,10 +46,10 @@ class EpubSynthesizer(Synthesizer):
         self.language = language or self.reader.get_language()
         self.speaker = speaker
         self.title = self.reader.title
-        self.filename = self.reader.get_file_name_title()
-        self.tmp_dir = Path(f"/tmp/audify/{self.filename}/")
+        self.file_name = self.reader.get_file_name_title()
+        self.tmp_dir = Path(f"/tmp/audify/{self.file_name}/")
         self.audiobook_path: str | Path = Path(
-            f"{MODULE_PATH}/data/output/{self.filename}"
+            f"{MODULE_PATH}/data/output/{self.file_name}"
         )
         self.audiobook_path.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -68,25 +71,6 @@ class EpubSynthesizer(Synthesizer):
             f.write("compatible_brands=M4A isis2\n")
             f.write("encoder=Lavf61.7.100\n")
 
-    def sentence_to_speech(self, sentence: str) -> None:
-        if Path(self.tmp_dir).parent.is_dir() is False:
-            Path(self.tmp_dir).parent.mkdir(parents=True, exist_ok=True)
-        try:
-            self.model.tts_to_file(
-                text=sentence,
-                file_path=self.tmp_dir / "speech.wav",
-                language=self.language,
-                speaker_wav=self.speaker,
-            )
-        except Exception as e:
-            error_message = "Error: " + str(e)
-            self.model.tts_to_file(
-                text=error_message,
-                file_path=self.tmp_dir / "speech.wav",
-                language=self.language,
-                speaker_wav=self.speaker,
-            )
-
     def synthesize_chapter(
         self,
         chapter: str,
@@ -94,7 +78,7 @@ class EpubSynthesizer(Synthesizer):
         audiobook_path: str | Path,
     ) -> None:
         chapter_txt = self.reader.extract_text(chapter)
-        sentences = self.reader.break_text_into_sentences(chapter_txt)
+        sentences = break_text_into_sentences(chapter_txt)
         chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
         announcement = (
             f"Chapter {chapter_number}: " f"{self.reader.get_chapter_title(chapter)}"
@@ -112,23 +96,29 @@ class EpubSynthesizer(Synthesizer):
             sentences[1:], desc=f"Synthesizing chapter {chapter_number}..."
         ):
             with nostdout():
-                self.sentence_to_speech(sentence=sentence)
+                sentence_to_speech(
+                    sentence=sentence,
+                    tmp_dir=self.tmp_dir,
+                    language=self.language,
+                    speaker=self.speaker,
+                    model=self.model,
+                )
             audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
             combined_audio += audio
             combined_audio.export(chapter_path, format="wav")
 
     def create_m4b(self):
         chapter_files = list(Path(self.audiobook_path).rglob("*.wav"))
-        tmp_filename = f"{self.audiobook_path}/{self.filename}.tmp.m4b"
-        final_filename = f"{self.audiobook_path}/{self.filename}.m4b"
+        tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
+        final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
         for wav_file in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
             audio = AudioSegment.from_wav(wav_file)
             combined_audio += audio
         print("Converting to M4b...")
-        if not Path(tmp_filename).exists():
+        if not Path(tmp_file_name).exists():
             combined_audio.export(
-                tmp_filename, format="mp4", codec="aac", bitrate="64k"
+                tmp_file_name, format="mp4", codec="aac", bitrate="64k"
             )
         print("Adding M4B file metadata...")
 
@@ -152,7 +142,7 @@ class EpubSynthesizer(Synthesizer):
         command = [
             "ffmpeg",
             "-i",
-            f"{tmp_filename}",
+            f"{tmp_file_name}",
             "-i",
             self.list_of_contents,
             *cover_image_args,
@@ -170,7 +160,7 @@ class EpubSynthesizer(Synthesizer):
             "copy",
             "-f",
             "mp4",
-            f"{final_filename}",
+            f"{final_file_name}",
         ]
         command = [str(arg) for arg in command]
         print(" ".join(command))
@@ -230,7 +220,7 @@ class EpubSynthesizer(Synthesizer):
     def synthesize(self) -> str:
         self.process_chapters()
         self.create_m4b()
-        return f"{self.audiobook_path}/{self.filename}"
+        return f"{self.audiobook_path}/{self.file_name}"
 
     def check_job_proposition(self) -> None:
         if self.language not in ["es", "en", "pt"]:
@@ -263,13 +253,95 @@ class EpubSynthesizer(Synthesizer):
             self.check_job_proposition()
 
 
-def get_wav_duration(file_path):
-    # Open the .wav file
-    with wave.open(file_path, "rb") as wav_file:
-        # Get the number of frames
-        frames = wav_file.getnframes()
-        # Get the frame rate (samples per second)
-        frame_rate = wav_file.getframerate()
-        # Calculate the duration in seconds
-        duration = frames / float(frame_rate)
-        return duration
+class PdfSynthesizer:
+    def __init__(
+        self,
+        pdf_path: str | Path,
+        language: str = "en",
+        model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
+        speaker: str = "data/Jennifer_16khz.wav",
+        output_dir: str | Path = "data/output/articles/",
+        file_name: str | None = None,
+    ):
+        self.pdf_path = Path(pdf_path).resolve()
+        if not self.pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found at {pdf_path}")
+
+        self.language = language
+        self.model_name = model_name
+        self.speaker = speaker
+        self.output_dir = Path(output_dir).resolve()
+        self.output_file = self.output_dir / (file_name or self.pdf_path.stem)
+        self.output_file = self.output_file.with_suffix(".wav")
+        self.tmp_dir = Path("/tmp/audify/") / (file_name or self.pdf_path.stem)
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    def _setup_tts(self) -> TTS:
+        """Initialize TTS engine with appropriate language model"""
+        try:
+            logger.info(f"Loading TTS model: {self.model_name}")
+            model = TTS(model_name=self.model_name)
+            model.to("cuda" if torch.cuda.is_available() else "cpu")
+            return model
+        except Exception as e:
+            logger.error(f"Failed to initialize TTS engine: {str(e)}")
+            raise
+
+    def synthesize(self) -> Path | None:
+        """Synthesize PDF content into audio file using TTS"""
+        # Extract and clean text from PDF
+        reader = PdfReader(self.pdf_path)
+        cleaned_text = reader.get_cleaned_text()
+
+        # Setup TTS engine
+        self.model = self._setup_tts()
+
+        # Prepare output path
+        logger.info(f"Generating audio file: {self.output_file}")
+
+        # Synthesize text into audio
+        self._synthesize_clean_text(cleaned_text)
+        return self.output_file
+
+    def _synthesize_clean_text(
+        self,
+        cleaned_text: str,
+    ) -> None:
+        sentences = break_text_into_sentences(cleaned_text)
+        announcement = "Generated audio file from PDF: " f"{self.pdf_path.stem}"
+        with nostdout():
+            self.model.tts_to_file(
+                text=announcement,
+                file_path=self.output_file,
+                language=self.language,
+                speaker_wav=self.speaker,
+            )
+        if Path().exists():
+            combined_audio = AudioSegment.from_wav(self.output_file)
+        for sentence in tqdm.tqdm(
+            sentences[1:], desc=f"Synthesizing file {self.pdf_path.stem}..."
+        ):
+            with nostdout():
+                sentence_to_speech(
+                    sentence=sentence,
+                    tmp_dir=self.tmp_dir,
+                    language=self.language,
+                    speaker=self.speaker,
+                    model=self.model,
+                )
+            audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
+            combined_audio += audio
+            combined_audio.export(self.output_file, format="wav")
+
+    @classmethod
+    def from_config(cls, config: dict):
+        """Create instance from configuration dictionary"""
+        defaults = {
+            "output_dir": "outputs",
+            "output_name": "output.wav",
+            "language": "en",
+            "speech_rate": 1.0,
+        }
+        params = {**defaults, **config}
+        instance = cls(pdf_path=params["pdf_path"])
+        return instance
