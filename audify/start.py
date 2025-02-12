@@ -3,7 +3,8 @@ from pathlib import Path
 import click
 from TTS.api import TTS
 
-from audify.text_to_speech import EpubSynthesizer
+from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
+from audify.utils import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -11,7 +12,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 @click.command()
 # Path to the epub file to be synthesized is required as default parameter
 @click.argument(
-    "epub_path",
+    "file_path",
     type=click.Path(exists=True),
     required=True,
 )
@@ -54,21 +55,26 @@ def main(
     list_models: bool,
     model: str,
 ):
-    book_synthesizer = EpubSynthesizer(
-        file_path, language=language, speaker=voice, model_name=model
-    )
+    if get_file_extension(file_path) == ".epub":
+        synthesizer: EpubSynthesizer | PdfSynthesizer = EpubSynthesizer(
+            file_path, language=language, speaker=voice, model_name=model
+        )
+    if get_file_extension(file_path) == ".pdf":
+        synthesizer = PdfSynthesizer(
+            file_path, language=language, speaker=voice, model_name=model
+        )
     if list_languages:
         print("====================")
         print("Available languages:")
         print("====================")
-        print(", ".join(book_synthesizer.model.languages))
+        print(", ".join(synthesizer.model.languages))
     elif list_models:
         print("=================")
         print("Available models:")
         print("=================")
         print(", ".join(TTS().list_models().list_models()))
     else:
-        book_synthesizer.synthesize()
+        synthesizer.synthesize()
 
 
 if __name__ == "__main__":

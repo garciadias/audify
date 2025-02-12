@@ -38,7 +38,11 @@ omit = ["*.venv/*"]
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py", "*_test.py"]
-addopts = ["--cov=audify", "--cov-report=term-missing"]
+addopts = []
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+
+[tool.pytest.ini_options_debug]
+python_files = ["test_*.py", "*_test.py"]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
 
 [tool.ruff]
@@ -63,7 +67,7 @@ ignore_missing_imports = true
 
 
 [tool.taskipy.tasks]
-test = "uv run pytest"
+test = "uv run pytest --cov=audify --cov-report=term-missing"
 format = "black .; isort .; ruff check . --fix"
 pre_test = "task format && mypy ."
 post_test = "uv run coverage html"

@@ -1,9 +1,10 @@
 # %%
-import re
 import sys
 from pathlib import Path
 
 import PyPDF2
+
+from audify.utils import clean_text
 
 
 class PdfReader:
@@ -36,30 +37,7 @@ class PdfReader:
         Returns:
             Cleaned text suitable for TTS.
         """
-        # Remove LaTeX formatting and special characters
-        cleaned = re.sub(r"\$(.*?)(\$)", "", text)  # Remove equations in $...$ notation
-        cleaned = re.sub(
-            r"\\(figure|table)[^\\]*", "", cleaned
-        )  # Remove figure/table references
-        cleaned = re.sub(r"%.*?\n?", "", cleaned)  # Remove comments
-        cleaned = re.sub(r"\{[^}]+\}", "", cleaned)  # Remove curly braces
-        cleaned = re.sub(r"\\[a-zA-Z]+", "", cleaned)  # Remove other LaTeX commands
-
-        # Remove citations (common formats)
-        cleaned = re.sub(r"\[(.*?)\]", "", cleaned)  # Remove [author year] format
-        cleaned = re.sub(r"\(.*?\)", "", cleaned)  # Remove (author year) format
-        cleaned = re.sub(r"\[?\d+\]?", "", cleaned)  # Remove standalone numbers
-
-        # Remove footnotes
-        cleaned = re.sub(r"Footnote:\s*\d+", "", cleaned)
-
-        # Remove section headers and numbering
-        cleaned = re.sub(r"^\d+\.\s*", "", cleaned, flags=re.MULTILINE)
-        cleaned = re.sub(r"^###?\s*", "", cleaned, flags=re.MULTILINE)
-
-        # Normalize whitespace
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-
+        cleaned = clean_text(text)
         return cleaned
 
     def get_cleaned_text(self) -> str:
