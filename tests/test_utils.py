@@ -9,16 +9,11 @@ from audify.utils import break_text_into_sentences, clean_text, sentence_to_spee
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture
-def pdf_path():
-    return MODULE_PATH / "data" / "test.pdf"
+TEST_FILE_NAMES = ['test1', 'test2']
+READERS = [PdfReader(MODULE_PATH / "data" / f"{file_name}.pdf") for file_name in TEST_FILE_NAMES]
 
 
-@pytest.fixture
-def reader(pdf_path):
-    return PdfReader(pdf_path)
-
-
+@pytest.mark.parametrize("reader", READERS)
 def test_text_is_cleaned(reader):
     cleaned_text = clean_text(reader.get_cleaned_text())
     assert cleaned_text
@@ -28,6 +23,7 @@ def test_text_is_cleaned(reader):
     assert "//" not in cleaned_text
 
 
+@pytest.mark.parametrize("reader", READERS)
 def test_break_text_into_sentences(reader):
     max_length = 239
     min_length = 10
