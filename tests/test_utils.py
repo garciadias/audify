@@ -3,17 +3,10 @@ from tempfile import NamedTemporaryFile
 
 import pytest
 
-from audify.pdf_read import PdfReader
 from audify.utils import break_text_into_sentences, clean_text, sentence_to_speech
+from tests.fixtures.readers import READERS
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-
-
-TEST_FILE_NAMES = ["test1", "test2"]
-READERS = [
-    PdfReader(MODULE_PATH / "data" / f"{file_name}.pdf")
-    for file_name in TEST_FILE_NAMES
-]
 
 
 @pytest.mark.parametrize("reader", READERS)

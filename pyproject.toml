@@ -12,6 +12,7 @@ dependencies = [
     "ollama>=0.4.7",
     "pydub>=0.25.1",
     "pypdf2>=3.0.1",
+    "sentencepiece>=0.2.0",
     "transformers[torch]>=4.48.1",
     "tts>=0.22.0",
 ]
