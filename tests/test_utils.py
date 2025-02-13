@@ -9,8 +9,11 @@ from audify.utils import break_text_into_sentences, clean_text, sentence_to_spee
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-TEST_FILE_NAMES = ['test1', 'test2']
-READERS = [PdfReader(MODULE_PATH / "data" / f"{file_name}.pdf") for file_name in TEST_FILE_NAMES]
+TEST_FILE_NAMES = ["test1", "test2"]
+READERS = [
+    PdfReader(MODULE_PATH / "data" / f"{file_name}.pdf")
+    for file_name in TEST_FILE_NAMES
+]
 
 
 @pytest.mark.parametrize("reader", READERS)
