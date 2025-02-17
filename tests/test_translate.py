@@ -1,6 +1,6 @@
 import pytest
 
-from audify.translate import translate_sentences
+from audify.translate import translate_sentence
 
 TEXTS = {
     "pt": "A vida é como uma caixa de chocolate.",
@@ -20,9 +20,9 @@ TEXTS = {
     ],
 )
 def test_translate_sentences(src_lang, tgt_lang):
-    sentences = [TEXTS[src_lang]]
-    translated_sentences = translate_sentences(
-        sentences, src_lang=src_lang, tgt_lang=tgt_lang
+    sentence = TEXTS[src_lang]
+    translated_sentences = translate_sentence(
+        sentence, src_lang=src_lang, tgt_lang=tgt_lang
     )
     assert translated_sentences
     assert len(translated_sentences) == 1

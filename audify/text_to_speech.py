@@ -15,6 +15,7 @@ from TTS.api import TTS
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
+from audify.translate import translate_sentence
 from audify.utils import break_text_into_sentences, get_wav_duration, sentence_to_speech
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class EpubSynthesizer(Synthesizer):
         language: str | None = None,
         speaker: str = "data/Jennifer_16khz.wav",
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
+        translate: str | None = None,
     ):
         self.reader = EpubReader(path)
         self.language = language or self.reader.get_language()
@@ -63,6 +65,7 @@ class EpubSynthesizer(Synthesizer):
             model_name=model_name,
         )
         self.model.to(device)
+        self.translate = translate
 
         with open(self.list_of_contents, "w") as f:
             f.write(";FFMETADATA1\n")
@@ -79,6 +82,14 @@ class EpubSynthesizer(Synthesizer):
     ) -> None:
         chapter_txt = self.reader.extract_text(chapter)
         sentences = break_text_into_sentences(chapter_txt)
+        if self.translate:
+            translated_sentences = []
+            for sentence in sentences:
+                sentence = translate_sentence(
+                    sentence=sentence, src_lang=self.language, tgt_lang=self.translate
+                )
+                translated_sentences.append(sentence)
+            sentences = translated_sentences
         chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
         announcement = (
             f"Chapter {chapter_number}: " f"{self.reader.get_chapter_title(chapter)}"
@@ -99,7 +110,7 @@ class EpubSynthesizer(Synthesizer):
                 sentence_to_speech(
                     sentence=sentence,
                     tmp_dir=self.tmp_dir,
-                    language=self.language,
+                    language=self.language if not self.translate else self.translate,
                     speaker=self.speaker,
                     model=self.model,
                 )
@@ -253,7 +264,7 @@ class EpubSynthesizer(Synthesizer):
             self.check_job_proposition()
 
 
-class PdfSynthesizer:
+class PdfSynthesizer(Synthesizer):
     def __init__(
         self,
         pdf_path: str | Path,
@@ -262,6 +273,7 @@ class PdfSynthesizer:
         speaker: str = "data/Jennifer_16khz.wav",
         output_dir: str | Path = "data/output/articles/",
         file_name: str | None = None,
+        translate: str | None = None,
     ):
         self.pdf_path = Path(pdf_path).resolve()
         if not self.pdf_path.exists():
@@ -275,6 +287,7 @@ class PdfSynthesizer:
         self.output_file = self.output_file.with_suffix(".wav")
         self.tmp_dir = Path("/tmp/audify/") / (file_name or self.pdf_path.stem)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        self.translate = translate
 
     def _setup_tts(self) -> TTS:
         """Initialize TTS engine with appropriate language model"""
@@ -287,7 +300,7 @@ class PdfSynthesizer:
             logger.error(f"Failed to initialize TTS engine: {str(e)}")
             raise
 
-    def synthesize(self) -> Path | None:
+    def synthesize(self) -> Path | str:
         """Synthesize PDF content into audio file using TTS"""
         # Extract and clean text from PDF
         reader = PdfReader(self.pdf_path)
@@ -308,6 +321,14 @@ class PdfSynthesizer:
         cleaned_text: str,
     ) -> None:
         sentences = break_text_into_sentences(cleaned_text)
+        if self.translate:
+            translated_sentences = []
+            for sentence in sentences:
+                sentence = translate_sentence(
+                    sentence=sentence, src_lang=self.language, tgt_lang=self.translate
+                )
+                translated_sentences.append(sentence)
+            sentences = translated_sentences
         announcement = "Generated audio file from PDF: " f"{self.pdf_path.stem}"
         with nostdout():
             self.model.tts_to_file(
@@ -325,7 +346,7 @@ class PdfSynthesizer:
                 sentence_to_speech(
                     sentence=sentence,
                     tmp_dir=self.tmp_dir,
-                    language=self.language,
+                    language=self.language if not self.translate else self.translate,
                     speaker=self.speaker,
                     model=self.model,
                 )
@@ -345,3 +366,24 @@ class PdfSynthesizer:
         params = {**defaults, **config}
         instance = cls(pdf_path=params["pdf_path"])
         return instance
+
+
+class InspectSynthesizer(Synthesizer):
+    def __init__(
+        self,
+        path: str | Path = "./",
+        language: str | None = None,
+        speaker: str = "data/Jennifer_16khz.wav",
+        model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
+    ):
+        self.reader = Path(path)
+        self.model_name = model_name
+        self.speaker = speaker
+        self.language = language or "en"
+        self.model = TTS(model_name=model_name)
+
+    def synthesize(self) -> str:
+        return (
+            "This class is used to inspect model options and is not intended "
+            "for synthesis."
+        )

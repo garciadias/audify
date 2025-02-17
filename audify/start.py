@@ -1,12 +1,33 @@
 from pathlib import Path
 
 import click
-from TTS.api import TTS
 
-from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
+from audify.domain.interface import Synthesizer
+from audify.text_to_speech import EpubSynthesizer, InspectSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
+
+
+DEFAULT_LANGUAGE_LIST = [
+    "en",
+    "es",
+    "fr",
+    "de",
+    "it",
+    "pt",
+    "pl",
+    "tr",
+    "ru",
+    "nl",
+    "cs",
+    "ar",
+    "zh-cn",
+    "hu",
+    "ko",
+    "ja",
+    "hi",
+]
 
 
 @click.command()
@@ -14,7 +35,14 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 @click.argument(
     "file_path",
     type=click.Path(exists=True),
-    required=True,
+    default="./",
+)
+@click.option(
+    "--language",
+    "-l",
+    type=click.Choice(DEFAULT_LANGUAGE_LIST, case_sensitive=False),
+    default="en",
+    help="Language of the synthesized audiobook.",
 )
 @click.option(
     "--model",
@@ -24,11 +52,11 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     help="Path to the TTS model.",
 )
 @click.option(
-    "--language",
-    "-l",
-    type=click.Choice(["en", "es", "pt"], case_sensitive=False),
-    default="en",
-    help="Language of the synthesized audiobook.",
+    "--translate",
+    "-t",
+    type=click.Choice(DEFAULT_LANGUAGE_LIST, case_sensitive=False),
+    help="Translate the text to the specified language.",
+    default=None,
 )
 @click.option(
     "--voice",
@@ -50,31 +78,51 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 def main(
     file_path: str,
     language: str,
+    model: str,
+    translate: str | None,
     voice: str,
     list_languages: bool,
     list_models: bool,
-    model: str,
 ):
-    if get_file_extension(file_path) == ".epub":
-        synthesizer: EpubSynthesizer | PdfSynthesizer = EpubSynthesizer(
-            file_path, language=language, speaker=voice, model_name=model
-        )
-    if get_file_extension(file_path) == ".pdf":
-        synthesizer = PdfSynthesizer(
-            file_path, language=language, speaker=voice, model_name=model
-        )
     if list_languages:
+        synthesizer: Synthesizer = InspectSynthesizer()
         print("====================")
         print("Available languages:")
         print("====================")
         print(", ".join(synthesizer.model.languages))
     elif list_models:
+        synthesizer = InspectSynthesizer()
         print("=================")
         print("Available models:")
         print("=================")
-        print(", ".join(TTS().list_models().list_models()))
+        print(", ".join(synthesizer.model.models))
     else:
-        synthesizer.synthesize()
+        if get_file_extension(file_path) == ".epub":
+            print("==================")
+            print("Epub to Audiobook")
+            print("==================")
+            synthesizer = EpubSynthesizer(
+                file_path,
+                language=language,
+                speaker=voice,
+                model_name=model,
+                translate=translate,
+            )
+            synthesizer.synthesize()
+        elif get_file_extension(file_path) == ".pdf":
+            print("==========")
+            print("PDF to mp3")
+            print("==========")
+            synthesizer = PdfSynthesizer(
+                file_path,
+                language=language,
+                speaker=voice,
+                model_name=model,
+                translate=translate,
+            )
+            synthesizer.synthesize()
+        else:
+            raise ValueError("Unsupported file format")
 
 
 if __name__ == "__main__":

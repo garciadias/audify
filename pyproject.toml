@@ -57,6 +57,13 @@ exclude = [
     "data/*",
 ]
 
+[language-server.ruff.config]
+configuration = "~/.config/custom_ruff_config.toml"
+lineLength = 80
+
+[language-server.ruff.config.lint]
+select = ["E", "F"]
+
 [tool.ruff.lint]
 preview = true
 select = ['I', 'F', 'E', 'W', 'PT']
