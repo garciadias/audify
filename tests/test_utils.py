@@ -36,7 +36,7 @@ def test_break_text_into_sentences(reader):
 def test_sentence_to_speech(synthesizer):
     sentence = "This is a test sentence."
     model = synthesizer.model
-    tmp_file = NamedTemporaryFile(suffix=".mp3")
+    tmp_file = NamedTemporaryFile(suffix=".wav")
     sentence_to_speech(sentence, model, tmp_file.name)
     assert Path(tmp_file.name).exists()
     tmp_file.close()

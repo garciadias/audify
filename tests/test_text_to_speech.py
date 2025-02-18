@@ -5,16 +5,16 @@ from unittest.mock import MagicMock, patch
 
 @patch("audify.text_to_speech.AudioSegment")
 def test_synthesize_chapter(MockAudioSegment, synthesizer):
-    MockAudioSegment.from_mp3.return_value
+    MockAudioSegment.from_wav.return_value
     synthesizer.synthesize_chapter("chapter1", 1, "audiobook_path")
     synthesizer.model.tts_to_file.assert_called()
-    MockAudioSegment.from_mp3.assert_called()
+    MockAudioSegment.from_wav.assert_called()
 
 
 @patch("audify.text_to_speech.subprocess.run")
 @patch("audify.text_to_speech.AudioSegment")
 def test_create_m4b(MockAudioSegment, mock_subprocess_run, synthesizer):
-    mock_audio_segment = MockAudioSegment.from_mp3.return_value
+    mock_audio_segment = MockAudioSegment.from_wav.return_value
     mock_audio_segment.export = MagicMock()
     synthesizer.cover_image = None
     with patch("audify.text_to_speech.Path.unlink"):
@@ -32,17 +32,17 @@ def test_log_on_chapter_file(synthesizer):
         assert end == start + int(duration * 1000)
 
 
-@patch("audify.text_to_speech.get_mp3_duration")
-def test_process_chapter(mock_get_mp3_duration, synthesizer):
-    mock_get_mp3_duration.return_value = 10.0
+@patch("audify.text_to_speech.get_wav_duration")
+def test_process_chapter(mock_get_wav_duration, synthesizer):
+    mock_get_wav_duration.return_value = 10.0
     chapter_start = synthesizer.process_chapter(1, "chapter1", 0)
     assert chapter_start == 0
 
 
-@patch("audify.text_to_speech.get_mp3_duration")
+@patch("audify.text_to_speech.get_wav_duration")
 @patch("audify.text_to_speech.EpubSynthesizer.create_m4b")
 @patch("audify.text_to_speech.input", return_value="y")
-def test_synthesize(mock_get_mp3_duration, synthesizer, mock_input):
+def test_synthesize(mock_get_wav_duration, synthesizer, mock_input):
     del mock_input
-    mock_get_mp3_duration.return_value = 10.0
+    mock_get_wav_duration.return_value = 10.0
     synthesizer.synthesize()
