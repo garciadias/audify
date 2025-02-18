@@ -16,7 +16,7 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import break_text_into_sentences, get_wav_duration, sentence_to_speech
+from audify.utils import break_text_into_sentences, get_mp3_duration, sentence_to_speech
 
 logger = logging.getLogger(__name__)
 MODULE_PATH = Path(__file__).parents[1]
@@ -90,7 +90,7 @@ class EpubSynthesizer(Synthesizer):
                 )
                 translated_sentences.append(sentence)
             sentences = translated_sentences
-        chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
+        chapter_path = f"{audiobook_path}/chapter_{chapter_number}.mp3"
         announcement = (
             f"Chapter {chapter_number}: " f"{self.reader.get_chapter_title(chapter)}"
         )
@@ -102,7 +102,7 @@ class EpubSynthesizer(Synthesizer):
                 speaker_wav=self.speaker,
             )
         if Path().exists():
-            combined_audio = AudioSegment.from_wav(chapter_path)
+            combined_audio = AudioSegment.from_mp3(chapter_path)
         for sentence in tqdm.tqdm(
             sentences[1:], desc=f"Synthesizing chapter {chapter_number}..."
         ):
@@ -114,17 +114,17 @@ class EpubSynthesizer(Synthesizer):
                     speaker=self.speaker,
                     model=self.model,
                 )
-            audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
+            audio = AudioSegment.from_mp3(self.tmp_dir / "speech.mp3")
             combined_audio += audio
-            combined_audio.export(chapter_path, format="wav")
+            combined_audio.export(chapter_path, format="mp3")
 
     def create_m4b(self):
-        chapter_files = list(Path(self.audiobook_path).rglob("*.wav"))
+        chapter_files = list(Path(self.audiobook_path).rglob("*.mp3"))
         tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
         final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
-        for wav_file in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
-            audio = AudioSegment.from_wav(wav_file)
+        for mp3_file in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
+            audio = AudioSegment.from_mp3(mp3_file)
             combined_audio += audio
         print("Converting to M4b...")
         if not Path(tmp_file_name).exists():
@@ -195,13 +195,13 @@ class EpubSynthesizer(Synthesizer):
 
     def process_chapter(self, i, chapter, chapter_start):
         is_too_short = len(chapter) < 1000
-        chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
+        chapter_path = f"{self.audiobook_path}/chapter_{i}.mp3"
         chapter_exists = Path(chapter_path).exists()
         chapter_title = self.reader.get_chapter_title(chapter)
         title = f"Chapter {i}: {chapter_title}"
         if is_too_short or chapter_exists:
             if chapter_exists:
-                duration = get_wav_duration(chapter_path)
+                duration = get_mp3_duration(chapter_path)
                 chapter_start += int(duration * 1000)
                 chapter_start = self.log_on_chapter_file(
                     self.list_of_contents, title, chapter_start, duration
@@ -209,7 +209,7 @@ class EpubSynthesizer(Synthesizer):
             return chapter_start
         else:
             self.synthesize_chapter(chapter, i, self.audiobook_path)
-            duration = get_wav_duration(chapter_path)
+            duration = get_mp3_duration(chapter_path)
             chapter_start = self.log_on_chapter_file(
                 self.list_of_contents, title, chapter_start, duration
             )
@@ -270,7 +270,7 @@ class PdfSynthesizer(Synthesizer):
         pdf_path: str | Path,
         language: str = "en",
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
-        speaker: str = "data/Jennifer_16khz.wav",
+        speaker: str = "data/Jennifer_16khz.mp3",
         output_dir: str | Path = "data/output/articles/",
         file_name: str | None = None,
         translate: str | None = None,
@@ -284,7 +284,7 @@ class PdfSynthesizer(Synthesizer):
         self.speaker = speaker
         self.output_dir = Path(output_dir).resolve()
         self.output_file = self.output_dir / (file_name or self.pdf_path.stem)
-        self.output_file = self.output_file.with_suffix(".wav")
+        self.output_file = self.output_file.with_suffix(".mp3")
         self.tmp_dir = Path("/tmp/audify/") / (file_name or self.pdf_path.stem)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.translate = translate
@@ -338,7 +338,7 @@ class PdfSynthesizer(Synthesizer):
                 speaker_wav=self.speaker,
             )
         if Path().exists():
-            combined_audio = AudioSegment.from_wav(self.output_file)
+            combined_audio = AudioSegment.from_mp3(self.output_file)
         for sentence in tqdm.tqdm(
             sentences[1:], desc=f"Synthesizing file {self.pdf_path.stem}..."
         ):
@@ -350,16 +350,16 @@ class PdfSynthesizer(Synthesizer):
                     speaker=self.speaker,
                     model=self.model,
                 )
-            audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
+            audio = AudioSegment.from_mp3(self.tmp_dir / "speech.mp3")
             combined_audio += audio
-            combined_audio.export(self.output_file, format="wav")
+            combined_audio.export(self.output_file, format="mp3")
 
     @classmethod
     def from_config(cls, config: dict):
         """Create instance from configuration dictionary"""
         defaults = {
             "output_dir": "outputs",
-            "output_name": "output.wav",
+            "output_name": "output.mp3",
             "language": "en",
             "speech_rate": 1.0,
         }
@@ -373,7 +373,7 @@ class InspectSynthesizer(Synthesizer):
         self,
         path: str | Path = "./",
         language: str | None = None,
-        speaker: str = "data/Jennifer_16khz.wav",
+        speaker: str = "data/Jennifer_16khz.mp3",
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
     ):
         self.reader = Path(path)

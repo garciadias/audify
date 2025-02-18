@@ -57,13 +57,13 @@ def break_text_into_sentences(
     return result
 
 
-def get_wav_duration(file_path):
-    # Open the .wav file
-    with wave.open(file_path, "rb") as wav_file:
+def get_mp3_duration(file_path):
+    # Open the .mp3 file
+    with wave.open(file_path, "rb") as mp3_file:
         # Get the number of frames
-        frames = wav_file.getnframes()
+        frames = mp3_file.getnframes()
         # Get the frame rate (samples per second)
-        frame_rate = wav_file.getframerate()
+        frame_rate = mp3_file.getframerate()
         # Calculate the duration in seconds
         duration = frames / float(frame_rate)
         return duration
@@ -83,17 +83,17 @@ def sentence_to_speech(
     try:
         model.tts_to_file(
             text=sentence,
-            file_path=tmp_dir / "speech.wav",
+            file_path=tmp_dir / "speech.mp3",
             language=language,
-            speaker_wav=speaker,
+            speaker_mp3=speaker,
         )
     except Exception as e:
         error_message = "Error: " + str(e)
         model.tts_to_file(
             text=error_message,
-            file_path=tmp_dir / "speech.wav",
+            file_path=tmp_dir / "speech.mp3",
             language=language,
-            speaker_wav=speaker,
+            speaker_mp3=speaker,
         )
 
 
