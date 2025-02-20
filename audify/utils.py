@@ -20,6 +20,8 @@ def clean_text(text: str) -> str:
     cleaned = re.sub(r"[\s\[\]{}()<>/\\#]", " ", cleaned)
     # Remove extra spaces
     cleaned = re.sub(r" +", " ", cleaned)
+    # Remove multiple punctuation marks
+    cleaned = re.sub(r"([.,!?;:¿¡-])+", r"\1", cleaned)
     return cleaned
 
 
@@ -86,6 +88,7 @@ def sentence_to_speech(
             file_path=tmp_dir / "speech.wav",
             language=language,
             speaker_wav=speaker,
+            speed=1.15,
         )
     except Exception as e:
         error_message = "Error: " + str(e)
@@ -94,6 +97,7 @@ def sentence_to_speech(
             file_path=tmp_dir / "speech.wav",
             language=language,
             speaker_wav=speaker,
+            speed=1.15,
         )
 
 
