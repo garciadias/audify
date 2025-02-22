@@ -117,9 +117,12 @@ class EpubSynthesizer(Synthesizer):
             audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
             combined_audio += audio
             combined_audio.export(chapter_path, format="wav")
+        # Convert chapter from wav to mp3
+        chapter_mp3 = AudioSegment.from_wav(chapter_path)
+        chapter_mp3.export(chapter_path, format="mp3")
 
     def create_m4b(self):
-        chapter_files = list(Path(self.audiobook_path).rglob("*.wav"))
+        chapter_files = list(Path(self.audiobook_path).rglob("*.mp3"))
         tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
         final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
@@ -305,6 +308,14 @@ class PdfSynthesizer(Synthesizer):
         # Extract and clean text from PDF
         reader = PdfReader(self.pdf_path)
         cleaned_text = reader.get_cleaned_text()
+        cleaned_text = "\n".join(
+            [
+                clean_with_llm(split)
+                for split in break_text_into_sentences(
+                    cleaned_text, max_length=350, min_length=30
+                )
+            ]
+        )
 
         # Setup TTS engine
         self.model = self._setup_tts()
