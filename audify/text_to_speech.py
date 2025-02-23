@@ -51,7 +51,7 @@ class EpubSynthesizer(Synthesizer):
     ):
         self.reader = EpubReader(path)
         self.path = path if isinstance(path, Path) else Path(path)
-        self.language = language
+        self.language = language or self.reader.get_language()
         self.speaker = speaker
         self.title = self.reader.title
         self.translate = translate
@@ -328,12 +328,14 @@ class PdfSynthesizer(Synthesizer):
         # Extract and clean text from PDF
         reader = PdfReader(self.pdf_path)
         cleaned_text = reader.get_cleaned_text()
-        cleaned_text = "\n".join([
-            clean_with_llm(split)
-            for split in break_text_into_sentences(
-                cleaned_text, max_length=350, min_length=30
-            )
-        ])
+        cleaned_text = "\n".join(
+            [
+                clean_with_llm(split)
+                for split in break_text_into_sentences(
+                    cleaned_text, max_length=350, min_length=30
+                )
+            ]
+        )
 
         # Setup TTS engine
         self.model = self._setup_tts()

@@ -7,9 +7,10 @@ def translate_sentence(
     sentence: str,
     model: M2MCG = M2MCG.from_pretrained("facebook/m2m100_418M"),
     tokenizer: M2MT = M2MT.from_pretrained("facebook/m2m100_418M"),
-    src_lang: str = "zh",
+    src_lang: str | None = "en",
     tgt_lang: str = "en",
 ) -> str:
+    src_lang = src_lang or "en"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
     tokenizer.src_lang = src_lang

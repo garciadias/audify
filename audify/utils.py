@@ -39,11 +39,15 @@ def combine_small_sentences(sentences: list[str], min_length: int = 10) -> list[
 def break_too_long_sentences(sentences: list[str], max_length: int = 239) -> list[str]:
     result: list[str] = []
     for sentence in sentences:
-        while len(sentence) > max_length:
-            result.append(sentence[:max_length])
-            sentence = sentence[max_length:]
-        if sentence:
-            result.append(sentence)
+        sentence_words = sentence.split()
+        new_sentence = ""
+        for word in sentence_words:
+            if len(new_sentence) + len(word) > max_length:
+                result.append(new_sentence.strip(" "))
+                new_sentence = ""
+            new_sentence += word + " "
+        if new_sentence:
+            result.append(new_sentence.strip(" "))
     return result
 
 
@@ -108,5 +112,16 @@ def get_file_name_title(title: str) -> str:
     title = re.sub(r"_+", "_", title)
     # Remove leading and trailing underscores
     title = title.strip("_")
-    # Remove letter accents
+    # replace letter with accents using regex for simple letters
+    title = re.sub(r"[àáâãäå]", "a", title)
+    title = re.sub(r"[èéêë]", "e", title)
+    title = re.sub(r"[ìíîï]", "i", title)
+    title = re.sub(r"[òóôõö]", "o", title)
+    title = re.sub(r"[ùúûü]", "u", title)
+    title = re.sub(r"[ñ]", "n", title)
+    title = re.sub(r"[ç]", "c", title)
+    # Remove special characters
+    title = re.sub(r"[^a-z0-9_]", "", title)  # Remove special characters
+    # Remove leading and trailing underscores
+    title = title.strip("_")
     return title
