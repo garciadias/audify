@@ -25,5 +25,4 @@ def test_translate_sentences(src_lang, tgt_lang):
         sentence, src_lang=src_lang, tgt_lang=tgt_lang
     )
     assert translated_sentences
-    assert len(translated_sentences) == 1
-    assert translated_sentences[0] == TEXTS[tgt_lang]
+    assert translated_sentences == TEXTS[tgt_lang]

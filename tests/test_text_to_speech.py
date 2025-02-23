@@ -32,17 +32,17 @@ def test_log_on_chapter_file(synthesizer):
         assert end == start + int(duration * 1000)
 
 
-@patch("audify.text_to_speech.get_wav_duration")
-def test_process_chapter(mock_get_wav_duration, synthesizer):
-    mock_get_wav_duration.return_value = 10.0
+@patch("audify.text_to_speech.get_audio_duration")
+def test_process_chapter(mock_get_audio_duration, synthesizer):
+    mock_get_audio_duration.return_value = 10.0
     chapter_start = synthesizer.process_chapter(1, "chapter1", 0)
     assert chapter_start == 0
 
 
-@patch("audify.text_to_speech.get_wav_duration")
+@patch("audify.text_to_speech.get_audio_duration")
 @patch("audify.text_to_speech.EpubSynthesizer.create_m4b")
 @patch("audify.text_to_speech.input", return_value="y")
-def test_synthesize(mock_get_wav_duration, synthesizer, mock_input):
+def test_synthesize(mock_get_audio_duration, synthesizer, mock_input):
     del mock_input
-    mock_get_wav_duration.return_value = 10.0
+    mock_get_audio_duration.return_value = 10.0
     synthesizer.synthesize()

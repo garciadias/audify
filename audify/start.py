@@ -22,7 +22,7 @@ DEFAULT_LANGUAGE_LIST = [
     "nl",
     "cs",
     "ar",
-    "zh-cn",
+    "zh",
     "hu",
     "ko",
     "ja",

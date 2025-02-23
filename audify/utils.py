@@ -1,7 +1,7 @@
 import re
-import wave
 from pathlib import Path
 
+from pydub import AudioSegment
 from TTS.api import TTS
 
 
@@ -59,16 +59,12 @@ def break_text_into_sentences(
     return result
 
 
-def get_wav_duration(file_path):
-    # Open the .wav file
-    with wave.open(file_path, "rb") as wav_file:
-        # Get the number of frames
-        frames = wav_file.getnframes()
-        # Get the frame rate (samples per second)
-        frame_rate = wav_file.getframerate()
-        # Calculate the duration in seconds
-        duration = frames / float(frame_rate)
-        return duration
+def get_audio_duration(file_path: str) -> float:
+    # Load the audio file
+    audio = AudioSegment.from_file(file_path)
+    # Calculate the duration in seconds
+    duration = len(audio) / 1000.0
+    return duration
 
 
 def sentence_to_speech(
@@ -103,3 +99,14 @@ def sentence_to_speech(
 
 def get_file_extension(file_path: str) -> str:
     return Path(file_path).suffix
+
+
+def get_file_name_title(title: str) -> str:
+    # Make title snake_case and remove special characters and spaces
+    title = title.lower().replace(" ", "_")
+    # replace multiple underscores with a single one
+    title = re.sub(r"_+", "_", title)
+    # Remove leading and trailing underscores
+    title = title.strip("_")
+    # Remove letter accents
+    return title
