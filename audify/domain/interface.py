@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from TTS.api import TTS
-
 
 class Reader(ABC):
     @abstractmethod
@@ -23,8 +21,9 @@ class Reader(ABC):
 
 class Synthesizer(ABC):
     @abstractmethod
-    def __init__(self, path: str | Path, model_name: str, language: str, speaker: str):
-        self.model: TTS = TTS(model_name)
+    def __init__(
+        self, path: str | Path, model_name: str, language: str, speaker: str
+    ): ...
 
     @abstractmethod
     def synthesize(self) -> str | Path: ...

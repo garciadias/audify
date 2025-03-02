@@ -14,7 +14,6 @@ from TTS.api import TTS
 
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
-from audify.llm_clean import clean_with_llm
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
 from audify.utils import (
@@ -328,14 +327,6 @@ class PdfSynthesizer(Synthesizer):
         # Extract and clean text from PDF
         reader = PdfReader(self.pdf_path)
         cleaned_text = reader.get_cleaned_text()
-        cleaned_text = "\n".join(
-            [
-                clean_with_llm(split)
-                for split in break_text_into_sentences(
-                    cleaned_text, max_length=350, min_length=30
-                )
-            ]
-        )
 
         # Setup TTS engine
         self.model = self._setup_tts()
