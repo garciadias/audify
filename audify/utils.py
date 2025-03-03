@@ -1,7 +1,8 @@
+import concurrent
 import re
-import wave
 from pathlib import Path
 
+from pydub import AudioSegment
 from TTS.api import TTS
 
 
@@ -20,6 +21,8 @@ def clean_text(text: str) -> str:
     cleaned = re.sub(r"[\s\[\]{}()<>/\\#]", " ", cleaned)
     # Remove extra spaces
     cleaned = re.sub(r" +", " ", cleaned)
+    # Remove multiple punctuation marks
+    cleaned = re.sub(r"([.,!?;:¿¡-])+", r"\1", cleaned)
     return cleaned
 
 
@@ -37,11 +40,15 @@ def combine_small_sentences(sentences: list[str], min_length: int = 10) -> list[
 def break_too_long_sentences(sentences: list[str], max_length: int = 239) -> list[str]:
     result: list[str] = []
     for sentence in sentences:
-        while len(sentence) > max_length:
-            result.append(sentence[:max_length])
-            sentence = sentence[max_length:]
-        if sentence:
-            result.append(sentence)
+        sentence_words = sentence.split()
+        new_sentence = ""
+        for word in sentence_words:
+            if len(new_sentence) + len(word) > max_length:
+                result.append(new_sentence.strip(" "))
+                new_sentence = ""
+            new_sentence += word + " "
+        if new_sentence:
+            result.append(new_sentence.strip(" "))
     return result
 
 
@@ -54,19 +61,18 @@ def break_text_into_sentences(
     result = break_too_long_sentences(sentences, max_length - min_length)
     # Combine sentences that are too short with the previous one
     result = combine_small_sentences(result, min_length)
+    # Parallelize the cleaning of the sentences
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        result = list(executor.map(clean_text, result))
     return result
 
 
-def get_wav_duration(file_path):
-    # Open the .wav file
-    with wave.open(file_path, "rb") as wav_file:
-        # Get the number of frames
-        frames = wav_file.getnframes()
-        # Get the frame rate (samples per second)
-        frame_rate = wav_file.getframerate()
-        # Calculate the duration in seconds
-        duration = frames / float(frame_rate)
-        return duration
+def get_audio_duration(file_path: str) -> float:
+    # Load the audio file
+    audio = AudioSegment.from_file(file_path)
+    # Calculate the duration in seconds
+    duration = len(audio) / 1000.0
+    return duration
 
 
 def sentence_to_speech(
@@ -86,6 +92,7 @@ def sentence_to_speech(
             file_path=tmp_dir / "speech.wav",
             language=language,
             speaker_wav=speaker,
+            speed=1.15,
         )
     except Exception as e:
         error_message = "Error: " + str(e)
@@ -94,8 +101,31 @@ def sentence_to_speech(
             file_path=tmp_dir / "speech.wav",
             language=language,
             speaker_wav=speaker,
+            speed=1.15,
         )
 
 
 def get_file_extension(file_path: str) -> str:
     return Path(file_path).suffix
+
+
+def get_file_name_title(title: str) -> str:
+    # Make title snake_case and remove special characters and spaces
+    title = title.lower().replace(" ", "_")
+    # replace multiple underscores with a single one
+    title = re.sub(r"_+", "_", title)
+    # Remove leading and trailing underscores
+    title = title.strip("_")
+    # replace letter with accents using regex for simple letters
+    title = re.sub(r"[àáâãäå]", "a", title)
+    title = re.sub(r"[èéêë]", "e", title)
+    title = re.sub(r"[ìíîï]", "i", title)
+    title = re.sub(r"[òóôõö]", "o", title)
+    title = re.sub(r"[ùúûü]", "u", title)
+    title = re.sub(r"[ñ]", "n", title)
+    title = re.sub(r"[ç]", "c", title)
+    # Remove special characters
+    title = re.sub(r"[^a-z0-9_]", "", title)  # Remove special characters
+    # Remove leading and trailing underscores
+    title = title.strip("_")
+    return title

@@ -22,7 +22,7 @@ DEFAULT_LANGUAGE_LIST = [
     "nl",
     "cs",
     "ar",
-    "zh-cn",
+    "zh",
     "hu",
     "ko",
     "ja",
@@ -75,6 +75,11 @@ DEFAULT_LANGUAGE_LIST = [
     "-lm",
     is_flag=True,
 )
+@click.option(
+    "--save-text",
+    "-st",
+    is_flag=True,
+)
 def main(
     file_path: str,
     language: str,
@@ -83,6 +88,7 @@ def main(
     voice: str,
     list_languages: bool,
     list_models: bool,
+    save_text: bool,
 ):
     if list_languages:
         synthesizer: Synthesizer = InspectSynthesizer()
@@ -107,6 +113,7 @@ def main(
                 speaker=voice,
                 model_name=model,
                 translate=translate,
+                save_text=save_text
             )
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
@@ -119,6 +126,7 @@ def main(
                 speaker=voice,
                 model_name=model,
                 translate=translate,
+                save_text=save_text
             )
             synthesizer.synthesize()
         else:

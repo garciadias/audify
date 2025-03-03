@@ -1,17 +1,16 @@
 # %%
-import re
 from pathlib import Path
 
 import bs4
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
 
 from audify.domain.interface import Reader
+from audify.utils import get_file_name_title
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
 class EpubReader(Reader):
-
     def __init__(self, path: str | Path):
         self.book = epub.read_epub(path)
         self.title = self.get_title()
@@ -64,7 +63,7 @@ class EpubReader(Reader):
             )
         if not cover_image:
             return None
-        title = self.get_file_name_title()
+        title = get_file_name_title(self.title)
         cover_path = f"{MODULE_PATH}/data/output/{title}/cover.jpg"
         with open(cover_path, "wb") as f:
             f.write(cover_image.content)
@@ -73,13 +72,3 @@ class EpubReader(Reader):
     def get_language(self) -> str:
         language = self.book.get_metadata("DC", "language")[0][0]
         return language
-
-    def get_file_name_title(self) -> str:
-        # Make title snake_case and remove special characters and spaces
-        title = self.get_title().lower().replace(" ", "_")
-        # replace multiple underscores with a single one
-        title = re.sub(r"_+", "_", title)
-        # Remove leading and trailing underscores
-        title = title.strip("_")
-        # Remove letter accents
-        return title

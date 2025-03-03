@@ -16,7 +16,12 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import break_text_into_sentences, get_wav_duration, sentence_to_speech
+from audify.utils import (
+    break_text_into_sentences,
+    get_audio_duration,
+    get_file_name_title,
+    sentence_to_speech,
+)
 
 logger = logging.getLogger(__name__)
 MODULE_PATH = Path(__file__).parents[1]
@@ -35,7 +40,6 @@ def nostdout():
 
 
 class EpubSynthesizer(Synthesizer):
-
     def __init__(
         self,
         path: str | Path,
@@ -43,12 +47,19 @@ class EpubSynthesizer(Synthesizer):
         speaker: str = "data/Jennifer_16khz.wav",
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
         translate: str | None = None,
+        save_text: bool = False,
     ):
         self.reader = EpubReader(path)
+        self.path = path if isinstance(path, Path) else Path(path)
         self.language = language or self.reader.get_language()
         self.speaker = speaker
         self.title = self.reader.title
-        self.file_name = self.reader.get_file_name_title()
+        self.translate = translate
+        if self.translate:
+            self.title = translate_sentence(
+                sentence=self.title, src_lang=self.language, tgt_lang=self.translate
+            )
+        self.file_name = get_file_name_title(self.title)
         self.tmp_dir = Path(f"/tmp/audify/{self.file_name}/")
         self.audiobook_path: str | Path = Path(
             f"{MODULE_PATH}/data/output/{self.file_name}"
@@ -65,7 +76,7 @@ class EpubSynthesizer(Synthesizer):
             model_name=model_name,
         )
         self.model.to(device)
-        self.translate = translate
+        self.save_text = save_text
 
         with open(self.list_of_contents, "w") as f:
             f.write(";FFMETADATA1\n")
@@ -92,7 +103,7 @@ class EpubSynthesizer(Synthesizer):
             sentences = translated_sentences
         chapter_path = f"{audiobook_path}/chapter_{chapter_number}.wav"
         announcement = (
-            f"Chapter {chapter_number}: " f"{self.reader.get_chapter_title(chapter)}"
+            f"Chapter {chapter_number}: {self.reader.get_chapter_title(chapter)}"
         )
         with nostdout():
             self.model.tts_to_file(
@@ -117,14 +128,18 @@ class EpubSynthesizer(Synthesizer):
             audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
             combined_audio += audio
             combined_audio.export(chapter_path, format="wav")
+        # Convert chapter from wav to mp3
+        chapter_mp3 = AudioSegment.from_wav(chapter_path)
+        chapter_mp3.export(chapter_path.replace(".wav", ".mp3"), format="mp3")
+        Path(chapter_path).unlink(missing_ok=True)
 
     def create_m4b(self):
-        chapter_files = list(Path(self.audiobook_path).rglob("*.wav"))
+        chapter_files = list(Path(self.audiobook_path).rglob("*.mp3"))
         tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
         final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
-        for wav_file in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
-            audio = AudioSegment.from_wav(wav_file)
+        for mp3 in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
+            audio = AudioSegment.from_mp3(mp3)
             combined_audio += audio
         print("Converting to M4b...")
         if not Path(tmp_file_name).exists():
@@ -196,12 +211,14 @@ class EpubSynthesizer(Synthesizer):
     def process_chapter(self, i, chapter, chapter_start):
         is_too_short = len(chapter) < 1000
         chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
-        chapter_exists = Path(chapter_path).exists()
+        chapter_exists = Path(chapter_path.replace("wav", "mp3")).exists()
+        if Path(chapter_path).exists():
+            Path(chapter_path).unlink(missing_ok=True)
         chapter_title = self.reader.get_chapter_title(chapter)
         title = f"Chapter {i}: {chapter_title}"
         if is_too_short or chapter_exists:
             if chapter_exists:
-                duration = get_wav_duration(chapter_path)
+                duration = get_audio_duration(chapter_path.replace("wav", "mp3"))
                 chapter_start += int(duration * 1000)
                 chapter_start = self.log_on_chapter_file(
                     self.list_of_contents, title, chapter_start, duration
@@ -209,7 +226,7 @@ class EpubSynthesizer(Synthesizer):
             return chapter_start
         else:
             self.synthesize_chapter(chapter, i, self.audiobook_path)
-            duration = get_wav_duration(chapter_path)
+            duration = get_audio_duration(chapter_path.replace(".wav", ".mp3"))
             chapter_start = self.log_on_chapter_file(
                 self.list_of_contents, title, chapter_start, duration
             )
@@ -219,7 +236,6 @@ class EpubSynthesizer(Synthesizer):
         chapter_start = 0
         chapter_id = 1
         chapters = self.reader.get_chapters()
-        self.language = self.reader.get_language()
         self.check_job_proposition()
         for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
             if len(chapter) < 1000:
@@ -234,9 +250,15 @@ class EpubSynthesizer(Synthesizer):
         return f"{self.audiobook_path}/{self.file_name}"
 
     def check_job_proposition(self) -> None:
-        if self.language not in ["es", "en", "pt"]:
-            self.language = input("Enter the language code: ")
-            print(f"Confirm language: You are using {self.language}")
+        if self.language is None:
+            language_from_file = self.reader.get_language()
+            print(
+                f"Language detected: {language_from_file}."
+                " Do you want to use this language? (y/n)"
+            )
+            use_language = input("Use detected language? (y/n): [y] ")
+            if use_language.lower() in ["n", "no"]:
+                self.language = input("Enter the language code: ")
 
         print(
             "=========================================================================="
@@ -246,10 +268,13 @@ class EpubSynthesizer(Synthesizer):
             "=========================================================================="
         )
         print("Confirm details:")
+        print(f"Original file: {self.path.stem}")
         print(f"Title: {self.title}")
         print(f"Language: {self.language}")
         print(f"Speaker: {self.speaker}")
         print(f"Output: {self.audiobook_path}")
+        if self.translate:
+            print(f"Translate to: {self.translate}")
         confirmation = input("Do you want to proceed? (y/n): [y] ")
         if confirmation.lower() not in ["y", "yes", ""]:
             self.title = input("Enter the title: ") or self.title
@@ -274,6 +299,7 @@ class PdfSynthesizer(Synthesizer):
         output_dir: str | Path = "data/output/articles/",
         file_name: str | None = None,
         translate: str | None = None,
+        save_text: bool = False,
     ):
         self.pdf_path = Path(pdf_path).resolve()
         if not self.pdf_path.exists():
@@ -288,6 +314,7 @@ class PdfSynthesizer(Synthesizer):
         self.tmp_dir = Path("/tmp/audify/") / (file_name or self.pdf_path.stem)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.translate = translate
+        self.save_text = save_text
 
     def _setup_tts(self) -> TTS:
         """Initialize TTS engine with appropriate language model"""
@@ -321,6 +348,12 @@ class PdfSynthesizer(Synthesizer):
         cleaned_text: str,
     ) -> None:
         sentences = break_text_into_sentences(cleaned_text)
+        if self.save_text:
+            with open(self.output_dir / f"{self.pdf_path.stem}.txt", "a") as f:
+                for sentence in sentences:
+                    f.write(sentence + "\n")
+            print("Text saved to file.")
+            input("Press Enter to continue...")
         if self.translate:
             translated_sentences = []
             for sentence in sentences:
@@ -329,7 +362,16 @@ class PdfSynthesizer(Synthesizer):
                 )
                 translated_sentences.append(sentence)
             sentences = translated_sentences
-        announcement = "Generated audio file from PDF: " f"{self.pdf_path.stem}"
+            if self.save_text:
+                with open(
+                    self.output_dir / f"{self.pdf_path.stem}_translated.txt", "a"
+                ) as f:
+                    for sentence in sentences:
+                        f.write(sentence + "\n")
+                print("Text saved to file.")
+                input("Press Enter to continue...")
+
+        announcement = f"Generated audio file from PDF: {self.pdf_path.stem}"
         with nostdout():
             self.model.tts_to_file(
                 text=announcement,
