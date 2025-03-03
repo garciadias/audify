@@ -1,3 +1,4 @@
+import concurrent
 import re
 from pathlib import Path
 
@@ -60,6 +61,9 @@ def break_text_into_sentences(
     result = break_too_long_sentences(sentences, max_length - min_length)
     # Combine sentences that are too short with the previous one
     result = combine_small_sentences(result, min_length)
+    # Parallelize the cleaning of the sentences
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        result = list(executor.map(clean_text, result))
     return result
 
 
