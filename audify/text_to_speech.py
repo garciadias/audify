@@ -47,6 +47,7 @@ class EpubSynthesizer(Synthesizer):
         speaker: str = "data/Jennifer_16khz.wav",
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
         translate: str | None = None,
+        save_text: bool = False,
     ):
         self.reader = EpubReader(path)
         self.path = path if isinstance(path, Path) else Path(path)
@@ -75,6 +76,7 @@ class EpubSynthesizer(Synthesizer):
             model_name=model_name,
         )
         self.model.to(device)
+        self.save_text = save_text
 
         with open(self.list_of_contents, "w") as f:
             f.write(";FFMETADATA1\n")
@@ -129,14 +131,15 @@ class EpubSynthesizer(Synthesizer):
         # Convert chapter from wav to mp3
         chapter_mp3 = AudioSegment.from_wav(chapter_path)
         chapter_mp3.export(chapter_path.replace(".wav", ".mp3"), format="mp3")
+        Path(chapter_path).unlink(missing_ok=True)
 
     def create_m4b(self):
         chapter_files = list(Path(self.audiobook_path).rglob("*.mp3"))
         tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
         final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
-        for wav_file in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
-            audio = AudioSegment.from_wav(wav_file)
+        for mp3 in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
+            audio = AudioSegment.from_mp3(mp3)
             combined_audio += audio
         print("Converting to M4b...")
         if not Path(tmp_file_name).exists():
@@ -296,6 +299,7 @@ class PdfSynthesizer(Synthesizer):
         output_dir: str | Path = "data/output/articles/",
         file_name: str | None = None,
         translate: str | None = None,
+        save_text: bool = False,
     ):
         self.pdf_path = Path(pdf_path).resolve()
         if not self.pdf_path.exists():
@@ -310,6 +314,7 @@ class PdfSynthesizer(Synthesizer):
         self.tmp_dir = Path("/tmp/audify/") / (file_name or self.pdf_path.stem)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.translate = translate
+        self.save_text = save_text
 
     def _setup_tts(self) -> TTS:
         """Initialize TTS engine with appropriate language model"""
@@ -343,6 +348,12 @@ class PdfSynthesizer(Synthesizer):
         cleaned_text: str,
     ) -> None:
         sentences = break_text_into_sentences(cleaned_text)
+        if self.save_text:
+            with open(self.output_dir / f"{self.pdf_path.stem}.txt", "a") as f:
+                for sentence in sentences:
+                    f.write(sentence + "\n")
+            print("Text saved to file.")
+            input("Press Enter to continue...")
         if self.translate:
             translated_sentences = []
             for sentence in sentences:
@@ -351,6 +362,15 @@ class PdfSynthesizer(Synthesizer):
                 )
                 translated_sentences.append(sentence)
             sentences = translated_sentences
+            if self.save_text:
+                with open(
+                    self.output_dir / f"{self.pdf_path.stem}_translated.txt", "a"
+                ) as f:
+                    for sentence in sentences:
+                        f.write(sentence + "\n")
+                print("Text saved to file.")
+                input("Press Enter to continue...")
+
         announcement = f"Generated audio file from PDF: {self.pdf_path.stem}"
         with nostdout():
             self.model.tts_to_file(
