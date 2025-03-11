@@ -113,7 +113,7 @@ def main(
                 speaker=voice,
                 model_name=model,
                 translate=translate,
-                save_text=save_text
+                save_text=save_text,
             )
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
@@ -126,7 +126,7 @@ def main(
                 speaker=voice,
                 model_name=model,
                 translate=translate,
-                save_text=save_text
+                save_text=save_text,
             )
             synthesizer.synthesize()
         else:
