@@ -1,0 +1,19 @@
+services:
+  audify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: audify
+    volumes:
+      - ./data:/app/data
+      - ~/Documents/books/:/input
+      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./audify:/app/audify
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Command will be provided at runtime
