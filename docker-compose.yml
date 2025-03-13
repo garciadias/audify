@@ -6,9 +6,11 @@ services:
     image: audify
     volumes:
       - ./data:/app/data
-      - ~/Documents/books/:/input
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - $HOME/Documents/books/:/app/input
+      - $HOME/.cache/huggingface:/root/.cache/huggingface
       - ./audify:/app/audify
+      - $HOME/.config:/root/.config
+      - /home/linuxbrew/.linuxbrew:/home/linuxbrew/.linuxbrew
     deploy:
       resources:
         reservations:
@@ -16,4 +18,3 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # Command will be provided at runtime
