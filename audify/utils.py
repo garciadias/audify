@@ -1,5 +1,5 @@
-import concurrent
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pydub import AudioSegment
@@ -62,7 +62,7 @@ def break_text_into_sentences(
     # Combine sentences that are too short with the previous one
     result = combine_small_sentences(result, min_length)
     # Parallelize the cleaning of the sentences
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         result = list(executor.map(clean_text, result))
     return result
 
@@ -78,28 +78,37 @@ def get_audio_duration(file_path: str) -> float:
 def sentence_to_speech(
     sentence: str,
     model: TTS,
-    tmp_dir: Path | str = ("/tmp/"),
+    output_dir: Path | str = ("/tmp/"),
     language: str = "en",
     speaker: str | Path = "data/Jennifer_16khz.wav",
+    file_name: str = "speech.wav",
 ) -> None:
-    if isinstance(tmp_dir, str):
-        tmp_dir = Path(tmp_dir)
-    if Path(tmp_dir).parent.is_dir() is False:
-        Path(tmp_dir).parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(output_dir, str):
+        output_dir = Path(output_dir)
+    if Path(output_dir).parent.is_dir() is False:
+        Path(output_dir).parent.mkdir(parents=True, exist_ok=True)
     try:
-        model.tts_to_file(
-            text=sentence,
-            file_path=tmp_dir / "speech.wav",
-            language=language,
-            speaker_wav=speaker,
-            speed=1.15,
-        )
+        if model.is_multi_lingual:
+            model.tts_to_file(
+                text=sentence,
+                file_path=output_dir / file_name,
+                language=language,
+                speaker_wav=speaker,
+                speed=1.15,
+            )
+        else:
+            model.tts_to_file(
+                text=sentence,
+                file_path=output_dir / file_name,
+                speaker_wav=speaker,
+                speed=1.15,
+            )
     except Exception as e:
         error_message = "Error: " + str(e)
         if model.is_multi_lingual:
             model.tts_to_file(
                 text=error_message,
-                file_path=tmp_dir / "speech.wav",
+                file_path=output_dir / file_name,
                 language=language,
                 speaker_wav=speaker,
                 speed=1.15,
@@ -107,7 +116,7 @@ def sentence_to_speech(
         else:
             model.tts_to_file(
                 text=error_message,
-                file_path=tmp_dir / "speech.wav",
+                file_path=output_dir / file_name,
                 speaker_wav=speaker,
                 speed=1.15,
             )

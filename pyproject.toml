@@ -8,13 +8,14 @@ dependencies = [
     "bs4>=0.0.2",
     "click>=8.1.8",
     "ebooklib>=0.18",
+    "kokoro>=0.2.2",
     "markdown>=3.7",
     "ollama>=0.4.7",
     "pydub>=0.25.1",
     "pypdf2>=3.0.1",
     "sentencepiece>=0.2.0",
     "transformers[torch]>=4.48.1",
-    "tts>=0.22.0",
+    "tts[ja]>=0.22.0",
 ]
 
 [build-system]
@@ -80,3 +81,5 @@ format = "black .; isort .; ruff check . --fix"
 pre_test = "task format && mypy ."
 post_test = "uv run coverage html"
 run = "uv run python -m audify.start"
+up = "docker compose up"
+drun = "docker compose run --rm audify"

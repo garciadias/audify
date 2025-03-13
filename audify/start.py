@@ -89,6 +89,7 @@ def main(
     list_languages: bool,
     list_models: bool,
     save_text: bool,
+    tts_engine: str = "tts_models",
 ):
     if list_languages:
         synthesizer: Synthesizer = InspectSynthesizer()
@@ -114,6 +115,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
+                engine=tts_engine,
             )
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
@@ -127,6 +129,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
+                engine=tts_engine,
             )
             synthesizer.synthesize()
         else:

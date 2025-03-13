@@ -48,6 +48,7 @@ class EpubSynthesizer(Synthesizer):
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
         translate: str | None = None,
         save_text: bool = False,
+        engine: str = "tts_models",
     ):
         self.reader = EpubReader(path)
         self.path = path if isinstance(path, Path) else Path(path)
@@ -55,6 +56,7 @@ class EpubSynthesizer(Synthesizer):
         self.speaker = speaker
         self.title = self.reader.title
         self.translate = translate
+        self.engine = engine
         if self.translate:
             self.title = translate_sentence(
                 sentence=self.title, src_lang=self.language, tgt_lang=self.translate
@@ -106,19 +108,14 @@ class EpubSynthesizer(Synthesizer):
             f"Chapter {chapter_number}: {self.reader.get_chapter_title(chapter)}"
         )
         with nostdout():
-            if self.model.is_multi_lingual:
-                self.model.tts_to_file(
-                    text=announcement,
-                    file_path=chapter_path,
-                    language=self.language if self.model.is_multi_lingual else None,
-                    speaker_wav=self.speaker,
-                )
-            else:
-                self.model.tts_to_file(
-                    text=announcement,
-                    file_path=self.output_file,
-                    speaker_wav=self.speaker,
-                )
+            sentence_to_speech(
+                sentence=announcement,
+                output_dir=self.path,
+                language=self.language if not self.translate else self.translate,
+                speaker=self.speaker,
+                model=self.model,
+                file_name="announcement.wav",
+            )
         if Path().exists():
             combined_audio = AudioSegment.from_wav(chapter_path)
         for sentence in tqdm.tqdm(
@@ -127,7 +124,7 @@ class EpubSynthesizer(Synthesizer):
             with nostdout():
                 sentence_to_speech(
                     sentence=sentence,
-                    tmp_dir=self.tmp_dir,
+                    output_dir=chapter_path,
                     language=self.language if not self.translate else self.translate,
                     speaker=self.speaker,
                     model=self.model,
@@ -307,6 +304,7 @@ class PdfSynthesizer(Synthesizer):
         file_name: str | None = None,
         translate: str | None = None,
         save_text: bool = False,
+        engine: str = "tts_models",
     ):
         self.pdf_path = Path(pdf_path).resolve()
         if not self.pdf_path.exists():
@@ -322,6 +320,7 @@ class PdfSynthesizer(Synthesizer):
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.translate = translate
         self.save_text = save_text
+        self.engine = engine
 
     def _setup_tts(self) -> TTS:
         """Initialize TTS engine with appropriate language model"""
@@ -380,39 +379,28 @@ class PdfSynthesizer(Synthesizer):
 
         announcement = f"Generated audio file from PDF: {self.pdf_path.stem}"
         with nostdout():
-            if self.model.is_multi_lingual:
-                self.model.tts_to_file(
-                    text=announcement,
-                    file_path=self.output_file,
-                    language=self.language if self.model.is_multi_lingual else None,
-                    speaker_wav=self.speaker,
-                )
-            else:
-                self.model.tts_to_file(
-                    text=announcement,
-                    file_path=self.output_file,
-                    speaker_wav=self.speaker,
-                )
+            sentence_to_speech(
+                sentence=announcement,
+                output_dir=self.output_file.parent,
+                language=self.language if not self.translate else self.translate,
+                speaker=self.speaker,
+                model=self.model,
+                file_name=self.output_file.name,
+            )
         if Path().exists():
             combined_audio = AudioSegment.from_wav(self.output_file)
         for sentence in tqdm.tqdm(
             sentences[1:], desc=f"Synthesizing file {self.pdf_path.stem}..."
         ):
             with nostdout():
-                if self.model.is_multi_lingual:
-                    self.model.tts_to_file(
-                        text=sentence,
-                        file_path=self.tmp_dir / "speech.wav",
-                        language=self.language if self.model.is_multi_lingual else None,
-                        speaker_wav=self.speaker,
-                    )
-                else:
-                    sentence_to_speech(
-                        sentence=sentence,
-                        tmp_dir=self.tmp_dir,
-                        speaker=self.speaker,
-                        model=self.model,
-                    )
+                sentence_to_speech(
+                    sentence=sentence,
+                    output_dir=self.tmp_dir,
+                    language=self.language if not self.translate else self.translate,
+                    speaker=self.speaker,
+                    model=self.model,
+                    file_name="speech.wav",
+                )
             audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
             combined_audio += audio
             combined_audio.export(self.output_file, format="wav")
