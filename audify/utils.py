@@ -96,13 +96,21 @@ def sentence_to_speech(
         )
     except Exception as e:
         error_message = "Error: " + str(e)
-        model.tts_to_file(
-            text=error_message,
-            file_path=tmp_dir / "speech.wav",
-            language=language,
-            speaker_wav=speaker,
-            speed=1.15,
-        )
+        if model.is_multi_lingual:
+            model.tts_to_file(
+                text=error_message,
+                file_path=tmp_dir / "speech.wav",
+                language=language,
+                speaker_wav=speaker,
+                speed=1.15,
+            )
+        else:
+            model.tts_to_file(
+                text=error_message,
+                file_path=tmp_dir / "speech.wav",
+                speaker_wav=speaker,
+                speed=1.15,
+            )
 
 
 def get_file_extension(file_path: str) -> str:

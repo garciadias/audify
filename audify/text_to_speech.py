@@ -106,12 +106,19 @@ class EpubSynthesizer(Synthesizer):
             f"Chapter {chapter_number}: {self.reader.get_chapter_title(chapter)}"
         )
         with nostdout():
-            self.model.tts_to_file(
-                text=announcement,
-                file_path=chapter_path,
-                language=self.language,
-                speaker_wav=self.speaker,
-            )
+            if self.model.is_multi_lingual:
+                self.model.tts_to_file(
+                    text=announcement,
+                    file_path=chapter_path,
+                    language=self.language if self.model.is_multi_lingual else None,
+                    speaker_wav=self.speaker,
+                )
+            else:
+                self.model.tts_to_file(
+                    text=announcement,
+                    file_path=self.output_file,
+                    speaker_wav=self.speaker,
+                )
         if Path().exists():
             combined_audio = AudioSegment.from_wav(chapter_path)
         for sentence in tqdm.tqdm(
@@ -373,25 +380,39 @@ class PdfSynthesizer(Synthesizer):
 
         announcement = f"Generated audio file from PDF: {self.pdf_path.stem}"
         with nostdout():
-            self.model.tts_to_file(
-                text=announcement,
-                file_path=self.output_file,
-                language=self.language,
-                speaker_wav=self.speaker,
-            )
+            if self.model.is_multi_lingual:
+                self.model.tts_to_file(
+                    text=announcement,
+                    file_path=self.output_file,
+                    language=self.language if self.model.is_multi_lingual else None,
+                    speaker_wav=self.speaker,
+                )
+            else:
+                self.model.tts_to_file(
+                    text=announcement,
+                    file_path=self.output_file,
+                    speaker_wav=self.speaker,
+                )
         if Path().exists():
             combined_audio = AudioSegment.from_wav(self.output_file)
         for sentence in tqdm.tqdm(
             sentences[1:], desc=f"Synthesizing file {self.pdf_path.stem}..."
         ):
             with nostdout():
-                sentence_to_speech(
-                    sentence=sentence,
-                    tmp_dir=self.tmp_dir,
-                    language=self.language if not self.translate else self.translate,
-                    speaker=self.speaker,
-                    model=self.model,
-                )
+                if self.model.is_multi_lingual:
+                    self.model.tts_to_file(
+                        text=sentence,
+                        file_path=self.tmp_dir / "speech.wav",
+                        language=self.language if self.model.is_multi_lingual else None,
+                        speaker_wav=self.speaker,
+                    )
+                else:
+                    sentence_to_speech(
+                        sentence=sentence,
+                        tmp_dir=self.tmp_dir,
+                        speaker=self.speaker,
+                        model=self.model,
+                    )
             audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
             combined_audio += audio
             combined_audio.export(self.output_file, format="wav")
