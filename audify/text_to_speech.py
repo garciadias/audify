@@ -7,11 +7,14 @@ import warnings
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+import soundfile as sf
 import torch
 import tqdm
+from kokoro import KPipeline
 from pydub import AudioSegment
 from TTS.api import TTS
 
+from audify.constants import LANG_CODES
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
@@ -69,7 +72,7 @@ class EpubSynthesizer(Synthesizer):
         self.audiobook_path.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.list_of_contents = self.audiobook_path / "chapters.txt"
-        self.cover_image = self.reader.get_cover_image()
+        self.cover_image = self.reader.get_cover_image(self.audiobook_path)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # Load the TTS model
         # Mute terminal outputs from TTS
@@ -107,35 +110,60 @@ class EpubSynthesizer(Synthesizer):
         announcement = (
             f"Chapter {chapter_number}: {self.reader.get_chapter_title(chapter)}"
         )
-        with nostdout():
-            sentence_to_speech(
-                sentence=announcement,
-                output_dir=self.path,
-                language=self.language if not self.translate else self.translate,
-                speaker=self.speaker,
-                model=self.model,
-                file_name="announcement.wav",
+        if self.engine == "kokoro":
+            self.pipeline = KPipeline(lang_code=LANG_CODES[self.language])
+            combined_audio = AudioSegment.empty()
+            generator = self.pipeline(
+                sentences,
+                voice="af_heart",  # <= change voice here
+                speed=1,
+                split_pattern=r"\n+",
             )
-        if Path().exists():
-            combined_audio = AudioSegment.from_wav(chapter_path)
-        for sentence in tqdm.tqdm(
-            sentences[1:], desc=f"Synthesizing chapter {chapter_number}..."
-        ):
+            for i, (_, _, audio) in tqdm.tqdm(
+                enumerate(generator), desc="Synthesizing audio..."
+            ):
+                sf.write(f"{self.tmp_dir}/{i}.wav", audio, 24000)
+            n_files = i + 1
+            for i in range(n_files):
+                audio = AudioSegment.from_wav(f"{self.tmp_dir}/{i}.wav")
+                combined_audio += audio
+                # delete the temporary files
+            combined_audio.export(chapter_path, format="wav")
+            # convert chapter from wav to mp3
+            chapter_mp3 = AudioSegment.from_wav(chapter_path)
+            chapter_mp3.export(chapter_path.replace(".wav", ".mp3"), format="mp3")
+        elif self.engine == "tts_models":
             with nostdout():
                 sentence_to_speech(
-                    sentence=sentence,
-                    output_dir=chapter_path,
+                    sentence=announcement,
+                    output_dir=self.audiobook_path.parent,
                     language=self.language if not self.translate else self.translate,
                     speaker=self.speaker,
                     model=self.model,
+                    file_name="announcement.wav",
                 )
-            audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
-            combined_audio += audio
-            combined_audio.export(chapter_path, format="wav")
-        # Convert chapter from wav to mp3
-        chapter_mp3 = AudioSegment.from_wav(chapter_path)
-        chapter_mp3.export(chapter_path.replace(".wav", ".mp3"), format="mp3")
-        Path(chapter_path).unlink(missing_ok=True)
+            if chapter_path.exists():
+                combined_audio = AudioSegment.from_wav(chapter_path)
+            for sentence in tqdm.tqdm(
+                sentences[1:], desc=f"Synthesizing chapter {chapter_number}..."
+            ):
+                with nostdout():
+                    sentence_to_speech(
+                        sentence=sentence,
+                        output_dir=chapter_path,
+                        language=self.language
+                        if not self.translate
+                        else self.translate,
+                        speaker=self.speaker,
+                        model=self.model,
+                    )
+                audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
+                combined_audio += audio
+                combined_audio.export(chapter_path, format="wav")
+            # Convert chapter from wav to mp3
+            chapter_mp3 = AudioSegment.from_wav(chapter_path)
+            chapter_mp3.export(chapter_path.replace(".wav", ".mp3"), format="mp3")
+            Path(chapter_path).unlink(missing_ok=True)
 
     def create_m4b(self):
         chapter_files = list(Path(self.audiobook_path).rglob("*.mp3"))
@@ -324,14 +352,21 @@ class PdfSynthesizer(Synthesizer):
 
     def _setup_tts(self) -> TTS:
         """Initialize TTS engine with appropriate language model"""
-        try:
-            logger.info(f"Loading TTS model: {self.model_name}")
+        if self.engine == "tts_models":
+            try:
+                logger.info(f"Loading TTS model: {self.model_name}")
+                model = TTS(model_name=self.model_name)
+                model.to("cuda" if torch.cuda.is_available() else "cpu")
+                return model
+            except Exception as e:
+                logger.error(f"Failed to initialize TTS engine: {str(e)}")
+                raise
+        elif self.engine == "kokoro":
             model = TTS(model_name=self.model_name)
-            model.to("cuda" if torch.cuda.is_available() else "cpu")
+            self.pipeline = KPipeline(lang_code=LANG_CODES[self.language])
             return model
-        except Exception as e:
-            logger.error(f"Failed to initialize TTS engine: {str(e)}")
-            raise
+        else:
+            raise ValueError(f"Unknown TTS engine: {self.engine}")
 
     def synthesize(self) -> Path | str:
         """Synthesize PDF content into audio file using TTS"""
@@ -389,20 +424,42 @@ class PdfSynthesizer(Synthesizer):
             )
         if Path().exists():
             combined_audio = AudioSegment.from_wav(self.output_file)
-        for sentence in tqdm.tqdm(
-            sentences[1:], desc=f"Synthesizing file {self.pdf_path.stem}..."
-        ):
-            with nostdout():
-                sentence_to_speech(
-                    sentence=sentence,
-                    output_dir=self.tmp_dir,
-                    language=self.language if not self.translate else self.translate,
-                    speaker=self.speaker,
-                    model=self.model,
-                    file_name="speech.wav",
-                )
-            audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
-            combined_audio += audio
+        if self.engine == "tts_models":
+            for sentence in tqdm.tqdm(
+                sentences[1:], desc=f"Synthesizing file {self.pdf_path.stem}..."
+            ):
+                with nostdout():
+                    sentence_to_speech(
+                        sentence=sentence,
+                        output_dir=self.tmp_dir,
+                        language=self.language
+                        if not self.translate
+                        else self.translate,
+                        speaker=self.speaker,
+                        model=self.model,
+                        file_name="speech.wav",
+                    )
+                audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
+                combined_audio += audio
+                combined_audio.export(self.output_file, format="wav")
+        elif self.engine == "kokoro":
+            generator = self.pipeline(
+                sentences,
+                voice="af_heart",  # <= change voice here
+                speed=1,
+                split_pattern=r"\n+",
+            )
+            for i, (_, _, audio) in tqdm.tqdm(
+                enumerate(generator), desc="Synthesizing audio..."
+            ):
+                sf.write(
+                    f"{self.tmp_dir}/{i}.wav", audio, 24000
+                )  # save each audio file
+            n_files = i + 1
+            for i in range(n_files):
+                # combine all audio files
+                audio = AudioSegment.from_wav(f"{self.tmp_dir}/{i}.wav")
+                combined_audio += audio
             combined_audio.export(self.output_file, format="wav")
 
     @classmethod

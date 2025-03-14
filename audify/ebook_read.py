@@ -5,7 +5,6 @@ import bs4
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
 
 from audify.domain.interface import Reader
-from audify.utils import get_file_name_title
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -45,7 +44,7 @@ class EpubReader(Reader):
         title = self.book.title or self.book.get_metadata("DC", "title")[0][0]
         return title
 
-    def get_cover_image(self) -> str | None:
+    def get_cover_image(self, output_path: str | Path) -> str | None:
         # If ITEM_COVER is available, use it
         cover_image = next(
             (item for item in self.book.get_items() if item.get_type() == ITEM_COVER),
@@ -63,8 +62,7 @@ class EpubReader(Reader):
             )
         if not cover_image:
             return None
-        title = get_file_name_title(self.title)
-        cover_path = f"{MODULE_PATH}/data/output/{title}/cover.jpg"
+        cover_path = f"{output_path}/cover.jpg"
         with open(cover_path, "wb") as f:
             f.write(cover_image.content)
         return cover_path

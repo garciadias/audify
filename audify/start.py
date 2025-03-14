@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from audify.constants import DEFAULT_LANGUAGE_LIST
 from audify.domain.interface import Synthesizer
 from audify.text_to_speech import EpubSynthesizer, InspectSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
@@ -9,29 +10,7 @@ from audify.utils import get_file_extension
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-DEFAULT_LANGUAGE_LIST = [
-    "en",
-    "es",
-    "fr",
-    "de",
-    "it",
-    "pt",
-    "pl",
-    "tr",
-    "ru",
-    "nl",
-    "cs",
-    "ar",
-    "zh",
-    "hu",
-    "ko",
-    "ja",
-    "hi",
-]
-
-
 @click.command()
-# Path to the epub file to be synthesized is required as default parameter
 @click.argument(
     "file_path",
     type=click.Path(exists=True),
@@ -69,16 +48,26 @@ DEFAULT_LANGUAGE_LIST = [
     "--list-languages",
     "-ll",
     is_flag=True,
+    help="List available languages.",
 )
 @click.option(
     "--list-models",
     "-lm",
     is_flag=True,
+    help="List available TTS models.",
 )
 @click.option(
     "--save-text",
     "-st",
     is_flag=True,
+    help="Save the text extraction to a file.",
+)
+@click.option(
+    "--engine",
+    "-e",
+    type=str,
+    default="tts_models",
+    help="The TTS engine to use (tts_models or kokoro).",
 )
 def main(
     file_path: str,
@@ -89,7 +78,7 @@ def main(
     list_languages: bool,
     list_models: bool,
     save_text: bool,
-    tts_engine: str = "tts_models",
+    engine: str = "tts_models",
 ):
     if list_languages:
         synthesizer: Synthesizer = InspectSynthesizer()
@@ -115,7 +104,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=tts_engine,
+                engine=engine,
             )
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
@@ -129,7 +118,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=tts_engine,
+                engine=engine,
             )
             synthesizer.synthesize()
         else:
