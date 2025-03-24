@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import shutil
 import subprocess
 import sys
 import warnings
@@ -69,7 +70,12 @@ class BaseSynthesizer(Synthesizer):
     def _synthesize_sentences(self, sentences, output_path):
         combined_audio = AudioSegment.empty()
         if self.engine == "kokoro":
-            self.pipeline = KPipeline(lang_code=LANG_CODES[self.language])
+            lang_code = (
+                LANG_CODES[self.translate]
+                if self.translate
+                else LANG_CODES[self.language]
+            )
+            self.pipeline = KPipeline(lang_code=lang_code)
             generator = self.pipeline(
                 sentences,
                 voice="af_heart",
@@ -103,7 +109,7 @@ class BaseSynthesizer(Synthesizer):
             combined_audio.export(output_path, format="wav")
 
     def _convert_to_mp3(self, wav_path):
-        mp3_path = wav_path.replace(".wav", ".mp3")
+        mp3_path = str(wav_path).replace(".wav", ".mp3")
         audio = AudioSegment.from_wav(wav_path)
         audio.export(mp3_path, format="mp3")
         Path(wav_path).unlink(missing_ok=True)
@@ -119,7 +125,7 @@ class EpubSynthesizer(BaseSynthesizer):
         model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
         translate: str | None = None,
         save_text: bool = False,
-        engine: str = "tts_models",
+        engine: str = "kokoro",
     ):
         reader = EpubReader(path)
         language = language or reader.get_language()
@@ -156,7 +162,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 translate_sentence(
                     sentence, src_lang=self.language, tgt_lang=self.translate
                 )
-                for sentence in sentences
+                for sentence in tqdm.tqdm(sentences, desc="Translating sentences...")
             ]
         chapter_path = f"{self.audiobook_path}/chapter_{chapter_number}.wav"
         self._synthesize_sentences(sentences, chapter_path)
@@ -283,13 +289,10 @@ class EpubSynthesizer(BaseSynthesizer):
             if use_language.lower() in ["n", "no"]:
                 self.language = input("Enter the language code: ")
 
-        print(
-            "=========================================================================="
-        )
+        terminal_width = shutil.get_terminal_size((80, 20)).columns
+        print("=" * terminal_width)
         print(f"Processing book: {self.title}")
-        print(
-            "=========================================================================="
-        )
+        print("=" * terminal_width)
         print("Confirm details:")
         print(f"Original file: {self.path.stem}")
         print(f"Title: {self.title}")
@@ -323,7 +326,7 @@ class PdfSynthesizer(BaseSynthesizer):
         file_name: str | None = None,
         translate: str | None = None,
         save_text: bool = False,
-        engine: str = "tts_models",
+        engine: str = "kokoro",
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
