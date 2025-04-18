@@ -238,14 +238,13 @@ class EpubSynthesizer(BaseSynthesizer):
         return end
 
     def process_chapter(self, i, chapter, chapter_start):
-        is_too_short = len(chapter) < 1000
         chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
         chapter_exists = Path(chapter_path.replace("wav", "mp3")).exists()
         if Path(chapter_path).exists():
             Path(chapter_path).unlink(missing_ok=True)
         chapter_title = self.reader.get_chapter_title(chapter)
         title = f"Chapter {i}: {chapter_title}"
-        if is_too_short or chapter_exists:
+        if chapter_exists:
             if chapter_exists:
                 duration = get_audio_duration(chapter_path.replace("wav", "mp3"))
                 chapter_start += int(duration * 1000)
@@ -267,11 +266,8 @@ class EpubSynthesizer(BaseSynthesizer):
         chapters = self.reader.get_chapters()
         self.check_job_proposition()
         for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
-            if len(chapter) < 1000:
-                continue
-            else:
-                chapter_start = self.process_chapter(chapter_id, chapter, chapter_start)
-                chapter_id += 1
+            chapter_start = self.process_chapter(chapter_id, chapter, chapter_start)
+            chapter_id += 1
 
     def synthesize(self):
         self.process_chapters()
