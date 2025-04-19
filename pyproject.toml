@@ -35,6 +35,7 @@ dev = [
     "mypy>=1.11.2",
     "ipykernel>=6.29.5",
 ]
+gpu = ["black>=25.1.0"]
 
 [tool.coverage.report]
 exclude_lines = ["if __name__ == .__main__.:"]
