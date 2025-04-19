@@ -12,6 +12,7 @@ import torch
 import tqdm
 from kokoro import KPipeline
 from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
 
 from audify.constants import LANG_CODES
@@ -182,8 +183,12 @@ class EpubSynthesizer(BaseSynthesizer):
         final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
         for mp3 in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
-            audio = AudioSegment.from_mp3(mp3)
-            combined_audio += audio
+            try:
+                audio = AudioSegment.from_mp3(mp3)
+                combined_audio += audio
+            except CouldntDecodeError:
+                logger.error(f"Could not decode file: {mp3}")
+                continue
         print("Converting to M4b...")
         if not Path(tmp_file_name).exists():
             combined_audio.export(
