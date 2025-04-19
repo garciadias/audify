@@ -82,12 +82,15 @@ class BaseSynthesizer(Synthesizer):
                 speed=1,
                 split_pattern=r"\n+",
             )
+            i = 0
             for i, (_, _, audio) in tqdm.tqdm(
                 enumerate(generator), desc="Synthesizing audio..."
             ):
                 sf.write(f"{self.tmp_dir}/{i}.wav", audio, 24000)
             n_files = i + 1
             for i in range(n_files):
+                if not Path(f"{self.tmp_dir}/{i}.wav").exists():
+                    continue
                 audio = AudioSegment.from_wav(f"{self.tmp_dir}/{i}.wav")
                 combined_audio += audio
             combined_audio.export(output_path, format="wav")
@@ -126,6 +129,7 @@ class EpubSynthesizer(BaseSynthesizer):
         translate: str | None = None,
         save_text: bool = False,
         engine: str = "kokoro",
+        confirm=True,
     ):
         reader = EpubReader(path)
         language = language or reader.get_language()
@@ -146,6 +150,7 @@ class EpubSynthesizer(BaseSynthesizer):
         self.audiobook_path = audiobook_path
         self.list_of_contents = self.audiobook_path / "chapters.txt"
         self.cover_image = self.reader.get_cover_image(self.audiobook_path)
+        self.confirm = confirm
 
         with open(self.list_of_contents, "w") as f:
             f.write(";FFMETADATA1\n")
@@ -169,7 +174,10 @@ class EpubSynthesizer(BaseSynthesizer):
         return self._convert_to_mp3(chapter_path)
 
     def create_m4b(self):
-        chapter_files = list(self.audiobook_path.rglob("*.mp3"))
+        n_chapters = len(list(self.audiobook_path.glob("chapter*.mp3")))
+        chapter_files = [
+            f"{self.audiobook_path}/chapter_{i}.mp3" for i in range(1, n_chapters + 1)
+        ]
         tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
         final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
         combined_audio = AudioSegment.empty()
@@ -238,7 +246,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return end
 
     def process_chapter(self, i, chapter, chapter_start):
-        is_too_short = len(chapter) < 1000
+        is_too_short = len(chapter) < 100
         chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
         chapter_exists = Path(chapter_path.replace("wav", "mp3")).exists()
         if Path(chapter_path).exists():
@@ -267,7 +275,7 @@ class EpubSynthesizer(BaseSynthesizer):
         chapters = self.reader.get_chapters()
         self.check_job_proposition()
         for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
-            if len(chapter) < 1000:
+            if len(chapter) < 100:
                 continue
             else:
                 chapter_start = self.process_chapter(chapter_id, chapter, chapter_start)
@@ -293,7 +301,7 @@ class EpubSynthesizer(BaseSynthesizer):
         print("=" * terminal_width)
         print(f"Processing book: {self.title}")
         print("=" * terminal_width)
-        print("Confirm details:")
+        print("Job details:")
         print(f"Original file: {self.path.stem}")
         print(f"Title: {self.title}")
         print(f"Language: {self.language}")
@@ -301,7 +309,10 @@ class EpubSynthesizer(BaseSynthesizer):
         print(f"Output: {self.audiobook_path}")
         if self.translate:
             print(f"Translate to: {self.translate}")
-        confirmation = input("Do you want to proceed? (y/n): [y] ")
+        if self.confirm:
+            confirmation = input("Do you want to proceed? (y/n): [y] ")
+        else:
+            confirmation = "y"
         if confirmation.lower() not in ["y", "yes", ""]:
             self.title = input("Enter the title: ") or self.title
             self.language = input("Enter the language code: ") or self.language
