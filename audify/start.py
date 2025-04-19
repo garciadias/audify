@@ -70,6 +70,12 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     default="kokoro",
     help="The TTS engine to use (tts_models or kokoro).",
 )
+@click.option(
+    "--y",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation for Epub synthesis.",
+)
 def main(
     file_path: str,
     language: str,
@@ -80,6 +86,7 @@ def main(
     list_models: bool,
     save_text: bool,
     engine: str = "kokoro",
+    y: bool = False,
 ):
     terminal_width = os.get_terminal_size()[0]
     if list_languages:
@@ -107,6 +114,7 @@ def main(
                 translate=translate,
                 save_text=save_text,
                 engine=engine,
+                confirm=not y,
             )
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
