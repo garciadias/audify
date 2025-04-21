@@ -41,7 +41,12 @@ class EpubReader(Reader):
             return "Unknown"
 
     def get_title(self) -> str:
-        title = self.book.title or self.book.get_metadata("DC", "title")[0][0]
+        title = self.book.title
+        if not title and self.book.get_metadata("DC", "title"):
+            if self.book.get_metadata("DC", "title")[0]:
+                title = self.book.get_metadata("DC", "title")[0][0]
+        if not title:
+            'missing title'
         return title
 
     def get_cover_image(self, output_path: str | Path) -> str | None:

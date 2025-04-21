@@ -175,7 +175,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return self._convert_to_mp3(chapter_path)
 
     def create_m4b(self):
-        n_chapters = len(list(self.audiobook_path.glob("chapter*.mp3")))
+        n_chapters = len(list(Path(self.audiobook_path).glob("chapter*.mp3")))
         chapter_files = [
             f"{self.audiobook_path}/chapter_{i}.mp3" for i in range(1, n_chapters + 1)
         ]
@@ -234,6 +234,7 @@ class EpubSynthesizer(BaseSynthesizer):
             "copy",
             "-f",
             "mp4",
+            "-y",
             f"{final_file_name}",
         ]
         command = [str(arg) for arg in command]
