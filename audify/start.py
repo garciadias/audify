@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import click
@@ -66,8 +67,14 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--engine",
     "-e",
     type=str,
-    default="tts_models",
+    default="kokoro",
     help="The TTS engine to use (tts_models or kokoro).",
+)
+@click.option(
+    "--y",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation for Epub synthesis.",
 )
 def main(
     file_path: str,
@@ -78,25 +85,27 @@ def main(
     list_languages: bool,
     list_models: bool,
     save_text: bool,
-    engine: str = "tts_models",
+    engine: str = "kokoro",
+    y: bool = False,
 ):
+    terminal_width = os.get_terminal_size()[0]
     if list_languages:
         synthesizer: Synthesizer = InspectSynthesizer()
-        print("====================")
-        print("Available languages:")
-        print("====================")
+        print("=" * terminal_width)
+        print("Available languages:".center(terminal_width))
+        print("=" * terminal_width)
         print(", ".join(synthesizer.model.languages))
     elif list_models:
         synthesizer = InspectSynthesizer()
-        print("=================")
-        print("Available models:")
-        print("=================")
-        print(", ".join(synthesizer.model.models))
+        print("=" * terminal_width)
+        print("Available models:".center(terminal_width))
+        print("=" * terminal_width)
+        print("\n".join(synthesizer.model.models))
     else:
         if get_file_extension(file_path) == ".epub":
-            print("==================")
-            print("Epub to Audiobook")
-            print("==================")
+            print("=" * terminal_width)
+            print("Epub to Audiobook".center(terminal_width))
+            print("=" * terminal_width)
             synthesizer = EpubSynthesizer(
                 file_path,
                 language=language,
@@ -105,6 +114,7 @@ def main(
                 translate=translate,
                 save_text=save_text,
                 engine=engine,
+                confirm=not y,
             )
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":

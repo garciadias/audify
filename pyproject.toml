@@ -10,6 +10,7 @@ dependencies = [
     "ebooklib>=0.18",
     "kokoro>=0.2.2",
     "markdown>=3.7",
+    "misaki[zh]>=0.8.4",
     "ollama>=0.4.7",
     "pip>=25.0.1",
     "pydub>=0.25.1",
@@ -34,6 +35,7 @@ dev = [
     "mypy>=1.11.2",
     "ipykernel>=6.29.5",
 ]
+gpu = ["black>=25.1.0"]
 
 [tool.coverage.report]
 exclude_lines = ["if __name__ == .__main__.:"]

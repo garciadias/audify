@@ -1,8 +1,10 @@
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
 
 
@@ -69,7 +71,11 @@ def break_text_into_sentences(
 
 def get_audio_duration(file_path: str) -> float:
     # Load the audio file
-    audio = AudioSegment.from_file(file_path)
+    try:
+        audio = AudioSegment.from_file(file_path)
+    except CouldntDecodeError:
+        logging.error(f"Could not decode audio file: {file_path}")
+        return 0.0
     # Calculate the duration in seconds
     duration = len(audio) / 1000.0
     return duration
