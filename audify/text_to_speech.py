@@ -3,9 +3,10 @@ import logging
 import shutil
 import subprocess
 import sys
+import tempfile
 import warnings
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from typing import Any, Generator, List, Optional, Tuple
 
 import soundfile as sf
 import torch
@@ -24,381 +25,778 @@ from audify.utils import (
     break_text_into_sentences,
     get_audio_duration,
     get_file_name_title,
-    sentence_to_speech,
 )
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
-MODULE_PATH = Path(__file__).parents[1]
 
-# mute FutureWarnings
+MODULE_PATH = Path(__file__).resolve().parents[1]
+DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
+DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+DEFAULT_ENGINE = "kokoro"
+OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
+
+# Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
 @contextlib.contextmanager
-def nostdout():
-    save_stdout = sys.stdout
-    sys.stdout = open("trash", "w")
-    yield
-    sys.stdout = save_stdout
+def suppress_stdout():
+    """Temporarily suppress stdout."""
+    original_stdout = sys.stdout
+    log_path = Path(tempfile.gettempdir()) / "audify_stdout_suppress.log"
+    with open(log_path, "w") as f_null:
+        sys.stdout = f_null
+        try:
+            yield
+        finally:
+            sys.stdout = original_stdout
 
 
 class BaseSynthesizer(Synthesizer):
+    """Base class for text-to-speech synthesis."""
+
     def __init__(
         self,
         path: str | Path,
-        language: str | None,
+        language: Optional[str],
         speaker: str,
         model_name: str,
-        translate: str | None,
+        translate: Optional[str],
         save_text: bool,
         engine: str,
     ):
-        self.path = path if isinstance(path, Path) else Path(path)
+        self.path = Path(path).resolve()
         self.language = language
         self.speaker = speaker
         self.translate = translate
         self.engine = engine
         self.model_name = model_name
         self.save_text = save_text
-        self.tmp_dir = Path(f"/tmp/audify/{self.path.stem}/")
-        self.tmp_dir.mkdir(parents=True, exist_ok=True)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print("Loading TTS model...")
-        self.model = TTS(model_name=model_name)
-        self.model.to(device)
+        self.tmp_dir_context = tempfile.TemporaryDirectory(
+            prefix=f"audify_{self.path.stem}_"
+        )
+        self.tmp_dir = Path(self.tmp_dir_context.name)
 
-    def _synthesize_sentences(self, sentences, output_path):
-        combined_audio = AudioSegment.empty()
-        if self.engine == "kokoro":
-            lang_code = (
-                LANG_CODES[self.translate]
-                if self.translate
-                else LANG_CODES[self.language]
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Using device: {self.device}")
+        logger.info(f"Loading TTS model: {model_name}...")
+        self.model = TTS(model_name=model_name)
+        self.model.to(self.device)
+        logger.info("TTS model loaded.")
+
+    def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
+        """Synthesize sentences using the Kokoro engine."""
+        synthesis_language = self.translate or self.language
+        if synthesis_language is None:
+            logger.warning(
+                "Language not specified or detected, defaulting to 'en' for Kokoro."
             )
-            self.pipeline = KPipeline(lang_code=lang_code)
-            generator = self.pipeline(
+            lang_code = "en"
+        else:
+            lang_code = LANG_CODES.get(synthesis_language, "en")
+
+        if not hasattr(self, "pipeline") or self.pipeline.lang_code != lang_code:
+            logger.info(f"Initializing Kokoro pipeline for language: {lang_code}")
+            self.pipeline: KPipeline = KPipeline(lang_code=lang_code)
+
+        combined_audio = AudioSegment.empty()
+        temp_audio_files: List[Path] = []
+
+        try:
+            logger.info("Starting Kokoro synthesis...")
+            generator: Generator[Tuple[int, str, Any], None, None] = self.pipeline(
                 sentences,
                 voice="af_heart",
                 speed=1,
                 split_pattern=r"\n+",
             )
-            i = 0
-            for i, (_, _, audio) in tqdm.tqdm(
-                enumerate(generator), desc="Synthesizing audio..."
-            ):
-                sf.write(f"{self.tmp_dir}/{i}.wav", audio, 24000)
-            n_files = i + 1
-            for i in range(n_files):
-                if not Path(f"{self.tmp_dir}/{i}.wav").exists():
-                    continue
-                audio = AudioSegment.from_wav(f"{self.tmp_dir}/{i}.wav")
-                combined_audio += audio
-            combined_audio.export(output_path, format="wav")
-        elif self.engine == "tts_models":
-            for sentence in tqdm.tqdm(sentences, desc="Synthesizing sentences..."):
-                with nostdout():
-                    sentence_to_speech(
-                        sentence=sentence,
-                        output_dir=self.tmp_dir,
-                        language=self.language
-                        if not self.translate
-                        else self.translate,
-                        speaker=self.speaker,
-                        model=self.model,
-                        file_name="speech.wav",
-                    )
-                audio = AudioSegment.from_wav(self.tmp_dir / "speech.wav")
-                combined_audio += audio
-            combined_audio.export(output_path, format="wav")
 
-    def _convert_to_mp3(self, wav_path):
-        mp3_path = str(wav_path).replace(".wav", ".mp3")
-        audio = AudioSegment.from_wav(wav_path)
-        audio.export(mp3_path, format="mp3")
-        Path(wav_path).unlink(missing_ok=True)
-        return mp3_path
+            for i, (_, _, audio_data) in tqdm.tqdm(
+                enumerate(generator),
+                desc="Kokoro Synthesizing",
+                total=len(sentences),
+                unit="sentence",
+            ):
+                temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
+                sf.write(temp_wav_path, audio_data, 24000)
+                temp_audio_files.append(temp_wav_path)
+
+            logger.info("Combining Kokoro audio segments...")
+            for temp_wav_path in tqdm.tqdm(
+                temp_audio_files, desc="Combining Segments", unit="file"
+            ):
+                if temp_wav_path.exists():
+                    try:
+                        segment = AudioSegment.from_wav(temp_wav_path)
+                        combined_audio += segment
+                    except CouldntDecodeError:
+                        logger.warning(
+                            f"Could not decode temporary segment: {temp_wav_path}"
+                        )
+                    finally:
+                        temp_wav_path.unlink(missing_ok=True)
+                else:
+                    logger.warning(f"Temporary segment file not found: {temp_wav_path}")
+
+            logger.info(f"Exporting combined Kokoro audio to {output_wav_path}")
+            combined_audio.export(output_wav_path, format="wav")
+
+        except Exception as e:
+            logger.error(f"Error during Kokoro synthesis: {e}", exc_info=True)
+            for temp_file in temp_audio_files:
+                temp_file.unlink(missing_ok=True)
+            raise
+
+    def _synthesize_tts_models(
+        self, sentences: List[str], output_wav_path: Path
+    ) -> None:
+        """Synthesize sentences using the TTS library models."""
+        combined_audio = AudioSegment.empty()
+        synthesis_lang = self.translate or self.language
+        temp_speech_path = self.tmp_dir / "speech_segment.wav"
+
+        logger.info("Starting TTS models synthesis...")
+        for sentence in tqdm.tqdm(sentences, desc="TTS Synthesizing", unit="sentence"):
+            if not sentence.strip():
+                continue
+            try:
+                with suppress_stdout():
+                    self.model.tts_to_file(
+                        text=sentence,
+                        speaker=self.speaker,
+                        language=synthesis_lang,
+                        file_path=str(temp_speech_path),
+                    )
+                if temp_speech_path.exists():
+                    segment = AudioSegment.from_wav(temp_speech_path)
+                    combined_audio += segment
+                    temp_speech_path.unlink()
+                else:
+                    logger.warning(
+                        f"TTS output file not found for sentence: '{sentence[:50]}...'"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error synthesizing sentence: '{sentence[:50]}...'. Error: {e}",
+                    exc_info=False,
+                )
+                if temp_speech_path.exists():
+                    temp_speech_path.unlink(missing_ok=True)
+
+        logger.info(f"Exporting combined TTS audio to {output_wav_path}")
+        combined_audio.export(output_wav_path, format="wav")
+
+    def _synthesize_sentences(
+        self, sentences: List[str], output_wav_path: Path
+    ) -> None:
+        """Synthesize a list of sentences into a single WAV file."""
+        output_wav_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self.engine == "kokoro":
+            self._synthesize_kokoro(sentences, output_wav_path)
+        elif self.engine == "tts_models":
+            self._synthesize_tts_models(sentences, output_wav_path)
+        else:
+            raise ValueError(f"Unsupported synthesis engine: {self.engine}")
+
+        logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
+
+    def _convert_to_mp3(self, wav_path: Path) -> Path:
+        """Converts a WAV file to MP3 and removes the original WAV."""
+        mp3_path = wav_path.with_suffix(".mp3")
+        logger.info(f"Converting {wav_path.name} to MP3...")
+        try:
+            audio = AudioSegment.from_wav(wav_path)
+            audio.export(mp3_path, format="mp3", bitrate="192k")
+            logger.info(f"MP3 conversion successful: {mp3_path.name}")
+            wav_path.unlink(missing_ok=True)
+            return mp3_path
+        except FileNotFoundError:
+            logger.error(f"WAV file not found for conversion: {wav_path}")
+            raise
+        except Exception as e:
+            logger.error(f"Error converting {wav_path.name} to MP3: {e}", exc_info=True)
+            raise
+
+    def synthesize(self) -> Path:
+        """Abstract method for the main synthesis process."""
+        raise NotImplementedError("Subclasses must implement the synthesize method.")
+
+    def __del__(self):
+        """Ensure temporary directory is cleaned up."""
+        if hasattr(self, "tmp_dir_context"):
+            try:
+                self.tmp_dir_context.cleanup()
+                logger.debug(f"Cleaned up temporary directory: {self.tmp_dir}")
+            except Exception as e:
+                logger.error(
+                    f"Error cleaning up temporary directory {self.tmp_dir}: {e}"
+                )
 
 
 class EpubSynthesizer(BaseSynthesizer):
+    """Synthesizer for EPUB files, creating an M4B audiobook."""
+
     def __init__(
         self,
         path: str | Path,
-        language: str | None = None,
-        speaker: str = "data/Jennifer_16khz.wav",
-        model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
-        translate: str | None = None,
+        language: Optional[str] = None,
+        speaker: str = DEFAULT_SPEAKER,
+        model_name: str = DEFAULT_MODEL,
+        translate: Optional[str] = None,
         save_text: bool = False,
-        engine: str = "kokoro",
-        confirm=True,
+        engine: str = DEFAULT_ENGINE,
+        confirm: bool = True,
     ):
-        reader = EpubReader(path)
-        language = language or reader.get_language()
-        title = reader.title
-        if translate:
-            title = translate_sentence(
-                sentence=title, src_lang=language, tgt_lang=translate
+        self.reader = EpubReader(path)
+        detected_language = self.reader.get_language()
+        resolved_language = language or detected_language
+        self.output_base_dir = Path(OUTPUT_BASE_DIR).resolve()
+        if not resolved_language:
+            raise ValueError(
+                "Language must be provided or detectable from the EPUB metadata."
             )
-        file_name = get_file_name_title(title)
-        audiobook_path = Path(f"{MODULE_PATH}/data/output/{file_name}")
-        audiobook_path.mkdir(parents=True, exist_ok=True)
-        super().__init__(
-            path, language, speaker, model_name, translate, save_text, engine
-        )
-        self.reader = reader
-        self.title = title
-        self.file_name = file_name
-        self.audiobook_path = audiobook_path
-        self.list_of_contents = self.audiobook_path / "chapters.txt"
-        self.cover_image = self.reader.get_cover_image(self.audiobook_path)
+
+        self.title = self.reader.title
+        if translate:
+            logger.info(f"Translating title from {resolved_language} to {translate}")
+            self.title = translate_sentence(
+                sentence=self.title, src_lang=resolved_language, tgt_lang=translate
+            )
+
+        self.file_name = get_file_name_title(self.title)
+        self._setup_paths(self.file_name)
+        self._initialize_metadata_file()
         self.confirm = confirm
 
-        with open(self.list_of_contents, "w") as f:
-            f.write(";FFMETADATA1\n")
-            f.write("major_brand=M4A\n")
-            f.write("minor_version=512\n")
-            f.write("compatible_brands=M4A isis2\n")
-            f.write("encoder=Lavf61.7.100\n")
+        super().__init__(
+            path, resolved_language, speaker, model_name, translate, save_text, engine
+        )
 
-    def synthesize_chapter(self, chapter, chapter_number):
-        chapter_txt = self.reader.extract_text(chapter)
-        sentences = break_text_into_sentences(chapter_txt)
-        if self.translate:
-            sentences = [
-                translate_sentence(
-                    sentence, src_lang=self.language, tgt_lang=self.translate
-                )
-                for sentence in tqdm.tqdm(sentences, desc="Translating sentences...")
-            ]
-        chapter_path = f"{self.audiobook_path}/chapter_{chapter_number}.wav"
-        self._synthesize_sentences(sentences, chapter_path)
-        return self._convert_to_mp3(chapter_path)
+        self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
+            self.audiobook_path
+        )
 
-    def create_m4b(self):
-        n_chapters = len(list(Path(self.audiobook_path).glob("chapter*.mp3")))
-        chapter_files = [
-            f"{self.audiobook_path}/chapter_{i}.mp3" for i in range(1, n_chapters + 1)
-        ]
-        tmp_file_name = f"{self.audiobook_path}/{self.file_name}.tmp.m4b"
-        final_file_name = f"{self.audiobook_path}/{self.file_name}.m4b"
-        combined_audio = AudioSegment.empty()
-        for mp3 in tqdm.tqdm(chapter_files, desc="Combining chapters..."):
-            try:
-                audio = AudioSegment.from_mp3(mp3)
-                combined_audio += audio
-            except CouldntDecodeError:
-                logger.error(f"Could not decode file: {mp3}")
-                continue
-        print("Converting to M4b...")
-        if not Path(tmp_file_name).exists():
-            combined_audio.export(
-                tmp_file_name, format="mp4", codec="aac", bitrate="64k"
+    def _setup_paths(self, file_name_base: str) -> None:
+        """Sets up the necessary output paths."""
+        self.audiobook_path = self.output_base_dir / file_name_base
+        self.audiobook_path.mkdir(parents=True, exist_ok=True)
+        self.list_of_contents_path = self.audiobook_path / "chapters.txt"
+        self.final_m4b_path = self.audiobook_path / f"{file_name_base}.m4b"
+        self.temp_m4b_path = self.audiobook_path / f"{file_name_base}.tmp.m4b"
+        logger.info(f"Output directory set to: {self.audiobook_path}")
+
+    def _initialize_metadata_file(self) -> None:
+        """Writes the initial header to the FFmpeg metadata file."""
+        logger.info(f"Initializing metadata file: {self.list_of_contents_path}")
+        try:
+            with open(self.list_of_contents_path, "w") as f:
+                f.write(";FFMETADATA1\n")
+                f.write("major_brand=M4A\n")
+                f.write("minor_version=512\n")
+                f.write("compatible_brands=M4A isis2\n")
+                f.write("encoder=Lavf61.7.100\n")
+        except IOError as e:
+            logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
+            raise
+
+    def synthesize_chapter(self, chapter_content: str, chapter_number: int) -> Path:
+        """Synthesizes a single chapter into an MP3 file."""
+        logger.info(f"Synthesizing Chapter {chapter_number}...")
+        chapter_wav_path = self.audiobook_path / f"chapter_{chapter_number}.wav"
+        chapter_mp3_path = chapter_wav_path.with_suffix(".mp3")
+
+        if chapter_mp3_path.exists():
+            logger.info(
+                f"Chapter {chapter_number} MP3 already exists, skipping synthesis."
             )
-        print("Adding M4B file metadata...")
+            return chapter_mp3_path
 
-        if self.cover_image:
-            with open(self.cover_image, "rb") as f:
-                cover_image = f.read()
+        chapter_txt = self.reader.extract_text(chapter_content)
+        sentences = break_text_into_sentences(chapter_txt)
 
-        if self.cover_image:
-            cover_image_file = NamedTemporaryFile("wb")
-            cover_image_file.write(cover_image)
-            cover_image_args = [
+        if not sentences:
+            logger.warning(f"Chapter {chapter_number} contains no text to synthesize.")
+            return chapter_mp3_path
+
+        if self.translate and self.language:
+            logger.info(
+                f"Translating {len(sentences)} sentences for Chapter"
+                f" {chapter_number}..."
+            )
+            try:
+                sentences = [
+                    translate_sentence(
+                        sentence, src_lang=self.language, tgt_lang=self.translate
+                    )
+                    for sentence in tqdm.tqdm(
+                        sentences,
+                        desc=f"Translating Ch. {chapter_number}",
+                        unit="sentence",
+                    )
+                ]
+            except Exception as e:
+                logger.error(
+                    f"Error translating chapter {chapter_number}: {e}", exc_info=True
+                )
+                logger.warning(
+                    "Proceeding with original text for synthesis due to translation"
+                    " error."
+                )
+                sentences = break_text_into_sentences(chapter_txt)
+
+        self._synthesize_sentences(sentences, chapter_wav_path)
+        return self._convert_to_mp3(chapter_wav_path)
+
+    def create_m4b(self) -> None:
+        """Combines chapter MP3s and metadata into a final M4B file."""
+        logger.info("Starting M4B creation process...")
+        chapter_mp3_files = sorted(self.audiobook_path.glob("chapter_*.mp3"))
+
+        if not chapter_mp3_files:
+            logger.error("No chapter MP3 files found to create M4B.")
+            return
+
+        if not self.temp_m4b_path.exists():
+            logger.info(f"Combining {len(chapter_mp3_files)} chapter MP3s...")
+            combined_audio = AudioSegment.empty()
+            for mp3_file in tqdm.tqdm(
+                chapter_mp3_files, desc="Combining Chapters", unit="file"
+            ):
+                try:
+                    audio = AudioSegment.from_mp3(mp3_file)
+                    combined_audio += audio
+                except CouldntDecodeError:
+                    logger.error(
+                        f"Could not decode chapter file: {mp3_file}, skipping."
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error processing chapter file {mp3_file}: {e}, skipping.",
+                        exc_info=True,
+                    )
+
+            if len(combined_audio) == 0:
+                logger.error("Combined audio is empty. Cannot create M4B.")
+                return
+
+            logger.info(
+                f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}"
+            )
+            try:
+                combined_audio.export(
+                    self.temp_m4b_path, format="mp4", codec="aac", bitrate="64k"
+                )
+            except Exception as e:
+                logger.error(f"Failed to export temporary M4B file: {e}", exc_info=True)
+                self.temp_m4b_path.unlink(missing_ok=True)
+                raise
+        else:
+            logger.info(
+                f"Temporary M4B file already exists: {self.temp_m4b_path}."
+                " Skipping combination."
+            )
+
+        logger.info("Adding metadata and cover image using FFmpeg...")
+        ffmpeg_command, cover_temp_file = self._build_ffmpeg_command(chapter_mp3_files)
+
+        try:
+            logger.debug(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
+            result = subprocess.run(
+                ffmpeg_command, check=True, capture_output=True, text=True
+            )
+            logger.info("FFmpeg process completed successfully.")
+            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
+            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
+
+            logger.info(f"Cleaning up temporary file: {self.temp_m4b_path}")
+            self.temp_m4b_path.unlink(missing_ok=True)
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg command failed with exit code {e.returncode}")
+            logger.error(f"FFmpeg stdout:\n{e.stdout}")
+            logger.error(f"FFmpeg stderr:\n{e.stderr}")
+            logger.error(
+                "M4B creation failed. The temporary M4B file and chapter files are"
+                " preserved for inspection."
+            )
+            raise
+        except FileNotFoundError:
+            logger.error(
+                "FFmpeg command not found. Please ensure FFmpeg is installed and in"
+                " your system's PATH."
+            )
+            raise
+        finally:
+            if cover_temp_file:
+                try:
+                    cover_temp_file.close()
+                    Path(cover_temp_file.name).unlink(missing_ok=True)
+                    logger.debug(
+                        f"Cleaned up temporary cover file: {cover_temp_file.name}"
+                    )
+                except Exception as e_clean:
+                    logger.warning(
+                        f"Error cleaning up temporary cover file"
+                        f" {cover_temp_file.name}: {e_clean}"
+                    )
+
+    def _build_ffmpeg_command(
+        self, chapter_files: List[Path]
+    ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
+        """Builds the FFmpeg command for M4B creation."""
+        cover_args = []
+        cover_temp_file = None
+        if isinstance(self.cover_image_path, Path) and self.cover_image_path.exists():
+            cover_temp_file = tempfile.NamedTemporaryFile(
+                suffix=self.cover_image_path.suffix, delete=False
+            )
+            shutil.copy(self.cover_image_path, cover_temp_file.name)
+            logger.info(f"Using cover image: {self.cover_image_path}")
+            cover_args = [
                 "-i",
-                cover_image_file.name,
+                cover_temp_file.name,
                 "-map",
                 "0:a",
                 "-map",
                 "2:v",
+                "-disposition:v",
+                "attached_pic",
+                "-c:v",
+                "copy",
             ]
         else:
-            cover_image_args = []
+            logger.warning("No cover image found or provided.")
+            cover_args = [
+                "-map",
+                "0:a",
+            ]
+
         command = [
             "ffmpeg",
             "-i",
-            f"{tmp_file_name}",
+            str(self.temp_m4b_path),
             "-i",
-            self.list_of_contents,
-            *cover_image_args,
-            "-map",
-            "0",
+            str(self.list_of_contents_path),
+            *cover_args,
             "-map_metadata",
             "1",
             "-c:a",
             "copy",
-            "-c:v",
-            "copy",
-            "-disposition:v",
-            "attached_pic",
-            "-c",
-            "copy",
             "-f",
             "mp4",
             "-y",
-            f"{final_file_name}",
+            str(self.final_m4b_path),
         ]
-        command = [str(arg) for arg in command]
-        print(" ".join(command))
-        subprocess.run(command)
 
-    def log_on_chapter_file(self, chapter_file_path, title, start, duration):
-        end = start + int(duration * 1000)
-        with open(self.list_of_contents, "a") as f:
-            f.write("[CHAPTER]\n")
-            f.write("TIMEBASE=1/1000\n")
-            f.write(f"START={start}\n")
-            f.write(f"END={end}\n")
-            f.write(f"title={title}\n")
-        return end
+        return command, cover_temp_file
 
-    def process_chapter(self, i, chapter, chapter_start):
-        is_too_short = len(chapter) < 100
-        chapter_path = f"{self.audiobook_path}/chapter_{i}.wav"
-        chapter_exists = Path(chapter_path.replace("wav", "mp3")).exists()
-        if Path(chapter_path).exists():
-            Path(chapter_path).unlink(missing_ok=True)
-        chapter_title = self.reader.get_chapter_title(chapter)
-        title = f"Chapter {i}: {chapter_title}"
-        if is_too_short or chapter_exists:
-            if chapter_exists:
-                duration = get_audio_duration(chapter_path.replace("wav", "mp3"))
-                chapter_start += int(duration * 1000)
-                chapter_start = self.log_on_chapter_file(
-                    self.list_of_contents, title, chapter_start, duration
-                )
-            return chapter_start
-        else:
-            self.synthesize_chapter(chapter, i)
-            duration = get_audio_duration(chapter_path.replace(".wav", ".mp3"))
-            chapter_start = self.log_on_chapter_file(
-                self.list_of_contents, title, chapter_start, duration
+    def _log_chapter_metadata(
+        self, title: str, start_time_ms: int, duration_s: float
+    ) -> int:
+        """Appends chapter metadata to the FFmpeg metadata file."""
+        end_time_ms = start_time_ms + int(duration_s * 1000)
+        logger.debug(
+            f"Logging metadata for '{title}': Start={start_time_ms}, End={end_time_ms},"
+            f" Duration={duration_s:.2f}s"
+        )
+        try:
+            with open(self.list_of_contents_path, "a") as f:
+                f.write("[CHAPTER]\n")
+                f.write("TIMEBASE=1/1000\n")
+                f.write(f"START={start_time_ms}\n")
+                f.write(f"END={end_time_ms}\n")
+                cleaned_title = title.replace("\n", " ").replace("\r", "")
+                f.write(f"title={cleaned_title}\n")
+            return end_time_ms
+        except IOError as e:
+            logger.error(
+                f"Failed to write chapter metadata for '{title}': {e}", exc_info=True
             )
-        return chapter_start
+            return start_time_ms
 
-    def process_chapters(self):
-        chapter_start = 0
-        chapter_id = 1
+    def _process_single_chapter(
+        self, chapter_index: int, chapter_content: str, current_start_time_ms: int
+    ) -> int:
+        """Processes a single chapter: synthesizes (if needed) and logs metadata."""
+        chapter_title_raw = self.reader.get_chapter_title(chapter_content)
+        title = (
+            f"Chapter {chapter_index}: {chapter_title_raw}"
+            if chapter_title_raw
+            else f"Chapter {chapter_index}"
+        )
+
+        chapter_mp3_path = self.audiobook_path / f"chapter_{chapter_index}.mp3"
+        duration_s = 0.0
+
+        MIN_CHAPTER_LENGTH = 100
+        is_too_short = len(chapter_content) < MIN_CHAPTER_LENGTH
+        chapter_exists = chapter_mp3_path.exists()
+
+        if is_too_short:
+            logger.info(
+                f"Skipping Chapter {chapter_index} ('{title}') - content too short."
+            )
+            return current_start_time_ms
+
+        if chapter_exists:
+            logger.info(f"Chapter {chapter_index} ('{title}') already synthesized.")
+            try:
+                duration_s = get_audio_duration(str(chapter_mp3_path))
+            except Exception as e:
+                logger.warning(
+                    f"Could not get duration for existing chapter {chapter_index}: {e}."
+                    " Skipping metadata log for this chapter."
+                )
+                return current_start_time_ms
+        else:
+            logger.info(f"Processing Chapter {chapter_index} ('{title}').")
+            try:
+                synthesized_path = self.synthesize_chapter(
+                    chapter_content, chapter_index
+                )
+                if synthesized_path.exists():
+                    duration_s = get_audio_duration(str(synthesized_path))
+                else:
+                    logger.warning(
+                        f"Synthesized chapter {chapter_index} MP3 not found at"
+                        f" {synthesized_path}. Cannot log metadata."
+                    )
+                    return current_start_time_ms
+            except Exception as e:
+                logger.error(
+                    f"Failed to synthesize or get duration for chapter"
+                    f" {chapter_index}: {e}",
+                    exc_info=True,
+                )
+                return current_start_time_ms
+
+        if duration_s > 0:
+            next_start_time_ms = self._log_chapter_metadata(
+                title, current_start_time_ms, duration_s
+            )
+            return next_start_time_ms
+        else:
+            logger.warning(
+                f"Skipping metadata log for Chapter {chapter_index} due to zero or"
+                " invalid duration."
+            )
+            return current_start_time_ms
+
+    def process_chapters(self) -> None:
+        """Iterates through EPUB chapters, synthesizes them, and logs metadata."""
+        logger.info("Processing EPUB chapters...")
         chapters = self.reader.get_chapters()
-        self.check_job_proposition()
-        for chapter in tqdm.tqdm(chapters, desc=f"Processing {len(chapters)} chapters"):
-            if len(chapter) < 100:
-                continue
-            else:
-                chapter_start = self.process_chapter(chapter_id, chapter, chapter_start)
-                chapter_id += 1
+        num_chapters = len(chapters)
+        logger.info(f"Found {num_chapters} chapters.")
 
-    def synthesize(self):
+        current_chapter_start_time_ms = 0
+        actual_chapter_id = 1
+
+        for i, chapter_content in enumerate(
+            tqdm.tqdm(chapters, desc="Processing Chapters", unit="chapter")
+        ):
+            if not chapter_content or (
+                isinstance(chapter_content, str) and not chapter_content.strip()
+            ):
+                logger.warning(f"Skipping empty or invalid chapter data at index {i}.")
+                continue
+
+            MIN_CHAPTER_LENGTH = 100
+            if len(chapter_content) >= MIN_CHAPTER_LENGTH:
+                try:
+                    current_chapter_start_time_ms = self._process_single_chapter(
+                        actual_chapter_id,
+                        chapter_content,
+                        current_chapter_start_time_ms,
+                    )
+                    actual_chapter_id += 1
+                except Exception as e:
+                    logger.error(
+                        f"Unhandled error processing chapter at index {i} (processed as"
+                        f" chapter {actual_chapter_id}): {e}",
+                        exc_info=True,
+                    )
+
+        logger.info(f"Finished processing {actual_chapter_id - 1} valid chapters.")
+
+    def synthesize(self) -> Path:
+        """Orchestrates the EPUB to M4B synthesis process."""
+        logger.info(f"Starting synthesis for EPUB: {self.path.name}")
         self.process_chapters()
         self.create_m4b()
-        return f"{self.audiobook_path}/{self.file_name}"
-
-    def check_job_proposition(self):
-        if self.language is None:
-            language_from_file = self.reader.get_language()
-            print(
-                f"Language detected: {language_from_file}."
-                " Do you want to use this language? (y/n)"
-            )
-            use_language = input("Use detected language? (y/n): [y] ")
-            if use_language.lower() in ["n", "no"]:
-                self.language = input("Enter the language code: ")
-
-        terminal_width = shutil.get_terminal_size((80, 20)).columns
-        print("=" * terminal_width)
-        print(f"Processing book: {self.title}")
-        print("=" * terminal_width)
-        print("Job details:")
-        print(f"Original file: {self.path.stem}")
-        print(f"Title: {self.title}")
-        print(f"Language: {self.language}")
-        print(f"Speaker: {self.speaker}")
-        print(f"Output: {self.audiobook_path}")
-        if self.translate:
-            print(f"Translate to: {self.translate}")
-        if self.confirm:
-            confirmation = input("Do you want to proceed? (y/n): [y] ")
-        else:
-            confirmation = "y"
-        if confirmation.lower() not in ["y", "yes", ""]:
-            self.title = input("Enter the title: ") or self.title
-            self.language = input("Enter the language code: ") or self.language
-            self.speaker = input("Enter the speaker: ") or self.speaker
-            self.audiobook_path = (
-                input("Enter the output path: ") or self.audiobook_path
-            )
-            abort = input("Abort? (y/n): [n] ")
-            if abort.lower() in ["y", "yes"]:
-                sys.exit(0)
-            self.check_job_proposition()
+        logger.info(f"Audiobook synthesis complete: {self.final_m4b_path}")
+        return self.final_m4b_path
 
 
 class PdfSynthesizer(BaseSynthesizer):
+    """Synthesizer for PDF files."""
+
+    DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
+    DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+    DEFAULT_ENGINE = "kokoro"
+    DEFAULT_OUTPUT_DIR = MODULE_PATH / "data" / "output" / "articles"
+
     def __init__(
         self,
         pdf_path: str | Path,
         language: str = "en",
-        model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
-        speaker: str = "data/Jennifer_16khz.wav",
-        output_dir: str | Path = "data/output/articles/",
-        file_name: str | None = None,
-        translate: str | None = None,
+        model_name: str = DEFAULT_MODEL,
+        speaker: str = DEFAULT_SPEAKER,
+        output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+        file_name: Optional[str] = None,
+        translate: Optional[str] = None,
         save_text: bool = False,
-        engine: str = "kokoro",
+        engine: str = DEFAULT_ENGINE,
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found at {pdf_path}")
 
-        output_file = Path(output_dir).resolve() / (file_name or pdf_path.stem)
-        output_file = output_file.with_suffix(".wav")
+        output_dir = Path(output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_base_name = file_name or pdf_path.stem
+        self.output_wav_path = output_dir / f"{output_base_name}.wav"
+
         super().__init__(
             pdf_path, language, speaker, model_name, translate, save_text, engine
         )
-        self.pdf_path = pdf_path
-        self.output_file = output_file
 
-    def synthesize(self):
-        reader = PdfReader(self.pdf_path)
-        cleaned_text = reader.get_cleaned_text()
-        sentences = break_text_into_sentences(cleaned_text)
-        if self.translate:
-            sentences = [
-                translate_sentence(
-                    sentence, src_lang=self.language, tgt_lang=self.translate
+    def synthesize(self) -> Path:
+        """Reads PDF, synthesizes text, and returns the path to the MP3."""
+        logger.info(f"Starting synthesis for PDF: {self.path.name}")
+        try:
+            reader = PdfReader(self.path)
+            logger.info("Extracting and cleaning text from PDF...")
+            cleaned_text = reader.get_cleaned_text()
+            sentences = break_text_into_sentences(cleaned_text)
+
+            if not sentences:
+                logger.warning("No text extracted from PDF. Cannot synthesize.")
+                return self.output_wav_path.with_suffix(".mp3")
+
+            logger.info(f"Extracted {len(sentences)} sentences.")
+
+            if self.translate and self.language:
+                logger.info(
+                    f"Translating {len(sentences)} sentences to {self.translate}..."
                 )
-                for sentence in sentences
-            ]
-        self._synthesize_sentences(sentences, self.output_file)
-        return self._convert_to_mp3(self.output_file)
+                try:
+                    sentences = [
+                        translate_sentence(
+                            sentence, src_lang=self.language, tgt_lang=self.translate
+                        )
+                        for sentence in tqdm.tqdm(
+                            sentences, desc="Translating PDF", unit="sentence"
+                        )
+                    ]
+                except Exception as e:
+                    logger.error(f"Error translating PDF content: {e}", exc_info=True)
+                    logger.warning("Proceeding with original text for synthesis.")
+                    sentences = break_text_into_sentences(cleaned_text)
 
-    @classmethod
-    def from_config(cls, config: dict):
-        defaults = {
-            "output_dir": "outputs",
-            "output_name": "output.wav",
-            "language": "en",
-            "speech_rate": 1.0,
-        }
-        params = {**defaults, **config}
-        return cls(pdf_path=params["pdf_path"])
+            self.output_wav_path.parent.mkdir(parents=True, exist_ok=True)
+
+            self._synthesize_sentences(sentences, self.output_wav_path)
+            final_mp3_path = self._convert_to_mp3(self.output_wav_path)
+            logger.info(f"PDF synthesis complete: {final_mp3_path}")
+            return final_mp3_path
+
+        except Exception as e:
+            logger.error(
+                f"Error during PDF synthesis for {self.path.name}: {e}", exc_info=True
+            )
+            raise
 
 
 class InspectSynthesizer(Synthesizer):
+    """Utility class to inspect TTS model properties (speakers, languages)."""
+
+    DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+
     def __init__(
         self,
+        model_name: str = DEFAULT_MODEL,
         path: str | Path = "./",
-        language: str | None = None,
-        speaker: str = "data/Jennifer_16khz.wav",
-        model_name: str = "tts_models/multilingual/multi-dataset/xtts_v2",
+        language: Optional[str] = None,
+        speaker: Optional[str] = None,
     ):
-        self.reader = Path(path)
         self.model_name = model_name
-        self.speaker = speaker
-        self.language = language or "en"
-        self.model = TTS(model_name=model_name)
+        logger.info(f"Loading model {model_name} for inspection...")
+        try:
+            self.model = TTS(model_name=model_name)
+            logger.info("Model loaded successfully for inspection.")
+        except Exception as e:
+            logger.error(
+                f"Failed to load model {model_name} for inspection: {e}", exc_info=True
+            )
+            raise
 
-    def synthesize(self):
+    def list_languages(self) -> Optional[List[str]]:
+        """Lists available languages for the loaded model."""
+        if hasattr(self.model, "languages") and self.model.languages:
+            logger.info(
+                f"Available languages for {self.model_name}: {self.model.languages}"
+            )
+            return self.model.languages
+        else:
+            logger.warning(
+                f"Model {self.model_name} does not seem to report languages."
+            )
+            return None
+
+    def list_speakers(self) -> Optional[List[str]]:
+        """Lists available speakers for the loaded model."""
+        if self.model.is_multi_speaker:
+            if (
+                "xtts" in self.model_name.lower()
+                and hasattr(self.model, "speaker_manager")
+                and hasattr(self.model.speaker_manager, "speaker_ids")
+            ):
+                speakers = list(self.model.speaker_manager.speaker_ids.keys())
+                logger.info(
+                    f"Available speakers (IDs/Names) for {self.model_name}: {speakers}"
+                )
+                return speakers
+            elif hasattr(self.model, "speaker_ids") and self.model.speaker_ids:
+                speakers = list(self.model.speaker_ids.keys())
+                logger.info(
+                    f"Available speakers (IDs) for {self.model_name}: {speakers}"
+                )
+                return speakers
+            else:
+                logger.warning(
+                    f"Could not determine speaker list for multi-speaker model"
+                    f" {self.model_name}."
+                )
+                return None
+        else:
+            logger.info(f"Model {self.model_name} is single-speaker.")
+            return None
+
+    def list_models(self) -> List[str]:
+        """Lists available TTS models from the TTS library."""
+        logger.info("Fetching list of available TTS models...")
+        try:
+            available_models = TTS.list_models()
+            logger.info(f"Found {len(available_models)} available models.")
+            return available_models
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch list of available models: {e}", exc_info=True
+            )
+            return []
+
+    def synthesize(self) -> str:
+        """Indicates that this class is not for direct synthesis."""
+        logger.warning("InspectSynthesizer is used for inspection, not synthesis.")
         return (
-            "This class is used to inspect model options and is not intended "
-            "for synthesis."
+            "This class is used to inspect model options (languages, speakers, models) "
+            "and does not perform audio synthesis."
         )
