@@ -14,7 +14,9 @@ dependencies = [
     "ollama>=0.4.7",
     "pip>=25.0.1",
     "pydub>=0.25.1",
+    "pypdf>=5.6.0",
     "pypdf2>=3.0.1",
+    "reportlab>=4.4.2",
     "sentencepiece>=0.2.0",
     "transformers[torch]>=4.48.1",
     "tts[ja]>=0.22.0",
@@ -46,9 +48,6 @@ python_files = ["test_*.py", "*_test.py"]
 addopts = []
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
 
-[tool.pytest.ini_options_debug]
-python_files = ["test_*.py", "*_test.py"]
-filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
 
 [tool.ruff]
 exclude = [
@@ -60,13 +59,6 @@ exclude = [
     "*/__pycache__/*",
     "data/*",
 ]
-
-[language-server.ruff.config]
-configuration = "~/.config/custom_ruff_config.toml"
-lineLength = 80
-
-[language-server.ruff.config.lint]
-select = ["E", "F"]
 
 [tool.ruff.lint]
 preview = true

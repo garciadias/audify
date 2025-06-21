@@ -46,10 +46,10 @@ class EpubReader(Reader):
             if self.book.get_metadata("DC", "title")[0]:
                 title = self.book.get_metadata("DC", "title")[0][0]
         if not title:
-            'missing title'
+            "missing title"
         return title
 
-    def get_cover_image(self, output_path: str | Path) -> str | None:
+    def get_cover_image(self, output_path: str | Path) -> Path | None:
         # If ITEM_COVER is available, use it
         cover_image = next(
             (item for item in self.book.get_items() if item.get_type() == ITEM_COVER),
@@ -70,7 +70,7 @@ class EpubReader(Reader):
         cover_path = f"{output_path}/cover.jpg"
         with open(cover_path, "wb") as f:
             f.write(cover_image.content)
-        return cover_path
+        return Path(cover_path)
 
     def get_language(self) -> str:
         language = self.book.get_metadata("DC", "language")[0][0]

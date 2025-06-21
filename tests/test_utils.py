@@ -13,19 +13,25 @@ from audify.utils import (
     get_file_name_title,
     sentence_to_speech,
 )
-from tests.fixtures.readers import READERS
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("reader", READERS)
-def test_text_is_cleaned(reader):
-    cleaned_text = clean_text(reader.get_cleaned_text())
-    assert cleaned_text
-    assert ".." not in cleaned_text
-    assert "  " not in cleaned_text
-    assert "\n" not in cleaned_text
-    assert "//" not in cleaned_text
+@pytest.fixture
+def pdf_file_create(tmp_path):
+    pdf_path = tmp_path / "test.pdf"
+    pdf_path.write_text("This is a test PDF file.")
+    return pdf_path
+
+
+def test_text_is_cleaned(readers):
+    for reader in readers:
+        cleaned_text = clean_text(reader.get_cleaned_text())
+        assert cleaned_text
+        assert ".." not in cleaned_text
+        assert "  " not in cleaned_text
+        assert "\n" not in cleaned_text
+        assert "//" not in cleaned_text
 
 
 def test_clean_text():
