@@ -1,12 +1,12 @@
 LANG_CODES = {
-    'es': 'e',
-    'fr': 'f',
-    'hi': 'h',
-    'it': 'i',
-    'pt': 'p',
-    'en': 'a',
-    'zh': 'z',
-    'ja': 'j',
+    "es": "e",
+    "fr": "f",
+    "hi": "h",
+    "it": "i",
+    "pt": "p",
+    "en": "a",
+    "zh": "z",
+    "ja": "j",
 }
 
 DEFAULT_LANGUAGE_LIST = [

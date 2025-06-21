@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
+from reportlab.pdfgen import canvas
 
 from audify import start
 
@@ -166,22 +167,36 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
     with TemporaryDirectory() as temp_dir:
         # Create a temporary PDF file
         pdf_file_path = f"{temp_dir}/test.pdf"
-        with open(pdf_file_path, "w") as f:
-            f.write("Fake PDF content")
+        # Use reportlab to create a PDF with text content
+
+        c = canvas.Canvas(pdf_file_path, pagesize=(8.27 * 72, 11.7 * 72))
+        c.drawString(100, 700, "This is a test PDF content.")
+        c.save()
         mock_get_file_extension.return_value = True
-        result = runner.invoke(
-            start.main,
-            [
-                pdf_file_path,
-                "--language",
-                "fr",
-                "--voice",
-                "speaker.wav",
-                "--save-text",
-                "--translate",
-                "en",
-            ],
-        )
+
+        # Invoke the main command but mock the PDF synthesizer
+        mock_pdf_synthesizer_class.return_value = mock_pdf_synthesizer
+        mock_pdf_synthesizer.synthesize.return_value = None  # Mock synthesize method
+        mock_get_file_extension.return_value = ".pdf"
+        # Now invoke the main command with the PDF file mocking the synthesizer run
+        module_path = "audify.text_to_speech"
+        with patch(f"{module_path}.KPipeline") as mock_synthesize_kokoro:
+            mock_synthesize_kokoro.return_value = MagicMock()
+            mock_synthesize_kokoro.return_value.pipeline = MagicMock()
+            mock_synthesize_kokoro.return_value.pipeline.run.return_value = None
+            result = runner.invoke(
+                start.main,
+                [
+                    pdf_file_path,
+                    "--language",
+                    "fr",
+                    "--voice",
+                    "speaker.wav",
+                    "--save-text",
+                    "--translate",
+                    "en",
+                ],
+            )
 
         assert result.exit_code == 0
         assert "PDF to mp3" in result.output
