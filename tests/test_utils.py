@@ -4,10 +4,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydub.exceptions import CouldntDecodeError
 
-from audify.utils import (break_text_into_sentences, break_too_long_sentences,
-                          clean_text, combine_small_sentences,
-                          get_audio_duration, get_file_extension,
-                          get_file_name_title, sentence_to_speech)
+from audify.utils import (
+    break_text_into_sentences,
+    break_too_long_sentences,
+    clean_text,
+    combine_small_sentences,
+    get_audio_duration,
+    get_file_extension,
+    get_file_name_title,
+    sentence_to_speech,
+)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -112,9 +118,7 @@ def test_sentence_to_speech_multilingual(mock_path, mock_tts):
 
 @patch("audify.utils.TTS")
 @patch("audify.utils.Path")
-@pytest.mark.parametrize(
-    'multilingual', [True, False]
-)
+@pytest.mark.parametrize("multilingual", [True, False])
 def test_sentence_to_speech_read_error(mock_path, mock_tts, multilingual):
     mock_model = MagicMock()
     mock_model.is_multi_lingual = multilingual
@@ -174,8 +178,12 @@ def test_sentence_to_speech_directory_creation(mock_path, mock_tts):
     mock_model = MagicMock()
     mock_path.return_value = MagicMock()
     mock_path.return_value.parent.is_dir.return_value = False
-    sentence_to_speech("This is a test sentence.", mock_model, output_dir="/tmp/nonexistent/speech.wav")
-    mock_path("/tmp/nonexistent/speech.wav").parent.mkdir.assert_called_with(parents=True, exist_ok=True)
+    sentence_to_speech(
+        "This is a test sentence.", mock_model, output_dir="/tmp/nonexistent/speech.wav"
+    )
+    mock_path("/tmp/nonexistent/speech.wav").parent.mkdir.assert_called_with(
+        parents=True, exist_ok=True
+    )
 
 
 @patch("audify.utils.TTS")
@@ -184,5 +192,7 @@ def test_sentence_to_speech_no_directory_creation(mock_path, mock_tts):
     mock_model = MagicMock()
     mock_path.return_value = MagicMock()
     mock_path.parent.is_dir.return_value = True
-    sentence_to_speech("This is a test sentence.", mock_model, output_dir="/tmp/speech.wav")
+    sentence_to_speech(
+        "This is a test sentence.", mock_model, output_dir="/tmp/speech.wav"
+    )
     mock_path("/tmp/speech.wav").parent.mkdir.assert_not_called()

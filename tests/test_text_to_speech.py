@@ -3,7 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from audify.text_to_speech import EpubSynthesizer, InspectSynthesizer, PdfSynthesizer
+from audify.text_to_speech import (EpubSynthesizer, InspectSynthesizer,
+                                   PdfSynthesizer)
 from audify.utils import sentence_to_speech
 
 
@@ -31,18 +32,6 @@ def test_sentence_to_speech(mock_path, mock_tts):
     mock_path.return_value = Path("/tmp/speech.wav")
     sentence_to_speech("This is a test sentence.", mock_model)
     mock_model.tts_to_file.assert_called()
-
-
-@pytest.mark.skip(
-    reason="The default model changed from tts to kokoro, "
-    "this test needs to be updated."
-)
-@patch("audify.text_to_speech.AudioSegment")
-def test_synthesize_chapter(MockAudioSegment, synthesizer):
-    MockAudioSegment.from_wav.return_value
-    synthesizer.synthesize_chapter("chapter1", 1)
-    synthesizer.model.tts_to_file.assert_called()
-    MockAudioSegment.from_wav.assert_called()
 
 
 def test_log_on_chapter_file(synthesizer):
