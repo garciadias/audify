@@ -109,7 +109,7 @@ def sentence_to_speech(
                 speaker_wav=speaker,
                 speed=1.15,
             )
-    except Exception as e:
+    except KeyError as e:
         error_message = "Error: " + str(e)
         if model.is_multi_lingual:
             model.tts_to_file(

@@ -25,18 +25,12 @@ class EpubReader(Reader):
         return bs4.BeautifulSoup(chapter, "html.parser").get_text()
 
     def get_chapter_title(self, chapter: str) -> str:
-        possible_titles = [
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "h6",
-        ]
+        possible_titles = [f"h{i}" for i in range(1, 7)]
+        possible_titles += ["title", "hgroup", "header"]
         soup = bs4.BeautifulSoup(chapter, "html.parser")
-        h1_tag = soup.find(possible_titles)
-        if h1_tag:
-            return h1_tag.text
+        title_tag = soup.find(possible_titles)
+        if title_tag:
+            return title_tag.text
         else:
             return "Unknown"
 
