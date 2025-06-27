@@ -3,8 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from audify.text_to_speech import (EpubSynthesizer, InspectSynthesizer,
-                                   PdfSynthesizer)
+from audify.text_to_speech import EpubSynthesizer, InspectSynthesizer, PdfSynthesizer
 from audify.utils import sentence_to_speech
 
 

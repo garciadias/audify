@@ -40,7 +40,7 @@ dev = [
 gpu = ["black>=25.1.0"]
 
 [tool.coverage.report]
-exclude_lines = ["if __name__ == .__main__.:"]
+exclude_lines = ["if __name__ == .__main__.:", "def test_", "ABC"]
 omit = ["*.venv/*"]
 
 [tool.pytest.ini_options]
