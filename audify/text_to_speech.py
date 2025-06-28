@@ -94,11 +94,11 @@ class BaseSynthesizer(Synthesizer):
         synthesis_language = self.translate or self.language
         if synthesis_language is None:
             logger.warning(
-                "Language not specified or detected, defaulting to 'en' for Kokoro."
+                "Language not specified or detected, defaulting to 'a' for Kokoro."
             )
-            lang_code = "en"
+            lang_code = "a"
         else:
-            lang_code = LANG_CODES.get(synthesis_language, "en")
+            lang_code = LANG_CODES.get(synthesis_language, "a")
 
         if not hasattr(self, "pipeline") or self.pipeline.lang_code != lang_code:
             logger.info(f"Initializing Kokoro pipeline for language: {lang_code}")
