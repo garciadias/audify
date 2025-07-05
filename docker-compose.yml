@@ -8,7 +8,7 @@ services:
       - ./data:/app/data
       - $HOME/Documents/books/:/app/input
       - $HOME/.cache/huggingface:/root/.cache/huggingface
-      - ./audify:/app/audify
+      - ./audify:/app/src/audify
       - $HOME/.config:/root/.config
       - /home/linuxbrew/.linuxbrew:/home/linuxbrew/.linuxbrew
       - ./app.py:/app/app.py

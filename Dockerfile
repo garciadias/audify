@@ -1,5 +1,5 @@
 # Use CUDA-enabled base image compatible with PyTorch 2.5.1
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -34,7 +34,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY pyproject.toml README.md uv.lock ./
 
 # Install Python dependencies using uv
-RUN uv sync --no-cache-dir
+RUN uv sync
 
 # Expose the port for the application
 EXPOSE 8501
