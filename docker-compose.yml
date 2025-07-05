@@ -11,6 +11,7 @@ services:
       - ./audify:/app/audify
       - $HOME/.config:/root/.config
       - /home/linuxbrew/.linuxbrew:/home/linuxbrew/.linuxbrew
+      - ./app.py:/app/app.py
     deploy:
       resources:
         reservations:

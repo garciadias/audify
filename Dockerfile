@@ -19,22 +19,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install --no-cache-dir uv
-
 # Create and set working directory
 WORKDIR /app
 
+RUN mkdir -p /app/src/audify
 # Copy project files
-COPY . /app/
+COPY ./audify/ /app/src/audify/
 
-# Create data directories
-RUN mkdir -p /app/data/output
+# Add uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install Python dependencies
-RUN uv venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-RUN uv sync
+
+# Sync the project into a new environment, using the frozen lockfile
+COPY pyproject.toml README.md uv.lock ./
+
+# Install Python dependencies using uv
+RUN uv sync --no-cache-dir
 
 # Expose the port for the application
 EXPOSE 8501
