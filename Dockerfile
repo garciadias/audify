@@ -35,3 +35,9 @@ RUN mkdir -p /app/data/output
 RUN uv venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 RUN uv sync
+
+# Expose the port for the application
+EXPOSE 8501
+
+# Set the entrypoint for the container
+CMD ["uv", "run", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
