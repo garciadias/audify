@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     build-essential \
     libsndfile1 \
+    espeak-ng \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*

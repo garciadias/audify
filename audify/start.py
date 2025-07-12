@@ -28,7 +28,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--model",
     "-m",
     type=str,
-    default="tts_models/multilingual/multi-dataset/xtts_v2",
+    default="kokoro",
     help="Path to the TTS model.",
 )
 @click.option(

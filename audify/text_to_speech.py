@@ -15,6 +15,7 @@ from kokoro import KPipeline
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
+from typing_extensions import Literal
 
 from audify.constants import LANG_CODES
 from audify.domain.interface import Synthesizer
@@ -36,7 +37,6 @@ logger = logging.getLogger(__name__)
 MODULE_PATH = Path(__file__).resolve().parents[1]
 DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-DEFAULT_ENGINE = "kokoro"
 OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Mute specific warnings
@@ -250,7 +250,7 @@ class EpubSynthesizer(BaseSynthesizer):
         model_name: str = DEFAULT_MODEL,
         translate: Optional[str] = None,
         save_text: bool = False,
-        engine: str = DEFAULT_ENGINE,
+        engine: Literal["kokoro", "tts_models"] = "kokoro",
         confirm: bool = True,
     ):
         self.reader = EpubReader(path)
@@ -639,7 +639,6 @@ class PdfSynthesizer(BaseSynthesizer):
 
     DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
     DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-    DEFAULT_ENGINE = "kokoro"
     DEFAULT_OUTPUT_DIR = MODULE_PATH / "data" / "output" / "articles"
 
     def __init__(
@@ -652,7 +651,7 @@ class PdfSynthesizer(BaseSynthesizer):
         file_name: Optional[str] = None,
         translate: Optional[str] = None,
         save_text: bool = False,
-        engine: str = DEFAULT_ENGINE,
+        engine: Literal["kokoro", "tts_models"] = "kokoro",
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():

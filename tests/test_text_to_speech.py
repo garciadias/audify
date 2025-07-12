@@ -38,6 +38,14 @@ def test_sentence_to_speech(mock_path, mock_tts):
     mock_model.tts_to_file.assert_called()
 
 
+@patch("audify.text_to_speech.AudioSegment")
+def test_synthesize_chapter(MockAudioSegment, synthesizer):
+    MockAudioSegment.from_wav.return_value
+    synthesizer.synthesize_chapter("chapter1", 1)
+    synthesizer.model
+    MockAudioSegment.from_wav.assert_called()
+
+
 def test_log_on_chapter_file(synthesizer):
     start = 0
     duration = 10.0
