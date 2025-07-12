@@ -20,6 +20,7 @@ dependencies = [
     "sentencepiece>=0.2.0",
     "transformers[torch]>=4.48.1",
     "tts[ja]>=0.22.0",
+    "streamlit>=1.33.0",
 ]
 
 [build-system]

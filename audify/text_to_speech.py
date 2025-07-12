@@ -22,11 +22,8 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (
-    break_text_into_sentences,
-    get_audio_duration,
-    get_file_name_title,
-)
+from audify.utils import (break_text_into_sentences, get_audio_duration,
+                          get_file_name_title)
 
 # Configure logging
 logging.basicConfig(
@@ -37,7 +34,8 @@ logger = logging.getLogger(__name__)
 MODULE_PATH = Path(__file__).resolve().parents[1]
 DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
+DEFAULT_ENGINE = "kokoro"
+OUTPUT_BASE_DIR = MODULE_PATH / "../" / "data" / "output"
 
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -238,6 +236,24 @@ class BaseSynthesizer(Synthesizer):
                     f"Error cleaning up temporary directory {self.tmp_dir}: {e}"
                 )
 
+    def stop(self) -> None:
+        """Stops the synthesis process if running."""
+        logger.info("Stopping synthesis process...")
+        if hasattr(self, "pipeline") and self.pipeline.is_running:
+            self.pipeline.stop()
+            logger.info("Synthesis process stopped.")
+        else:
+            logger.warning("No active synthesis process to stop.")
+
+    def get_terminal_output(self) -> str:
+        """Returns the terminal output of the synthesis process."""
+        log_path = Path(tempfile.gettempdir()) / "audify_stdout_suppress.log"
+        if log_path.exists():
+            with open(log_path, "r") as f:
+                return f.read()
+        else:
+            return "No terminal output available."
+
 
 class EpubSynthesizer(BaseSynthesizer):
     """Synthesizer for EPUB files, creating an M4B audiobook."""
@@ -257,6 +273,8 @@ class EpubSynthesizer(BaseSynthesizer):
         detected_language = self.reader.get_language()
         resolved_language = language or detected_language
         self.output_base_dir = Path(OUTPUT_BASE_DIR).resolve()
+        if not self.output_base_dir.exists():
+            self.output_base_dir.mkdir(parents=True, exist_ok=True)
         if not resolved_language:
             raise ValueError(
                 "Language must be provided or detectable from the EPUB metadata."
@@ -284,6 +302,9 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _setup_paths(self, file_name_base: str) -> None:
         """Sets up the necessary output paths."""
+        if not self.output_base_dir.exists():
+            logger.info(f"Creating output base directory: {self.output_base_dir}")
+            self.output_base_dir.mkdir(parents=True, exist_ok=True)
         self.audiobook_path = self.output_base_dir / file_name_base
         self.audiobook_path.mkdir(parents=True, exist_ok=True)
         self.list_of_contents_path = self.audiobook_path / "chapters.txt"
@@ -639,7 +660,8 @@ class PdfSynthesizer(BaseSynthesizer):
 
     DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
     DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-    DEFAULT_OUTPUT_DIR = MODULE_PATH / "data" / "output" / "articles"
+    DEFAULT_ENGINE = "kokoro"
+    DEFAULT_OUTPUT_DIR = MODULE_PATH / "../" / "data" / "output" / "articles"
 
     def __init__(
         self,
