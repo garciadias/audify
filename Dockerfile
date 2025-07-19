@@ -41,4 +41,4 @@ RUN uv sync
 EXPOSE 8501
 
 # Set the entrypoint for the container
-CMD ["uv", "run", "python", "-m", "uvicorn", "app:app", "--host=0.0.0.0", "--port=8501", "--reload"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host=0.0.0.0", "--port=8501", "--reload"]
