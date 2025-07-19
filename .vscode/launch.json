@@ -11,7 +11,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/audify/start.py",
             "console": "integratedTerminal",
-            "args": "/home/rd24/Documents/books/new/Adam.epub"
+            "args": [
+                "data/ebooks/tmp.epub",
+                "-l",
+                "pt",
+            ],
         }
     ]
 }

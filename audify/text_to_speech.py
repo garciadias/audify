@@ -22,8 +22,11 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (break_text_into_sentences, get_audio_duration,
-                          get_file_name_title)
+from audify.utils import (
+    break_text_into_sentences,
+    get_audio_duration,
+    get_file_name_title,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -82,10 +85,11 @@ class BaseSynthesizer(Synthesizer):
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {self.device}")
-        logger.info(f"Loading TTS model: {model_name}...")
-        self.model = TTS(model_name=model_name)
-        self.model.to(self.device)
-        logger.info("TTS model loaded.")
+        if engine == "tts_models":
+            logger.info(f"Loading TTS model: {model_name}...")
+            self.model = TTS(model_name=model_name)
+            self.model.to(self.device)
+            logger.info("TTS model loaded.")
 
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
         """Synthesize sentences using the Kokoro engine."""
