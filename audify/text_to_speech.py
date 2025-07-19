@@ -22,8 +22,11 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (break_text_into_sentences, get_audio_duration,
-                          get_file_name_title)
+from audify.utils import (
+    break_text_into_sentences,
+    get_audio_duration,
+    get_file_name_title,
+)
 
 # Configure logging
 logging.basicConfig(

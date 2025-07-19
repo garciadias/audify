@@ -20,7 +20,12 @@ dependencies = [
     "sentencepiece>=0.2.0",
     "transformers[torch]>=4.48.1",
     "tts[ja]>=0.22.0",
-    "streamlit>=1.33.0",
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "sqlmodel>=0.0.14",
+    "python-multipart>=0.0.6",
+    "celery>=5.3.4",
+    "redis>=5.0.1",
 ]
 
 [build-system]
