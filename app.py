@@ -76,12 +76,23 @@ if engine == "tts_models":
         "You can specify the model name in the input below."
     )
 
-    # Model Selection
-    model = st.sidebar.text_input(
-        "XTTS Model",
-        value="tts_models/multilingual/multi-dataset/xtts_v2",
-        help="Path or name of the XTTS model to use.",
-    )
+    # Model Selection - only show for tts_models engine
+    if engine == "tts_models":
+        model_options = [
+            "tts_models/multilingual/multi-dataset/xtts_v2",
+            "tts_models/en/ljspeech/tacotron2-DDC",
+            "tts_models/en/ljspeech/glow-tts",
+            "tts_models/en/ljspeech/speedy-speech",
+        ]
+        
+        model = st.sidebar.selectbox(
+            "XTTS Model",
+            options=model_options,
+            index=0,
+            help="Select a pre-trained TTS model. XTTS_v2 is recommended.",
+        )
+    else:
+        model = None  # Not used for Kokoro engine
 
 # Other options
 save_text = st.sidebar.checkbox(

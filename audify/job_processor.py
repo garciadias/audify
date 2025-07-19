@@ -37,6 +37,10 @@ def process_file_job(
     file_path = job.file_path
     file_extension = get_file_extension(str(file_path))
 
+    # Create output directory for this job
+    output_dir = Path("data/output") / job.file_name.split('.')[0]
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     logger.info(f"Processing {file_extension} file: {job.file_name}")
 
     # Create temporary directory for this job
@@ -62,15 +66,24 @@ def process_file_job(
                     cancellation_check=cancellation_check,
                 )
             elif file_extension == ".pdf":
+                # Set the appropriate model name based on engine
+                if job.engine == "tts_models":
+                    model_name = job.model if job.model else (
+                        "tts_models/multilingual/multi-dataset/xtts_v2"
+                    )
+                else:
+                    model_name = "kokoro"  # Placeholder, not actually used by Kokoro
+
                 synthesizer = EnhancedPdfSynthesizer(
                     path=str(temp_file_path),
                     language=job.language,
-                    model_name=job.model if job.engine == "tts_models" else None,
+                    model_name=model_name,
                     translate=job.translate_language,
                     save_text=job.save_text,
                     engine=job.engine,
                     progress_callback=progress_callback,
                     cancellation_check=cancellation_check,
+                    output_dir=output_dir,
                 )
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}. "

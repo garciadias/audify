@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Audify Multi-File Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1e1e1e;
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .upload-area {
+            border: 2px dashed #4CAF50;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .job-card {
+            border: 1px solid #333;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #2d2d2d;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.3s;
+        }
+
+        .status-pending {
+            color: #FFA500;
+        }
+
+        .status-running {
+            color: #2196F3;
+        }
+
+        .status-completed {
+            color: #4CAF50;
+        }
+
+        .status-failed {
+            color: #f44336;
+        }
+
+        .status-cancelled {
+            color: #9E9E9E;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🎵 Audify Multi-File Processor</h1>
+
+        <div class="upload-area">
+            <h3>Upload Files for Processing</h3>
+            <input type="file" id="fileInput" multiple accept=".pdf,.epub">
+            <br><br>
+            <label>Language:
+                <select id="languageSelect">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="fr">French</option>
+                </select>
+            </label>
+            <br><br>
+            <button class="btn-primary" onclick="uploadFiles()">Start Processing</button>
+            <button class="btn-danger" onclick="cancelAllJobs()">Cancel All Jobs</button>
+        </div>
+
+        <div id="jobsContainer">
+            <h3>Processing Jobs</h3>
+            <div id="jobsList"></div>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let jobs = {};
+
+        // Connect to WebSocket for real-time updates
+        function connectWebSocket() {
+            socket = new WebSocket('ws://localhost:8000/ws');
+
+            socket.onopen = function (event) {
+                console.log('Connected to WebSocket');
+                loadJobs(); // Load existing jobs when connected
+            };
+
+            socket.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'job_update') {
+                    updateJobDisplay(data.job);
+                }
+            };
+
+            socket.onclose = function (event) {
+                console.log('Disconnected from WebSocket');
+                setTimeout(connectWebSocket, 3000); // Reconnect after 3 seconds
+            };
+        }
+
+        // Load existing jobs (survives page refresh!)
+        async function loadJobs() {
+            try {
+                const response = await fetch('/jobs');
+                const jobsData = await response.json();
+                jobs = {};
+                jobsData.forEach(job => {
+                    jobs[job.id] = job;
+                    updateJobDisplay(job);
+                });
+            } catch (error) {
+                console.error('Error loading jobs:', error);
+            }
+        }
+
+        // Upload files
+        async function uploadFiles() {
+            const fileInput = document.getElementById('fileInput');
+            const language = document.getElementById('languageSelect').value;
+
+            if (fileInput.files.length === 0) {
+                alert('Please select files to upload');
+                return;
+            }
+
+            for (let file of fileInput.files) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('language', language);
+
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        console.log(`Uploaded ${file.name}`);
+                    } else {
+                        console.error(`Failed to upload ${file.name}`);
+                    }
+                } catch (error) {
+                    console.error('Upload error:', error);
+                }
+            }
+
+            fileInput.value = ''; // Clear the input
+        }
+
+        // Cancel all jobs
+        async function cancelAllJobs() {
+            try {
+                await fetch('/jobs/cancel-all', { method: 'POST' });
+            } catch (error) {
+                console.error('Error cancelling jobs:', error);
+            }
+        }
+
+        // Cancel specific job
+        async function cancelJob(jobId) {
+            try {
+                await fetch(`/jobs/${jobId}/cancel`, { method: 'POST' });
+            } catch (error) {
+                console.error('Error cancelling job:', error);
+            }
+        }
+
+        // Update job display in real-time
+        function updateJobDisplay(job) {
+            jobs[job.id] = job;
+
+            const jobsList = document.getElementById('jobsList');
+            let jobElement = document.getElementById(`job-${job.id}`);
+
+            if (!jobElement) {
+                jobElement = document.createElement('div');
+                jobElement.id = `job-${job.id}`;
+                jobElement.className = 'job-card';
+                jobsList.appendChild(jobElement);
+            }
+
+            const progress = job.progress || { percentage: 0, current_step: 'Waiting...', total_steps: 0 };
+            const progressPercent = Math.round(progress.percentage || 0);
+
+            jobElement.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h4>${job.file_name}</h4>
+                        <p class="status-${job.status.toLowerCase()}">${job.status}</p>
+                        <p>${progress.current_step || 'Waiting...'}</p>
+                        ${job.error ? `<p style="color: #f44336;">Error: ${job.error}</p>` : ''}
+                    </div>
+                    <div>
+                        ${job.status === 'RUNNING' || job.status === 'PENDING' ?
+                    `<button class="btn-danger" onclick="cancelJob('${job.id}')">Cancel</button>` : ''}
+                    </div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${progressPercent}%"></div>
+                </div>
+                <p>${progressPercent}% complete</p>
+            `;
+        }
+
+        // Initialize when page loads
+        connectWebSocket();
+    </script>
+</body>
+
+</html>

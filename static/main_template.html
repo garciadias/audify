@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audify Multi-File Processor</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            margin: 0; background: #1a1a1a; color: #e0e0e0; 
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .upload-section { 
+            background: #2d2d2d; padding: 30px; border-radius: 10px; 
+            margin-bottom: 30px; text-align: center;
+        }
+        .upload-area { 
+            border: 2px dashed #4CAF50; padding: 30px; border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover { border-color: #66BB6A; background: rgba(76, 175, 80, 0.05); }
+        .jobs-section { background: #2d2d2d; padding: 20px; border-radius: 10px; }
+        .job-card { 
+            background: #3d3d3d; margin: 15px 0; padding: 20px; 
+            border-radius: 8px; border-left: 4px solid #4CAF50;
+        }
+        .job-header { display: flex; justify-content: space-between; align-items: center; }
+        .job-info h4 { margin: 0 0 5px 0; color: #ffffff; }
+        .job-status { padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; }
+        .status-PENDING { background: #FF9800; color: white; }
+        .status-RUNNING { background: #2196F3; color: white; }
+        .status-COMPLETED { background: #4CAF50; color: white; }
+        .status-FAILED { background: #f44336; color: white; }
+        .status-CANCELLED { background: #9E9E9E; color: white; }
+        .progress-container { margin: 15px 0; }
+        .progress-bar { 
+            width: 100%; height: 8px; background: #555; 
+            border-radius: 4px; overflow: hidden;
+        }
+        .progress-fill { 
+            height: 100%; background: linear-gradient(90deg, #4CAF50, #66BB6A); 
+            transition: width 0.3s ease; border-radius: 4px;
+        }
+        .controls { margin: 20px 0; }
+        button { 
+            padding: 12px 24px; margin: 5px; border: none; border-radius: 6px; 
+            cursor: pointer; font-weight: 500; transition: all 0.2s;
+        }
+        .btn-primary { background: #2196F3; color: white; }
+        .btn-primary:hover { background: #1976D2; }
+        .btn-success { background: #4CAF50; color: white; }
+        .btn-success:hover { background: #388E3C; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-danger:hover { background: #d32f2f; }
+        .btn-small { padding: 6px 12px; font-size: 0.85em; }
+        input[type="file"] { margin: 10px 0; }
+        select { padding: 8px; border-radius: 4px; border: 1px solid #555; background: #3d3d3d; color: white; }
+        .stats { display: flex; gap: 20px; margin: 15px 0; }
+        .stat-item { text-align: center; }
+        .stat-number { font-size: 1.5em; font-weight: bold; color: #4CAF50; }
+        .stat-label { font-size: 0.9em; color: #ccc; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Audify Multi-File Processor</h1>
+            <p>Convert PDF and EPUB files to speech with real-time progress tracking</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area">
+                <h3>📁 Upload Files for Processing</h3>
+                <form hx-post="/upload" hx-encoding="multipart/form-data" hx-target="#jobs-list" hx-swap="beforeend">
+                    <input type="file" name="files" multiple accept=".pdf,.epub" required>
+                    <br><br>
+                    <label>🌍 Language: 
+                        <select name="language">
+                            <option value="en">English</option>
+                            <option value="es">Spanish</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                        </select>
+                    </label>
+                    <br><br>
+                    <button type="submit" class="btn-success">🚀 Start Processing</button>
+                </form>
+            </div>
+
+            <div class="controls">
+                <button class="btn-danger" hx-post="/cancel-all" hx-target="#jobs-list" hx-swap="innerHTML">
+                    ⏹️ Cancel All Jobs
+                </button>
+                <button class="btn-primary" hx-get="/jobs" hx-target="#jobs-list" hx-swap="innerHTML">
+                    🔄 Refresh Jobs
+                </button>
+            </div>
+        </div>
+
+        <div class="jobs-section">
+            <h3>📊 Processing Jobs</h3>
+            <div id="job-stats" hx-get="/stats" hx-trigger="every 2s"></div>
+            <div id="jobs-list" hx-get="/jobs" hx-trigger="load, every 3s"></div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh jobs every few seconds using HTMX
+        // HTMX handles all the dynamic updates automatically!
+        console.log('🎵 Audify Multi-File Processor Ready!');
+
+        // Show upload feedback
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.xhr.status === 200 && evt.detail.requestConfig.verb === 'post') {
+                if (evt.detail.requestConfig.path === '/upload') {
+                    alert('✅ Files uploaded and processing started!');
+                    // Clear the form
+                    evt.target.reset();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

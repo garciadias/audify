@@ -22,8 +22,11 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (break_text_into_sentences, get_audio_duration,
-                          get_file_name_title)
+from audify.utils import (
+    break_text_into_sentences,
+    get_audio_duration,
+    get_file_name_title,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -82,10 +85,16 @@ class BaseSynthesizer(Synthesizer):
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {self.device}")
-        logger.info(f"Loading TTS model: {model_name}...")
-        self.model = TTS(model_name=model_name)
-        self.model.to(self.device)
-        logger.info("TTS model loaded.")
+
+        # Only load TTS model for tts_models engine, not for kokoro
+        if engine == "tts_models":
+            logger.info(f"Loading TTS model: {model_name}...")
+            self.model = TTS(model_name=model_name)
+            self.model.to(self.device)
+            logger.info("TTS model loaded.")
+        else:
+            logger.info(f"Using {engine} engine - no TTS model needed.")
+            self.model = None
 
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
         """Synthesize sentences using the Kokoro engine."""
@@ -154,6 +163,9 @@ class BaseSynthesizer(Synthesizer):
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
         """Synthesize sentences using the TTS library models."""
+        if self.model is None:
+            raise RuntimeError("TTS model not loaded. Cannot use tts_models engine.")
+
         combined_audio = AudioSegment.empty()
         synthesis_lang = self.translate or self.language
         temp_speech_path = self.tmp_dir / "speech_segment.wav"

@@ -82,7 +82,7 @@ class Job:
     def cancel(self):
         """Cancel the job."""
         self.cancelled.set()
-        if self.status == JobStatus.RUNNING:
+        if self.status in [JobStatus.RUNNING, JobStatus.PENDING]:
             self.status = JobStatus.CANCELLED
 
 

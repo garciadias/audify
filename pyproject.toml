@@ -21,6 +21,7 @@ dependencies = [
     "transformers[torch]>=4.48.1",
     "tts[ja]>=0.22.0",
     "streamlit>=1.33.0",
+    "fastapi>=0.116.1",
 ]
 
 [build-system]

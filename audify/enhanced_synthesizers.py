@@ -127,10 +127,12 @@ class EnhancedBaseSynthesizer(BaseSynthesizer):
             if not sentence.strip():
                 continue
 
+            current_operation = f"{operation_name} sentence \
+                {processed_sentences + 1}/{total_sentences}"
             self._update_progress(
                 current_step=i + 1,
                 total_steps=len(sentences),
-                current_operation=f"{operation_name} sentence {processed_sentences + 1}/{total_sentences}"
+                current_operation=current_operation
             )
 
             try:
@@ -391,10 +393,16 @@ class EnhancedPdfSynthesizer(EnhancedBaseSynthesizer):
         engine: Literal["kokoro", "tts_models"] = "kokoro",
         progress_callback: Optional[Callable] = None,
         cancellation_check: Optional[Callable] = None,
+        output_dir: Optional[str | Path] = None,
     ):
+        # Set default output directory if not provided
+        if output_dir is None:
+            output_dir = Path("data/output")
+
         # Initialize the original PDF synthesizer to get the setup
         self._original = OriginalPdfSynthesizer(
-            path, language, speaker, model_name, translate, save_text, engine
+            path, language, speaker, model_name, output_dir, translate=translate,
+            save_text=save_text, engine=engine
         )
 
         # Copy necessary attributes
