@@ -5,13 +5,11 @@ services:
       dockerfile: Dockerfile
     image: audify
     volumes:
-      - ./data:/app/data
+      - ./:/app/
       - $HOME/Documents/books/:/app/input
       - $HOME/.cache/huggingface:/root/.cache/huggingface
-      - ./audify:/app/src/audify
       - $HOME/.config:/root/.config
       - /home/linuxbrew/.linuxbrew:/home/linuxbrew/.linuxbrew
-      - ./main.py:/app/main.py
     ports:
       - "8501:8501"
     deploy:
