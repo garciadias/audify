@@ -378,8 +378,160 @@ class EpubSynthesizer(BaseSynthesizer):
         self._synthesize_sentences(sentences, chapter_wav_path)
         return self._convert_to_mp3(chapter_wav_path)
 
+    def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
+        """Calculate total duration of MP3 files in seconds."""
+        total_duration = 0.0
+        for mp3_file in mp3_files:
+            try:
+                duration = get_audio_duration(str(mp3_file))
+                total_duration += duration
+            except Exception as e:
+                logger.warning(f"Could not get duration for {mp3_file}: {e}")
+        return total_duration
+
+    def _split_chapters_by_duration(
+        self, chapter_mp3_files: List[Path], max_hours: float = 15.0
+    ) -> List[List[Path]]:
+        """Split chapter MP3 files into chunks with maximum duration in hours."""
+        max_duration_seconds = max_hours * 3600  # Convert hours to seconds
+        chunks = []
+        current_chunk = []
+        current_duration = 0.0
+
+        for mp3_file in chapter_mp3_files:
+            try:
+                file_duration = get_audio_duration(str(mp3_file))
+
+                # If adding this file would exceed the limit, start a new chunk
+                if (current_chunk and
+                    (current_duration + file_duration) > max_duration_seconds):
+                    chunks.append(current_chunk)
+                    current_chunk = [mp3_file]
+                    current_duration = file_duration
+                else:
+                    current_chunk.append(mp3_file)
+                    current_duration += file_duration
+
+            except Exception as e:
+                logger.warning(
+                    f"Could not get duration for {mp3_file}: {e}, "
+                    f"adding to current chunk anyway"
+                )
+                current_chunk.append(mp3_file)
+
+        # Add the last chunk if it has files
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks
+
+    def _create_temp_m4b_for_chunk(
+        self, chunk_files: List[Path], chunk_index: int
+    ) -> Path:
+        """Create a temporary M4B file for a specific chunk of chapters."""
+        chunk_temp_path = (
+            self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.tmp.m4b"
+        )
+
+        if chunk_temp_path.exists():
+            logger.info(
+                f"Temporary M4B for chunk {chunk_index + 1} already exists: "
+                f"{chunk_temp_path}"
+            )
+            return chunk_temp_path
+
+        logger.info(
+            f"Combining {len(chunk_files)} chapter MP3s for chunk "
+            f"{chunk_index + 1}..."
+        )
+        combined_audio = AudioSegment.empty()
+
+        for mp3_file in tqdm.tqdm(
+            chunk_files, desc=f"Combining Chunk {chunk_index + 1}", unit="file"
+        ):
+            try:
+                audio = AudioSegment.from_mp3(mp3_file)
+                combined_audio += audio
+            except CouldntDecodeError:
+                logger.error(f"Could not decode chapter file: {mp3_file}, skipping.")
+            except Exception as e:
+                logger.error(
+                    f"Error processing chapter file {mp3_file}: {e}, skipping.",
+                    exc_info=True,
+                )
+
+        if len(combined_audio) == 0:
+            logger.error(f"Combined audio for chunk {chunk_index + 1} is empty.")
+            return chunk_temp_path
+
+        logger.info(f"Exporting combined audio to temporary M4B: {chunk_temp_path}")
+        try:
+            combined_audio.export(
+                chunk_temp_path, format="mp4", codec="aac", bitrate="64k"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to export temporary M4B file for chunk "
+                f"{chunk_index + 1}: {e}",
+                exc_info=True
+            )
+            chunk_temp_path.unlink(missing_ok=True)
+            raise
+
+        return chunk_temp_path
+
+    def _create_metadata_for_chunk(
+        self, chunk_files: List[Path], chunk_index: int
+    ) -> Path:
+        """Create a metadata file for a specific chunk."""
+        chunk_metadata_path = (
+            self.audiobook_path / f"chapters_part{chunk_index + 1}.txt"
+        )
+
+        logger.info(
+            f"Creating metadata file for chunk {chunk_index + 1}: "
+            f"{chunk_metadata_path}"
+        )
+        try:
+            with open(chunk_metadata_path, "w") as f:
+                f.write(";FFMETADATA1\n")
+                f.write("major_brand=M4A\n")
+                f.write("minor_version=512\n")
+                f.write("compatible_brands=M4A isis2\n")
+                f.write("encoder=Lavf61.7.100\n")
+
+                current_start_time_ms = 0
+                for mp3_file in chunk_files:
+                    try:
+                        # Extract chapter number from filename
+                        chapter_num = int(mp3_file.stem.split('_')[1])
+                        duration = get_audio_duration(str(mp3_file))
+
+                        if duration > 0:
+                            end_time_ms = current_start_time_ms + int(duration * 1000)
+                            f.write("[CHAPTER]\n")
+                            f.write("TIMEBASE=1/1000\n")
+                            f.write(f"START={current_start_time_ms}\n")
+                            f.write(f"END={end_time_ms}\n")
+                            f.write(f"title=Chapter {chapter_num}\n")
+                            current_start_time_ms = end_time_ms
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not process metadata for {mp3_file}: {e}"
+                        )
+
+        except IOError as e:
+            logger.error(
+                f"Failed to create metadata file for chunk {chunk_index + 1}: {e}",
+                exc_info=True
+            )
+            raise
+
+        return chunk_metadata_path
+
     def create_m4b(self) -> None:
-        """Combines chapter MP3s and metadata into a final M4B file."""
+        """Combines chapter MP3s and metadata into M4B file(s),
+        splitting if necessary."""
         logger.info("Starting M4B creation process...")
         chapter_mp3_files = sorted(self.audiobook_path.glob("chapter_*.mp3"))
 
@@ -387,6 +539,23 @@ class EpubSynthesizer(BaseSynthesizer):
             logger.error("No chapter MP3 files found to create M4B.")
             return
 
+        # Calculate total duration and check if we need to split
+        total_duration_hours = self._calculate_total_duration(chapter_mp3_files) / 3600
+        logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
+
+        # If duration is less than 15 hours, create a single M4B
+        if total_duration_hours <= 15.0:
+            logger.info("Creating single M4B file (duration <= 15 hours)")
+            self._create_single_m4b(chapter_mp3_files)
+        else:
+            logger.info(
+                f"Duration ({total_duration_hours:.2f}h) exceeds 15 hours, "
+                f"splitting into multiple M4B files"
+            )
+            self._create_multiple_m4bs(chapter_mp3_files)
+
+    def _create_single_m4b(self, chapter_mp3_files: List[Path]) -> None:
+        """Create a single M4B file from all chapters."""
         if not self.temp_m4b_path.exists():
             logger.info(f"Combining {len(chapter_mp3_files)} chapter MP3s...")
             combined_audio = AudioSegment.empty()
@@ -471,6 +640,90 @@ class EpubSynthesizer(BaseSynthesizer):
                         f" {cover_temp_file.name}: {e_clean}"
                     )
 
+    def _create_multiple_m4bs(self, chapter_mp3_files: List[Path]) -> None:
+        """Create multiple M4B files by splitting chapters into chunks."""
+        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=15.0)
+        logger.info(f"Split into {len(chunks)} chunks")
+
+        for chunk_index, chunk_files in enumerate(chunks):
+            chunk_duration = self._calculate_total_duration(chunk_files) / 3600
+            logger.info(f"Processing chunk {chunk_index + 1}/{len(chunks)} "
+                       f"({len(chunk_files)} chapters, {chunk_duration:.2f}h)")
+
+            # Create temporary M4B for this chunk
+            chunk_temp_path = self._create_temp_m4b_for_chunk(
+                chunk_files, chunk_index
+            )
+
+            if not chunk_temp_path.exists():
+                logger.error(
+                    f"Failed to create temporary M4B for chunk "
+                    f"{chunk_index + 1}"
+                )
+                continue
+
+            # Create metadata for this chunk
+            chunk_metadata_path = self._create_metadata_for_chunk(
+                chunk_files, chunk_index
+            )
+
+            # Create final M4B file for this chunk
+            chunk_final_path = (
+                self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.m4b"
+            )
+
+            logger.info(
+                f"Creating final M4B for chunk {chunk_index + 1}: "
+                f"{chunk_final_path}"
+            )
+            ffmpeg_command, cover_temp_file = self._build_ffmpeg_command_for_chunk(
+                chunk_temp_path, chunk_metadata_path, chunk_final_path
+            )
+
+            try:
+                logger.debug(
+                    f"Running FFmpeg command for chunk {chunk_index + 1}: "
+                    f"{' '.join(ffmpeg_command)}"
+                )
+                result = subprocess.run(
+                    ffmpeg_command, check=True, capture_output=True, text=True
+                )
+                logger.info(
+                    f"FFmpeg process completed successfully for chunk "
+                    f"{chunk_index + 1}."
+                )
+                logger.debug(f"FFmpeg stdout:\n{result.stdout}")
+                logger.debug(f"FFmpeg stderr:\n{result.stderr}")
+
+                # Clean up temporary files for this chunk
+                chunk_temp_path.unlink(missing_ok=True)
+                chunk_metadata_path.unlink(missing_ok=True)
+
+            except subprocess.CalledProcessError as e:
+                logger.error(
+                    f"FFmpeg command failed for chunk {chunk_index + 1} "
+                    f"with exit code {e.returncode}"
+                )
+                logger.error(f"FFmpeg stdout:\n{e.stdout}")
+                logger.error(f"FFmpeg stderr:\n{e.stderr}")
+                logger.error(f"M4B creation failed for chunk {chunk_index + 1}.")
+            except FileNotFoundError:
+                logger.error(
+                    "FFmpeg command not found. Please ensure FFmpeg is installed and in"
+                    " your system's PATH."
+                )
+            finally:
+                if cover_temp_file:
+                    try:
+                        cover_temp_file.close()
+                        Path(cover_temp_file.name).unlink(missing_ok=True)
+                    except Exception as e_clean:
+                        logger.warning(
+                            f"Error cleaning up temporary cover file: {e_clean}"
+                        )
+
+        logger.info(f"Created {len(chunks)} M4B files for long audiobook")
+
     def _build_ffmpeg_command(
         self, chapter_files: List[Path]
     ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
@@ -517,6 +770,57 @@ class EpubSynthesizer(BaseSynthesizer):
             "mp4",
             "-y",
             str(self.final_m4b_path),
+        ]
+
+        return command, cover_temp_file
+
+    def _build_ffmpeg_command_for_chunk(
+        self,
+        chunk_temp_path: Path,
+        chunk_metadata_path: Path,
+        chunk_final_path: Path
+    ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
+        """Builds the FFmpeg command for M4B creation of a specific chunk."""
+        cover_args = []
+        cover_temp_file = None
+        if isinstance(self.cover_image_path, Path) and self.cover_image_path.exists():
+            cover_temp_file = tempfile.NamedTemporaryFile(
+                suffix=self.cover_image_path.suffix, delete=False
+            )
+            shutil.copy(self.cover_image_path, cover_temp_file.name)
+            cover_args = [
+                "-i",
+                cover_temp_file.name,
+                "-map",
+                "0:a",
+                "-map",
+                "2:v",
+                "-disposition:v",
+                "attached_pic",
+                "-c:v",
+                "copy",
+            ]
+        else:
+            cover_args = [
+                "-map",
+                "0:a",
+            ]
+
+        command = [
+            "ffmpeg",
+            "-i",
+            str(chunk_temp_path),
+            "-i",
+            str(chunk_metadata_path),
+            *cover_args,
+            "-map_metadata",
+            "1",
+            "-c:a",
+            "copy",
+            "-f",
+            "mp4",
+            "-y",
+            str(chunk_final_path),
         ]
 
         return command, cover_temp_file
