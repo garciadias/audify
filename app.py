@@ -4,7 +4,7 @@ from pathlib import Path
 import streamlit as st
 
 from audify.constants import DEFAULT_LANGUAGE_LIST
-from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
+from audify.text_to_speech import BaseSynthesizer, EpubSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
 
 st.set_page_config(page_title="Audify", page_icon="🎙️")
@@ -53,7 +53,8 @@ engine = st.sidebar.selectbox(
 if engine == "tts_models":
     # User needs to agree with terms and conditions of the xtts models
     st.sidebar.markdown(
-        "By using the `tts_models` engine, you agree to the terms and conditions of the XTTS models."
+        "By using the `tts_models` engine, you agree to the terms and conditions of the"
+        " XTTS models."
     )
     st.sidebar.markdown(
         "You can find the terms and conditions [here](https://coqui.ai/cpml)."
@@ -91,10 +92,9 @@ if uploaded_file is not None:
 
         if st.button("Synthesize Audiobook"):
             with st.spinner("Synthesizing... This may take a while."):
-
                 try:
                     file_extension = get_file_extension(str(temp_file_path))
-                    synthesizer = None
+                    synthesizer: BaseSynthesizer | None = None
 
                     if file_extension == ".epub":
                         synthesizer = EpubSynthesizer(
@@ -120,13 +120,21 @@ if uploaded_file is not None:
                         # Show terminal output in the app
                         output_path = synthesizer.synthesize()
                     else:
-                        st.error("Unsupported file format. Please upload a .pdf or .epub file.")
+                        st.error(
+                            "Unsupported file format. Please upload "
+                            "a .pdf or .epub file."
+                        )
 
                     # file exists check
                     if not output_path.exists():
-                        st.error("Output file not found. Please check the synthesis process.")
+                        st.error(
+                            "Output file not found. Please check the synthesis process."
+                        )
                     else:
-                        st.success(f"Synthesis complete! Synthesis output path: `{output_path}`")
+                        st.success(
+                            "Synthesis complete! Synthesis output path:  "
+                            "`{output_path}`"
+                        )
                     # Provide a download link
                     with open(str(output_path), "rb") as f:
                         st.download_button(

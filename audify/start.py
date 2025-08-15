@@ -113,7 +113,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=engine,
+                engine=engine,  # type: ignore
                 confirm=not y,
             )
             synthesizer.synthesize()
@@ -128,7 +128,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=engine,
+                engine=engine,  # type: ignore
             )
             synthesizer.synthesize()
         else:
