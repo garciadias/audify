@@ -66,7 +66,7 @@ class BaseSynthesizer(Synthesizer):
         path: str | Path,
         language: Optional[str],
         speaker: str,
-        model_name: str,
+        model_name: str | None,
         translate: Optional[str],
         save_text: bool,
         engine: str,
@@ -267,7 +267,7 @@ class EpubSynthesizer(BaseSynthesizer):
         path: str | Path,
         language: Optional[str] = None,
         speaker: str = DEFAULT_SPEAKER,
-        model_name: str = DEFAULT_MODEL,
+        model_name: str | None = DEFAULT_MODEL,
         translate: Optional[str] = None,
         save_text: bool = False,
         engine: Literal["kokoro", "tts_models"] = "kokoro",
@@ -395,7 +395,7 @@ class EpubSynthesizer(BaseSynthesizer):
         """Split chapter MP3 files into chunks with maximum duration in hours."""
         max_duration_seconds = max_hours * 3600  # Convert hours to seconds
         chunks = []
-        current_chunk = []
+        current_chunk: list[Path] = []
         current_duration = 0.0
 
         for mp3_file in chapter_mp3_files:
@@ -403,8 +403,10 @@ class EpubSynthesizer(BaseSynthesizer):
                 file_duration = get_audio_duration(str(mp3_file))
 
                 # If adding this file would exceed the limit, start a new chunk
-                if (current_chunk and
-                    (current_duration + file_duration) > max_duration_seconds):
+                if (
+                    current_chunk
+                    and (current_duration + file_duration) > max_duration_seconds
+                ):
                     chunks.append(current_chunk)
                     current_chunk = [mp3_file]
                     current_duration = file_duration
@@ -441,8 +443,7 @@ class EpubSynthesizer(BaseSynthesizer):
             return chunk_temp_path
 
         logger.info(
-            f"Combining {len(chunk_files)} chapter MP3s for chunk "
-            f"{chunk_index + 1}..."
+            f"Combining {len(chunk_files)} chapter MP3s for chunk {chunk_index + 1}..."
         )
         combined_audio = AudioSegment.empty()
 
@@ -471,9 +472,8 @@ class EpubSynthesizer(BaseSynthesizer):
             )
         except Exception as e:
             logger.error(
-                f"Failed to export temporary M4B file for chunk "
-                f"{chunk_index + 1}: {e}",
-                exc_info=True
+                f"Failed to export temporary M4B file for chunk {chunk_index + 1}: {e}",
+                exc_info=True,
             )
             chunk_temp_path.unlink(missing_ok=True)
             raise
@@ -489,8 +489,7 @@ class EpubSynthesizer(BaseSynthesizer):
         )
 
         logger.info(
-            f"Creating metadata file for chunk {chunk_index + 1}: "
-            f"{chunk_metadata_path}"
+            f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
         )
         try:
             with open(chunk_metadata_path, "w") as f:
@@ -504,7 +503,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 for mp3_file in chunk_files:
                     try:
                         # Extract chapter number from filename
-                        chapter_num = int(mp3_file.stem.split('_')[1])
+                        chapter_num = int(mp3_file.stem.split("_")[1])
                         duration = get_audio_duration(str(mp3_file))
 
                         if duration > 0:
@@ -523,7 +522,7 @@ class EpubSynthesizer(BaseSynthesizer):
         except IOError as e:
             logger.error(
                 f"Failed to create metadata file for chunk {chunk_index + 1}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             raise
 
@@ -647,18 +646,17 @@ class EpubSynthesizer(BaseSynthesizer):
 
         for chunk_index, chunk_files in enumerate(chunks):
             chunk_duration = self._calculate_total_duration(chunk_files) / 3600
-            logger.info(f"Processing chunk {chunk_index + 1}/{len(chunks)} "
-                       f"({len(chunk_files)} chapters, {chunk_duration:.2f}h)")
+            logger.info(
+                f"Processing chunk {chunk_index + 1}/{len(chunks)} "
+                f"({len(chunk_files)} chapters, {chunk_duration:.2f}h)"
+            )
 
             # Create temporary M4B for this chunk
-            chunk_temp_path = self._create_temp_m4b_for_chunk(
-                chunk_files, chunk_index
-            )
+            chunk_temp_path = self._create_temp_m4b_for_chunk(chunk_files, chunk_index)
 
             if not chunk_temp_path.exists():
                 logger.error(
-                    f"Failed to create temporary M4B for chunk "
-                    f"{chunk_index + 1}"
+                    f"Failed to create temporary M4B for chunk {chunk_index + 1}"
                 )
                 continue
 
@@ -673,8 +671,7 @@ class EpubSynthesizer(BaseSynthesizer):
             )
 
             logger.info(
-                f"Creating final M4B for chunk {chunk_index + 1}: "
-                f"{chunk_final_path}"
+                f"Creating final M4B for chunk {chunk_index + 1}: {chunk_final_path}"
             )
             ffmpeg_command, cover_temp_file = self._build_ffmpeg_command_for_chunk(
                 chunk_temp_path, chunk_metadata_path, chunk_final_path
@@ -775,10 +772,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return command, cover_temp_file
 
     def _build_ffmpeg_command_for_chunk(
-        self,
-        chunk_temp_path: Path,
-        chunk_metadata_path: Path,
-        chunk_final_path: Path
+        self, chunk_temp_path: Path, chunk_metadata_path: Path, chunk_final_path: Path
     ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
         """Builds the FFmpeg command for M4B creation of a specific chunk."""
         cover_args = []
@@ -975,7 +969,7 @@ class PdfSynthesizer(BaseSynthesizer):
         self,
         pdf_path: str | Path,
         language: str = "en",
-        model_name: str = DEFAULT_MODEL,
+        model_name: str | None = DEFAULT_MODEL,
         speaker: str = DEFAULT_SPEAKER,
         output_dir: str | Path = DEFAULT_OUTPUT_DIR,
         file_name: Optional[str] = None,

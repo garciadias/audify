@@ -2,6 +2,7 @@
 """
 Test script to verify M4B splitting functionality
 """
+
 from pathlib import Path
 
 from audify.text_to_speech import EpubSynthesizer
@@ -10,7 +11,6 @@ from audify.text_to_speech import EpubSynthesizer
 def test_duration_calculation():
     """Test the duration calculation and splitting logic"""
     # Create a mock synthesizer instance to test methods
-    mock_path = Path("./test.epub")
     synthesizer = EpubSynthesizer.__new__(EpubSynthesizer)
 
     # Mock some attributes needed for the methods
