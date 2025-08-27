@@ -333,7 +333,7 @@ class EpubSynthesizer(BaseSynthesizer):
     def synthesize_chapter(self, chapter_content: str, chapter_number: int) -> Path:
         """Synthesizes a single chapter into an MP3 file."""
         logger.info(f"Synthesizing Chapter {chapter_number}...")
-        chapter_wav_path = self.audiobook_path / f"chapter_{chapter_number}.wav"
+        chapter_wav_path = self.audiobook_path / f"chapter_{chapter_number:03d}.wav"
         chapter_mp3_path = chapter_wav_path.with_suffix(".mp3")
 
         if chapter_mp3_path.exists():
@@ -854,7 +854,7 @@ class EpubSynthesizer(BaseSynthesizer):
             else f"Chapter {chapter_index}"
         )
 
-        chapter_mp3_path = self.audiobook_path / f"chapter_{chapter_index}.mp3"
+        chapter_mp3_path = self.audiobook_path / f"chapter_{chapter_index:03d}.mp3"
         duration_s = 0.0
 
         MIN_CHAPTER_LENGTH = 100

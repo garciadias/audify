@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 
 import streamlit as st
+from typing_extensions import Literal
 
 from audify.constants import DEFAULT_LANGUAGE_LIST
 from audify.text_to_speech import BaseSynthesizer, EpubSynthesizer, PdfSynthesizer
@@ -42,7 +43,7 @@ if translate_option:
     )
 
 # TTS Engine
-engine = st.sidebar.selectbox(
+engine: Literal["kokoro", "tts_models"] = st.sidebar.selectbox(
     "TTS Engine",
     options=["kokoro", "tts_models"],
     index=0,
@@ -71,7 +72,7 @@ if engine == "tts_models":
         help="Path or name of the XTTS model to use.",
     )
 else:
-    model = None
+    model = ""
 
 
 # Other options

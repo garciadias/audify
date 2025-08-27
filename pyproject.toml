@@ -3,12 +3,12 @@ name = "audify"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9,<=3.12"
+requires-python = ">=3.10,<=3.13"
 dependencies = [
     "bs4>=0.0.2",
     "click>=8.1.8",
     "ebooklib>=0.18",
-    "kokoro>=0.2.2",
+    "kokoro>=0.9.4",
     "markdown>=3.7",
     "misaki[zh]>=0.8.4",
     "ollama>=0.4.7",
@@ -21,6 +21,7 @@ dependencies = [
     "transformers[torch]>=4.48.1",
     "tts[ja]>=0.22.0",
     "streamlit>=1.33.0",
+    "soundfile>=0.13.1",
 ]
 
 [build-system]
@@ -73,7 +74,7 @@ ignore_missing_imports = true
 
 [tool.taskipy.tasks]
 test = "uv run pytest --cov=audify --cov-report=term-missing"
-format = "black .; isort .; ruff check . --fix"
+format = "ruff check . --fix"
 pre_test = "task format && mypy ."
 post_test = "uv run coverage html"
 run = "uv run python -m audify.start"
