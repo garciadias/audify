@@ -332,13 +332,13 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def synthesize_chapter(self, chapter_content: str, chapter_number: int) -> Path:
         """Synthesizes a single chapter into an MP3 file."""
-        logger.info(f"Synthesizing Chapter {chapter_number}...")
+        logger.info(f"Synthesizing Chapter {chapter_number:03d}...")
         chapter_wav_path = self.audiobook_path / f"chapter_{chapter_number:03d}.wav"
         chapter_mp3_path = chapter_wav_path.with_suffix(".mp3")
 
         if chapter_mp3_path.exists():
             logger.info(
-                f"Chapter {chapter_number} MP3 already exists, skipping synthesis."
+                f"Chapter {chapter_number:03d} MP3 already exists, skipping synthesis."
             )
             return chapter_mp3_path
 
@@ -346,13 +346,15 @@ class EpubSynthesizer(BaseSynthesizer):
         sentences = break_text_into_sentences(chapter_txt)
 
         if not sentences:
-            logger.warning(f"Chapter {chapter_number} contains no text to synthesize.")
+            logger.warning(
+                f"Chapter {chapter_number:03d} contains no text to synthesize."
+            )
             return chapter_mp3_path
 
         if self.translate and self.language:
             logger.info(
                 f"Translating {len(sentences)} sentences for Chapter"
-                f" {chapter_number}..."
+                f" {chapter_number:03d}..."
             )
             try:
                 sentences = [
@@ -361,13 +363,14 @@ class EpubSynthesizer(BaseSynthesizer):
                     )
                     for sentence in tqdm.tqdm(
                         sentences,
-                        desc=f"Translating Ch. {chapter_number}",
+                        desc=f"Translating Ch. {chapter_number:03d}",
                         unit="sentence",
                     )
                 ]
             except Exception as e:
                 logger.error(
-                    f"Error translating chapter {chapter_number}: {e}", exc_info=True
+                    f"Error translating chapter {chapter_number:03d}: {e}",
+                    exc_info=True,
                 )
                 logger.warning(
                     "Proceeding with original text for synthesis due to translation"
