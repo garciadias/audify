@@ -1,14 +1,19 @@
 import logging
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import requests
 import tqdm
+from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
 
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.text_to_speech import BaseSynthesizer
-from audify.utils import clean_text, get_file_name_title
+from audify.utils import clean_text, get_audio_duration, get_file_name_title
 
 # Configure logging
 logging.basicConfig(
@@ -397,7 +402,219 @@ class PodcastCreator(BaseSynthesizer):
             f"Podcast series creation complete. "
             f"Created {len(episode_paths)} episodes."
         )
+
+        # Create M4B audiobook from episodes if we have episodes
+        if episode_paths:
+            self.create_m4b()
+
         return episode_paths
+
+    def _initialize_metadata_file(self) -> None:
+        """Writes the initial header to the FFmpeg metadata file."""
+        self.metadata_path = self.podcast_path / "chapters.txt"
+        logger.info(f"Initializing metadata file: {self.metadata_path}")
+        try:
+            with open(self.metadata_path, "w") as f:
+                f.write(";FFMETADATA1\n")
+                f.write("major_brand=M4A\n")
+                f.write("minor_version=512\n")
+                f.write("compatible_brands=M4A isis2\n")
+                f.write("encoder=Lavf61.7.100\n")
+        except IOError as e:
+            logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
+            raise
+
+    def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
+        """Calculate total duration of MP3 files in seconds."""
+        total_duration = 0.0
+        for mp3_file in mp3_files:
+            try:
+                duration = get_audio_duration(str(mp3_file))
+                total_duration += duration
+            except Exception as e:
+                logger.warning(f"Could not get duration for {mp3_file}: {e}")
+        return total_duration
+
+    def _log_episode_metadata(
+        self, episode_number: int, start_time_ms: int, duration_s: float
+    ) -> int:
+        """Appends episode metadata to the FFmpeg metadata file."""
+        end_time_ms = start_time_ms + int(duration_s * 1000)
+        title = f"Episode {episode_number}"
+
+        logger.debug(
+            f"Logging metadata for '{title}': Start={start_time_ms}, "
+            f"End={end_time_ms}, Duration={duration_s:.2f}s"
+        )
+        try:
+            with open(self.metadata_path, "a") as f:
+                f.write("[CHAPTER]\n")
+                f.write("TIMEBASE=1/1000\n")
+                f.write(f"START={start_time_ms}\n")
+                f.write(f"END={end_time_ms}\n")
+                f.write(f"title={title}\n")
+            return end_time_ms
+        except IOError as e:
+            logger.error(
+                f"Failed to write episode metadata for '{title}': {e}",
+                exc_info=True
+            )
+            return start_time_ms
+
+    def _build_ffmpeg_command(self) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
+        """Builds the FFmpeg command for M4B creation."""
+        cover_args = []
+        cover_temp_file = None
+
+        if (hasattr(self, 'cover_image_path') and
+            isinstance(self.cover_image_path, Path) and
+            self.cover_image_path.exists()):
+            cover_temp_file = tempfile.NamedTemporaryFile(
+                suffix=self.cover_image_path.suffix, delete=False
+            )
+            shutil.copy(self.cover_image_path, cover_temp_file.name)
+            logger.info(f"Using cover image: {self.cover_image_path}")
+            cover_args = [
+                "-i", cover_temp_file.name,
+                "-map", "0:a",
+                "-map", "2:v",
+                "-disposition:v", "attached_pic",
+                "-c:v", "copy",
+            ]
+        else:
+            logger.warning("No cover image found or provided.")
+            cover_args = ["-map", "0:a"]
+
+        command = [
+            "ffmpeg",
+            "-i", str(self.temp_m4b_path),
+            "-i", str(self.metadata_path),
+            *cover_args,
+            "-map_metadata", "1",
+            "-c:a", "copy",
+            "-f", "mp4",
+            "-y", str(self.final_m4b_path),
+        ]
+
+        return command, cover_temp_file
+
+    def create_m4b(self) -> None:
+        """Combines podcast episodes into M4B audiobook file."""
+        logger.info("Starting M4B creation process for podcast...")
+
+        # Get all episode MP3 files
+        episode_mp3_files = sorted(self.episodes_path.glob("episode_*.mp3"))
+
+        if not episode_mp3_files:
+            logger.error("No episode MP3 files found to create M4B.")
+            return
+
+        # Set up paths for M4B creation
+        self.temp_m4b_path = self.podcast_path / f"{self.file_name}.tmp.m4b"
+        self.final_m4b_path = self.podcast_path / f"{self.file_name}.m4b"
+
+        # Initialize metadata file
+        self._initialize_metadata_file()
+
+        # Calculate total duration
+        total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
+        logger.info(f"Total podcast duration: {total_duration_hours:.2f} hours")
+
+        # Create single M4B (podcasts are typically shorter than 15 hours)
+        logger.info("Creating M4B audiobook from podcast episodes...")
+        self._create_single_m4b(episode_mp3_files)
+
+    def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
+        """Create a single M4B file from all podcast episodes."""
+        if not self.temp_m4b_path.exists():
+            logger.info(f"Combining {len(episode_mp3_files)} episode MP3s...")
+            combined_audio = AudioSegment.empty()
+            current_start_time_ms = 0
+
+            for i, mp3_file in enumerate(tqdm.tqdm(
+                episode_mp3_files, desc="Combining Episodes", unit="file"
+            )):
+                try:
+                    audio = AudioSegment.from_mp3(mp3_file)
+                    combined_audio += audio
+
+                    # Log metadata for this episode
+                    duration_s = len(audio) / 1000.0
+                    episode_number = i + 1
+                    current_start_time_ms = self._log_episode_metadata(
+                        episode_number, current_start_time_ms, duration_s
+                    )
+
+                except CouldntDecodeError:
+                    logger.error(f"Could not decode episode file: {mp3_file}, skipping.")
+                except Exception as e:
+                    logger.error(
+                        f"Error processing episode file {mp3_file}: {e}, skipping.",
+                        exc_info=True,
+                    )
+
+            if len(combined_audio) == 0:
+                logger.error("Combined audio is empty. Cannot create M4B.")
+                return
+
+            logger.info(f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}")
+            try:
+                combined_audio.export(
+                    self.temp_m4b_path, format="mp4", codec="aac", bitrate="64k"
+                )
+            except Exception as e:
+                logger.error(f"Failed to export temporary M4B file: {e}", exc_info=True)
+                self.temp_m4b_path.unlink(missing_ok=True)
+                raise
+        else:
+            logger.info(
+                f"Temporary M4B file already exists: {self.temp_m4b_path}. "
+                "Skipping combination."
+            )
+
+        # Add metadata and cover image using FFmpeg
+        logger.info("Adding metadata and cover image using FFmpeg...")
+        ffmpeg_command, cover_temp_file = self._build_ffmpeg_command()
+
+        try:
+            logger.debug(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
+            result = subprocess.run(
+                ffmpeg_command, check=True, capture_output=True, text=True
+            )
+            logger.info("FFmpeg process completed successfully.")
+            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
+            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
+
+            logger.info(f"Cleaning up temporary file: {self.temp_m4b_path}")
+            self.temp_m4b_path.unlink(missing_ok=True)
+
+            logger.info(f"M4B audiobook created: {self.final_m4b_path}")
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg command failed with exit code {e.returncode}")
+            logger.error(f"FFmpeg stdout:\n{e.stdout}")
+            logger.error(f"FFmpeg stderr:\n{e.stderr}")
+            logger.error(
+                "M4B creation failed. The temporary M4B file and episode files are "
+                "preserved for inspection."
+            )
+            raise
+        except FileNotFoundError:
+            logger.error(
+                "FFmpeg command not found. Please ensure FFmpeg is installed and in "
+                "your system's PATH."
+            )
+            raise
+        finally:
+            if cover_temp_file:
+                try:
+                    cover_temp_file.close()
+                    Path(cover_temp_file.name).unlink(missing_ok=True)
+                    logger.debug(f"Cleaned up temporary cover file: {cover_temp_file.name}")
+                except Exception as e_clean:
+                    logger.warning(
+                        f"Error cleaning up temporary cover file {cover_temp_file.name}: {e_clean}"
+                    )
 
     def synthesize(self) -> Path:
         """Main synthesis method - creates the podcast series."""
@@ -457,7 +674,12 @@ class PodcastPdfCreator(PodcastCreator):
 
             if episode_path.exists():
                 logger.info(f"Successfully created podcast episode: {episode_path}")
-                return [episode_path]
+                episode_paths = [episode_path]
+
+                # Create M4B audiobook from the episode
+                self.create_m4b()
+
+                return episode_paths
             else:
                 logger.warning("Failed to create podcast episode")
                 return []
