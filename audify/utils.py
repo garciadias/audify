@@ -25,6 +25,8 @@ def clean_text(text: str) -> str:
     cleaned = re.sub(r" +", " ", cleaned)
     # Remove multiple punctuation marks
     cleaned = re.sub(r"([.,!?;:¿¡-])+", r"\1", cleaned)
+    # remove * and _ characters
+    cleaned = cleaned.replace("*", "").replace("_", "")
     return cleaned
 
 
