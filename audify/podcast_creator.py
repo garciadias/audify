@@ -17,48 +17,69 @@ from audify.utils import clean_text, get_audio_duration, get_file_name_title
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-OUTPUT_BASE_DIR = MODULE_PATH / "../" / "data" / "output"
+OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
-PODCAST_INSTRUCTIONS = """Create an extensive explanation of the content \
-shared bellow. All text you generate will be directly read by an AI tool; \
-therefore, only text that should be converted to audio should appear in your \
-response. Follow a lecture style of speech.
+PODCAST_INSTRUCTIONS = """Transform the following content into a comprehensive, detailed
+podcast script that thoroughly explores every aspect of the material.
+This will be converted directly to speech, so write in a natural, conversational tone
+suitable for audio consumption.
 
-Instructions:
-1. Read this content carefully and identify the main concepts and background \
-knowledge necessary to understand the developments presented.
+CRITICAL REQUIREMENTS:
+- Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
+- Aim for a script that will produce at least 15 minutes of spoken content per chapter
+- Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
+- Use a engaging lecture style as if explaining to an intelligent but curious audience
 
-2. Create an engaging introduction that:
-   - Introduces the topic and its relevance
-   - Provides substantial explanations of key concepts needed to understand \
-   the material
-   - Make it as long as the main content
+STRUCTURE YOUR RESPONSE AS FOLLOWS:
 
-3. Present the main content with detailed explanations:
-   - Highlight what is new or significant in the content
-   - Provide in-depth analysis and context
-   - Break down complex ideas into digestible segments
-   - Use conversational language suitable for audio consumption
-   - This should be the most substantial section
+1. COMPREHENSIVE INTRODUCTION (30-40% of total content):
+   - Begin with an engaging hook that draws listeners in
+   - Provide extensive background context and historical perspective
+   - Explain ALL prerequisite knowledge needed to understand the material
+   - Define technical terms, concepts, and theories in detail
+   - Discuss the broader significance and relevance of the topic
+   - Set up the context for why this content matters today
 
-4. Conclude by:
-   - Summarizing the key takeaways
-   - Highlighting the results or implications
-   - Suggesting areas for further exploration
+2. DETAILED MAIN CONTENT EXPLORATION (50-60% of total content):
+   - Go through the material systematically and thoroughly
+   - Elaborate on EVERY important point, concept, and finding
+   - Provide multiple examples and analogies to clarify complex ideas
+   - Discuss the methodology, reasoning, or approach behind key points
+   - Analyze the implications and connections between different concepts
+   - Include relevant real-world applications and examples
+   - Discuss any controversies, debates, or alternative perspectives
+   - Use transition phrases to maintain flow between topics
 
-Remember: Only include text that should be spoken aloud.
-Avoid stage directions, notes, or non-spoken content.
-Do not include lists of references, citations, or URLs.
-Do not over-summarize the content; provide detailed explanations.
+3. COMPREHENSIVE CONCLUSION (10-15% of total content):
+   - Synthesize all the key insights and takeaways
+   - Discuss the broader implications and future directions
+   - Connect the content to related fields or current events
+   - Highlight what makes this content particularly significant or innovative
+   - Suggest questions for further reflection
 
-Content:
---------
+IMPORTANT GUIDELINES:
+- Write as if you're an expert lecturer who is passionate about the subject
+- Include phrases like "Now, let's dive deeper into..." or "This is particularly
+  fascinating because..."
+- Provide context for why each point matters
+- Use concrete examples and analogies whenever possible
+- Maintain an enthusiastic but informative tone throughout
+- NO references, citations, bibliographies, or URL mentions
+- NO stage directions or meta-commentary about the podcast format
+- NO descriptions like "music fading" or anything unrelated to spoken content
+- Do not mention this is a podcast and do not address the listener directly
+- ONLY include content that should be spoken aloud
+
+The goal is to create rich, comprehensive audio content that thoroughly educates and
+engages listeners with detailed explanations of every aspect of the source material.
+
+Content to transform:
+--------------------
 """
 
 
@@ -66,9 +87,7 @@ class LLMClient:
     """Client for interacting with local LLM API."""
 
     def __init__(
-        self,
-        base_url: str = "http://localhost:11434",
-        model: str = "llama3.2"
+        self, base_url: str = "http://localhost:11434", model: str = "llama3.2"
     ):
         self.base_url = base_url
         self.model = model
@@ -84,15 +103,15 @@ class LLMClient:
             "prompt": prompt,
             "stream": False,
             "options": {
-                "num_ctx": 4 * 4096,
-                # "temperature": 0.9,
-                # "top_p": 0.8,
-                # "repeat_penalty": 1.1,
+                "num_ctx": 8 * 4096,  # Increased context window
+                "temperature": 0.8,  # Added creativity
+                "top_p": 0.9,  # Broader token selection
+                "repeat_penalty": 1.05,  # Slight penalty for repetition
                 "seed": 428798,
-                # "top_k": 50,
-                # "min_p": 0.05,
-                "num_predict": -1,
-            }
+                "top_k": 60,  # Wider token selection
+                "min_p": 0.02,  # Lower minimum probability
+                "num_predict": 4096,  # Encourage longer responses
+            },
         }
 
         try:
@@ -100,7 +119,7 @@ class LLMClient:
             response = self.session.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
 
@@ -116,8 +135,7 @@ class LLMClient:
 
         except requests.exceptions.ConnectionError:
             logger.error(
-                f"Could not connect to LLM at {self.base_url}. "
-                "Is Ollama running?"
+                f"Could not connect to LLM at {self.base_url}. " "Is Ollama running?"
             )
             return (
                 "Error: Could not connect to local LLM server. "
@@ -150,11 +168,11 @@ class PodcastCreator(BaseSynthesizer):
     ):
         # Initialize file reader based on extension
         file_path = Path(path)
-        if file_path.suffix.lower() == '.epub':
+        if file_path.suffix.lower() == ".epub":
             self.reader = EpubReader(path)
             detected_language = self.reader.get_language()
             self.title = self.reader.title
-        elif file_path.suffix.lower() == '.pdf':
+        elif file_path.suffix.lower() == ".pdf":
             self.reader = PdfReader(path)
             detected_language = "en"  # PDF reader might not detect language
             self.title = file_path.stem
@@ -184,12 +202,11 @@ class PodcastCreator(BaseSynthesizer):
 
         # Initialize parent class
         super().__init__(
-            path, resolved_language, speaker, model_name, translate, save_text,
-            engine
+            path, resolved_language, speaker, model_name, translate, save_text, engine
         )
 
         # Setup cover image if available
-        if hasattr(self.reader, 'get_cover_image'):
+        if hasattr(self.reader, "get_cover_image"):
             self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
                 self.podcast_path
             )
@@ -211,6 +228,54 @@ class PodcastCreator(BaseSynthesizer):
 
         logger.info(f"Podcast output directory set to: {self.podcast_path}")
 
+    def _clean_text_for_podcast(self, text: str) -> str:
+        """
+        Clean text by removing references, citations, and other non-content elements.
+        """
+        import re
+
+        # Remove common reference patterns
+        # Remove numbered references like [1], [2], etc.
+        text = re.sub(r"\[\d+\]", "", text)
+
+        # Remove references with author-year format like (Smith, 2020)
+        text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
+
+        # Remove standalone citations like "Smith et al. (2020)"
+        text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
+
+        # Remove DOI patterns
+        text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
+
+        # Remove URL patterns
+        text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
+        text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
+
+        # Remove common reference section headers and content
+        # Match "References", "Bibliography", "Works Cited" and similar
+        reference_patterns = [
+            r"(?i)references?\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+            r"(?i)bibliography\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+            r"(?i)works?\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+            r"(?i)literature\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+        ]
+
+        for pattern in reference_patterns:
+            text = re.sub(pattern, "", text, flags=re.DOTALL)
+
+        # Remove common academic formatting
+        # Remove figure/table references like "Figure 1", "Table 2", etc.
+        text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
+
+        # Remove page numbers and similar formatting
+        text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
+
+        # Clean up multiple spaces and normalize whitespace
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+
+        return text.strip()
+
     def generate_podcast_script(self, chapter_content: str, chapter_number: int) -> str:
         """Generate podcast script for a single chapter."""
         logger.info(f"Generating podcast script for Chapter {chapter_number}...")
@@ -223,11 +288,11 @@ class PodcastCreator(BaseSynthesizer):
             logger.info(
                 f"Script for Episode {chapter_number} already exists, loading..."
             )
-            with open(script_path, 'r', encoding='utf-8') as f:
+            with open(script_path, "r", encoding="utf-8") as f:
                 return f.read()
 
         # Extract text from chapter
-        if hasattr(self.reader, 'extract_text'):
+        if hasattr(self.reader, "extract_text"):
             chapter_text = self.reader.extract_text(chapter_content)
         else:
             chapter_text = chapter_content
@@ -236,21 +301,26 @@ class PodcastCreator(BaseSynthesizer):
             logger.warning(f"No text found in Chapter {chapter_number}")
             return "This chapter contains no readable text content."
 
+        # Clean text to remove references and citations
+        cleaned_text = self._clean_text_for_podcast(chapter_text)
+        logger.info(
+            f"Cleaned text for Episode {chapter_number}:"
+            " removed references and citations"
+        )
+
         # Generate podcast script using LLM
-        podcast_script = self.llm_client.generate_podcast_script(chapter_text)
+        podcast_script = self.llm_client.generate_podcast_script(cleaned_text)
 
         # Save the script if requested
         if self.save_text:
             try:
-                with open(script_path, 'w', encoding='utf-8') as f:
+                with open(script_path, "w", encoding="utf-8") as f:
                     f.write(f"# Podcast Episode {chapter_number}\n")
                     f.write(f"# Generated from: {self.title}\n\n")
                     f.write(podcast_script)
                 logger.info(f"Saved podcast script to: {script_path}")
             except IOError as e:
-                logger.error(
-                    f"Failed to save script for Episode {chapter_number}: {e}"
-                )
+                logger.error(f"Failed to save script for Episode {chapter_number}: {e}")
 
         return podcast_script
 
@@ -267,9 +337,7 @@ class PodcastCreator(BaseSynthesizer):
             return episode_mp3_path
 
         if not podcast_script.strip():
-            logger.warning(
-                f"Episode {episode_number} contains no text to synthesize."
-            )
+            logger.warning(f"Episode {episode_number} contains no text to synthesize.")
             return episode_mp3_path
 
         # Break script into sentences for better TTS processing
@@ -289,6 +357,7 @@ class PodcastCreator(BaseSynthesizer):
             )
             try:
                 from audify.translate import translate_sentence
+
                 sentences = [
                     translate_sentence(
                         sentence, src_lang=self.language, tgt_lang=self.translate
@@ -345,7 +414,7 @@ class PodcastCreator(BaseSynthesizer):
         logger.info("Starting podcast series creation...")
 
         # Get chapters based on file type
-        if hasattr(self.reader, 'get_chapters'):
+        if hasattr(self.reader, "get_chapters"):
             chapters = self.reader.get_chapters()
         else:
             # For PDF, treat the whole document as one episode
@@ -360,7 +429,7 @@ class PodcastCreator(BaseSynthesizer):
 
         if self.confirm:
             response = input(f"Create {num_chapters} podcast episodes? (y/N): ")
-            if response.lower() not in ['y', 'yes']:
+            if response.lower() not in ["y", "yes"]:
                 logger.info("Podcast creation cancelled by user.")
                 return []
 
@@ -378,9 +447,7 @@ class PodcastCreator(BaseSynthesizer):
                 )
 
                 # Synthesize episode
-                episode_path = self.synthesize_episode(
-                    podcast_script, episode_number
-                )
+                episode_path = self.synthesize_episode(podcast_script, episode_number)
 
                 if episode_path.exists():
                     episode_paths.append(episode_path)
@@ -456,30 +523,38 @@ class PodcastCreator(BaseSynthesizer):
             return end_time_ms
         except IOError as e:
             logger.error(
-                f"Failed to write episode metadata for '{title}': {e}",
-                exc_info=True
+                f"Failed to write episode metadata for '{title}': {e}", exc_info=True
             )
             return start_time_ms
 
-    def _build_ffmpeg_command(self) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
+    def _build_ffmpeg_command(
+        self,
+    ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
         """Builds the FFmpeg command for M4B creation."""
         cover_args = []
         cover_temp_file = None
 
-        if (hasattr(self, 'cover_image_path') and
-            isinstance(self.cover_image_path, Path) and
-            self.cover_image_path.exists()):
+        if (
+            hasattr(self, "cover_image_path")
+            and isinstance(self.cover_image_path, Path)
+            and self.cover_image_path.exists()
+        ):
             cover_temp_file = tempfile.NamedTemporaryFile(
                 suffix=self.cover_image_path.suffix, delete=False
             )
             shutil.copy(self.cover_image_path, cover_temp_file.name)
             logger.info(f"Using cover image: {self.cover_image_path}")
             cover_args = [
-                "-i", cover_temp_file.name,
-                "-map", "0:a",
-                "-map", "2:v",
-                "-disposition:v", "attached_pic",
-                "-c:v", "copy",
+                "-i",
+                cover_temp_file.name,
+                "-map",
+                "0:a",
+                "-map",
+                "2:v",
+                "-disposition:v",
+                "attached_pic",
+                "-c:v",
+                "copy",
             ]
         else:
             logger.warning("No cover image found or provided.")
@@ -487,13 +562,19 @@ class PodcastCreator(BaseSynthesizer):
 
         command = [
             "ffmpeg",
-            "-i", str(self.temp_m4b_path),
-            "-i", str(self.metadata_path),
+            "-i",
+            str(self.temp_m4b_path),
+            "-i",
+            str(self.metadata_path),
             *cover_args,
-            "-map_metadata", "1",
-            "-c:a", "copy",
-            "-f", "mp4",
-            "-y", str(self.final_m4b_path),
+            "-map_metadata",
+            "1",
+            "-c:a",
+            "copy",
+            "-f",
+            "mp4",
+            "-y",
+            str(self.final_m4b_path),
         ]
 
         return command, cover_temp_file
@@ -531,9 +612,9 @@ class PodcastCreator(BaseSynthesizer):
             combined_audio = AudioSegment.empty()
             current_start_time_ms = 0
 
-            for i, mp3_file in enumerate(tqdm.tqdm(
-                episode_mp3_files, desc="Combining Episodes", unit="file"
-            )):
+            for i, mp3_file in enumerate(
+                tqdm.tqdm(episode_mp3_files, desc="Combining Episodes", unit="file")
+            ):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)
                     combined_audio += audio
@@ -546,7 +627,9 @@ class PodcastCreator(BaseSynthesizer):
                     )
 
                 except CouldntDecodeError:
-                    logger.error(f"Could not decode episode file: {mp3_file}, skipping.")
+                    logger.error(
+                        f"Could not decode episode file: {mp3_file}, skipping."
+                    )
                 except Exception as e:
                     logger.error(
                         f"Error processing episode file {mp3_file}: {e}, skipping.",
@@ -557,7 +640,9 @@ class PodcastCreator(BaseSynthesizer):
                 logger.error("Combined audio is empty. Cannot create M4B.")
                 return
 
-            logger.info(f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}")
+            logger.info(
+                f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}"
+            )
             try:
                 combined_audio.export(
                     self.temp_m4b_path, format="mp4", codec="aac", bitrate="64k"
@@ -610,10 +695,13 @@ class PodcastCreator(BaseSynthesizer):
                 try:
                     cover_temp_file.close()
                     Path(cover_temp_file.name).unlink(missing_ok=True)
-                    logger.debug(f"Cleaned up temporary cover file: {cover_temp_file.name}")
+                    logger.debug(
+                        f"Cleaned up temporary cover file:" f"{cover_temp_file.name}"
+                    )
                 except Exception as e_clean:
                     logger.warning(
-                        f"Error cleaning up temporary cover file {cover_temp_file.name}: {e_clean}"
+                        f"Error cleaning up temporary cover file"
+                        f"{cover_temp_file.name}: {e_clean}"
                     )
 
     def synthesize(self) -> Path:
@@ -622,9 +710,7 @@ class PodcastCreator(BaseSynthesizer):
         episode_paths = self.create_podcast_series()
 
         if episode_paths:
-            logger.info(
-                f"Podcast series complete with {len(episode_paths)} episodes"
-            )
+            logger.info(f"Podcast series complete with {len(episode_paths)} episodes")
             return self.podcast_path
         else:
             logger.error("No podcast episodes were created successfully")
@@ -636,7 +722,7 @@ class PodcastEpubCreator(PodcastCreator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not hasattr(self.reader, 'get_chapters'):
+        if not hasattr(self.reader, "get_chapters"):
             raise ValueError("PodcastEpubCreator requires an EPUB reader")
 
 
@@ -645,7 +731,7 @@ class PodcastPdfCreator(PodcastCreator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not hasattr(self.reader, 'get_cleaned_text'):
+        if not hasattr(self.reader, "get_cleaned_text"):
             raise ValueError("PodcastPdfCreator requires a PDF reader")
 
     def create_podcast_series(self) -> List[Path]:
@@ -661,7 +747,7 @@ class PodcastPdfCreator(PodcastCreator):
 
         if self.confirm:
             response = input("Create podcast episode from PDF? (y/N): ")
-            if response.lower() not in ['y', 'yes']:
+            if response.lower() not in ["y", "yes"]:
                 logger.info("Podcast creation cancelled by user.")
                 return []
 

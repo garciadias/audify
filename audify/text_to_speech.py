@@ -38,7 +38,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 DEFAULT_ENGINE = "kokoro"
-OUTPUT_BASE_DIR = MODULE_PATH / "../" / "data" / "output"
+OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
