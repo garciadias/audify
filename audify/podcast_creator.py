@@ -13,7 +13,7 @@ from pydub.exceptions import CouldntDecodeError
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.text_to_speech import BaseSynthesizer
-from audify.utils import clean_text, get_audio_duration, get_file_name_title
+from audify.utils import clean_text, get_audio_duration
 
 # Configure logging
 logging.basicConfig(
@@ -25,13 +25,13 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 PODCAST_INSTRUCTIONS = """Transform the following content into a comprehensive, detailed
-podcast script that thoroughly explores every aspect of the material.
+talk that thoroughly explores every aspect of the material.
 This will be converted directly to speech, so write in a natural, conversational tone
 suitable for audio consumption.
 
 CRITICAL REQUIREMENTS:
 - Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
-- Aim for a script that will produce at least 15 minutes of spoken content per chapter
+- Aim for at least the same amount of text as the original content
 - Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
 - Use a engaging lecture style as if explaining to an intelligent but curious audience
 
@@ -72,7 +72,9 @@ IMPORTANT GUIDELINES:
 - NO references, citations, bibliographies, or URL mentions
 - NO stage directions or meta-commentary about the podcast format
 - NO descriptions like "music fading" or anything unrelated to spoken content
-- Do not mention this is a podcast and do not address the listener directly
+- DO NOT mention the podcast
+- NO music
+- NO directions for sound effects or podcast recording
 - ONLY include content that should be spoken aloud
 
 The goal is to create rich, comprehensive audio content that thoroughly educates and
@@ -192,7 +194,8 @@ class PodcastCreator(BaseSynthesizer):
 
         # Create podcast-specific title
         self.podcast_title = f"Podcast - {self.title}"
-        self.file_name = get_file_name_title(self.podcast_title)
+        # Use pdf filename as the podcast filename
+        self.file_name = Path(file_path.stem)
         self._setup_paths(self.file_name)
 
         # Initialize LLM client
@@ -318,6 +321,12 @@ class PodcastCreator(BaseSynthesizer):
                     f.write(f"# Podcast Episode {chapter_number}\n")
                     f.write(f"# Generated from: {self.title}\n\n")
                     f.write(podcast_script)
+                with open(
+                    self.scripts_path / f"original_text_{chapter_number:03d}.txt",
+                    "w",
+                    encoding="utf-8",
+                ) as f:
+                    f.write(chapter_text)
                 logger.info(f"Saved podcast script to: {script_path}")
             except IOError as e:
                 logger.error(f"Failed to save script for Episode {chapter_number}: {e}")
@@ -761,10 +770,6 @@ class PodcastPdfCreator(PodcastCreator):
             if episode_path.exists():
                 logger.info(f"Successfully created podcast episode: {episode_path}")
                 episode_paths = [episode_path]
-
-                # Create M4B audiobook from the episode
-                self.create_m4b()
-
                 return episode_paths
             else:
                 logger.warning("Failed to create podcast episode")
