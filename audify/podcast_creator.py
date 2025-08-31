@@ -5,8 +5,8 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import requests
 import tqdm
+from langchain_ollama import OllamaLLM
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
@@ -86,69 +86,59 @@ Content to transform:
 
 
 class LLMClient:
-    """Client for interacting with local LLM API."""
+    """Client for interacting with local LLM using LangChain."""
 
     def __init__(
         self, base_url: str = "http://localhost:11434", model: str = "llama3.2"
     ):
         self.base_url = base_url
         self.model = model
-        self.session = requests.Session()
-        self.session.timeout = 300  # 5 minute timeout
+
+        # Initialize LangChain Ollama client
+        self.llm = OllamaLLM(
+            model=self.model,
+            base_url=self.base_url,
+            timeout=300,  # 5 minute timeout
+            # LangChain Ollama specific parameters
+            num_ctx=8 * 4096,  # Increased context window
+            temperature=0.8,   # Added creativity
+            top_p=0.9,         # Broader token selection
+            repeat_penalty=1.05,  # Slight penalty for repetition
+            seed=428798,
+            top_k=60,          # Wider token selection
+            min_p=0.02,        # Lower minimum probability
+            num_predict=4096,  # Encourage longer responses
+        )
 
     def generate_podcast_script(self, chapter_text: str) -> str:
-        """Generate podcast script from chapter text using local LLM."""
+        """Generate podcast script from chapter text using LangChain."""
         prompt = PODCAST_INSTRUCTIONS + "\n\n" + chapter_text
 
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "num_ctx": 8 * 4096,  # Increased context window
-                "temperature": 0.8,  # Added creativity
-                "top_p": 0.9,  # Broader token selection
-                "repeat_penalty": 1.05,  # Slight penalty for repetition
-                "seed": 428798,
-                "top_k": 60,  # Wider token selection
-                "min_p": 0.02,  # Lower minimum probability
-                "num_predict": 4096,  # Encourage longer responses
-            },
-        }
-
         try:
-            logger.info(f"Sending request to LLM at {self.base_url}/api/generate")
-            response = self.session.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
+            logger.info(f"Sending request to LLM at {self.base_url}")
+            response = self.llm.invoke(prompt)
 
-            result = response.json()
-            if "response" in result:
+            # Clean the response
+            if response:
                 # if it is a reasoning model, eliminate the reasoning steps
-                if "think" in result["response"].lower():
-                    return clean_text(result["response"].split("</think>")[-1].strip())
-                return clean_text(result["response"].strip())
+                if "think" in response.lower():
+                    return clean_text(response.split("</think>")[-1].strip())
+                return clean_text(response.strip())
             else:
-                logger.error(f"Unexpected response format: {result}")
+                logger.error("Empty response from LLM")
                 return "Error: Unable to generate podcast script for this content."
 
-        except requests.exceptions.ConnectionError:
-            logger.error(
-                f"Could not connect to LLM at {self.base_url}. " "Is Ollama running?"
-            )
-            return (
-                "Error: Could not connect to local LLM server. "
-                f"Please ensure Ollama is running at {self.base_url}."
-            )
-        except requests.exceptions.Timeout:
-            logger.error("Request to LLM timed out")
-            return "Error: Request to LLM timed out. Content might be too long."
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"Error communicating with LLM: {e}")
-            return f"Error: Failed to generate podcast script due to: {str(e)}"
+            if "connection" in str(e).lower():
+                return (
+                    "Error: Could not connect to local LLM server. "
+                    f"Please ensure Ollama is running at {self.base_url}."
+                )
+            elif "timeout" in str(e).lower():
+                return "Error: Request to LLM timed out. Content might be too long."
+            else:
+                return f"Error: Failed to generate podcast script due to: {str(e)}"
 
 
 class PodcastCreator(BaseSynthesizer):
