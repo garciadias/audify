@@ -8,7 +8,6 @@ dependencies = [
     "bs4>=0.0.2",
     "click>=8.1.8",
     "ebooklib>=0.18",
-    "kokoro>=0.9.4",
     "markdown>=3.7",
     "misaki[zh]>=0.8.4",
     "ollama>=0.4.7",

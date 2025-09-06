@@ -1,17 +1,17 @@
 import contextlib
 import logging
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any, Generator, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-import soundfile as sf
+import requests
 import torch
 import tqdm
-from kokoro import KPipeline
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
@@ -22,11 +22,8 @@ from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (
-    break_text_into_sentences,
-    get_audio_duration,
-    get_file_name_title,
-)
+from audify.utils import (break_text_into_sentences, get_audio_duration,
+                          get_file_name_title)
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +36,31 @@ DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 DEFAULT_ENGINE = "kokoro"
 OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
+
+# Kokoro API configuration
+KOKORO_API_BASE_URL = "http://localhost:8887/v1/audio"
+KOKORO_DEFAULT_VOICE = "af_bella"
+
+# Allow override via environment variable
+KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
+
+
+class KokoroAPIConfig:
+    """Configuration for Kokoro API."""
+
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = base_url or KOKORO_API_BASE_URL
+        self.default_voice = KOKORO_DEFAULT_VOICE
+        self.timeout = 30
+
+    @property
+    def voices_url(self) -> str:
+        return f"{self.base_url}/voices"
+
+    @property
+    def speech_url(self) -> str:
+        return f"{self.base_url}/speech"
+
 
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -92,41 +114,92 @@ class BaseSynthesizer(Synthesizer):
             logger.info("TTS model loaded.")
 
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
-        """Synthesize sentences using the Kokoro engine."""
+        """Synthesize sentences using the Kokoro API."""
         synthesis_language = self.translate or self.language
         if synthesis_language is None:
             logger.warning(
                 "Language not specified or detected, defaulting to 'a' for Kokoro."
             )
-            lang_code = "a"
+            voice = KOKORO_DEFAULT_VOICE
         else:
             lang_code = LANG_CODES.get(synthesis_language, "a")
+            # Map language codes to appropriate voices
+            voice_mapping = {
+                "a": "af_bella",  # English
+                "e": "es_female",  # Spanish
+                "f": "fr_female",  # French
+                "p": "pt_female",  # Portuguese
+                "i": "it_female",  # Italian
+                "j": "ja_female",  # Japanese
+                "z": "zh_female",  # Chinese
+                "h": "hi_female",  # Hindi
+            }
+            voice = voice_mapping.get(lang_code, KOKORO_DEFAULT_VOICE)
 
-        if not hasattr(self, "pipeline") or self.pipeline.lang_code != lang_code:
-            logger.info(f"Initializing Kokoro pipeline for language: {lang_code}")
-            self.pipeline: KPipeline = KPipeline(lang_code=lang_code)
-
+        # Initialize API config
+        api_config = KokoroAPIConfig()
         combined_audio = AudioSegment.empty()
         temp_audio_files: List[Path] = []
 
         try:
-            logger.info("Starting Kokoro synthesis...")
-            generator: Generator[Tuple[int, str, Any], None, None] = self.pipeline(
-                sentences,
-                voice="af_heart",
-                speed=1,
-                split_pattern=r"\n+",
-            )
+            logger.info("Starting Kokoro API synthesis...")
 
-            for i, (_, _, audio_data) in tqdm.tqdm(
-                enumerate(generator),
+            # Check if API is available
+            try:
+                response = requests.get(api_config.voices_url, timeout=5)
+                if response.status_code != 200:
+                    raise requests.RequestException(
+                        f"API returned status {response.status_code}"
+                    )
+                available_voices = response.json().get("voices", [])
+                logger.info(
+                    f"Connected to Kokoro API. Available voices: "
+                    f"{len(available_voices)}"
+                )
+            except requests.RequestException as e:
+                logger.error(
+                    f"Failed to connect to Kokoro API at {api_config.base_url}: {e}"
+                )
+                raise
+
+            for i, sentence in tqdm.tqdm(
+                enumerate(sentences),
                 desc="Kokoro Synthesizing",
                 total=len(sentences),
                 unit="sentence",
             ):
-                temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
-                sf.write(temp_wav_path, audio_data, 24000)
-                temp_audio_files.append(temp_wav_path)
+                if not sentence.strip():
+                    continue
+
+                try:
+                    # Make API request for each sentence
+                    response = requests.post(
+                        api_config.speech_url,
+                        json={
+                            "model": "kokoro",
+                            "input": sentence,
+                            "voice": voice,
+                            "response_format": "wav",
+                            "speed": 1.0
+                        },
+                        timeout=api_config.timeout
+                    )
+
+                    if response.status_code == 200:
+                        temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
+                        with open(temp_wav_path, "wb") as f:
+                            f.write(response.content)
+                        temp_audio_files.append(temp_wav_path)
+                    else:
+                        logger.warning(
+                            f"API request failed for sentence {i}: "
+                            f"{response.status_code}"
+                        )
+                        continue
+
+                except requests.RequestException as e:
+                    logger.warning(f"Request failed for sentence {i}: {e}")
+                    continue
 
             logger.info("Combining Kokoro audio segments...")
             for temp_wav_path in tqdm.tqdm(
@@ -149,7 +222,7 @@ class BaseSynthesizer(Synthesizer):
             combined_audio.export(output_wav_path, format="wav")
 
         except Exception as e:
-            logger.error(f"Error during Kokoro synthesis: {e}", exc_info=True)
+            logger.error(f"Error during Kokoro API synthesis: {e}", exc_info=True)
             for temp_file in temp_audio_files:
                 temp_file.unlink(missing_ok=True)
             raise
@@ -243,11 +316,9 @@ class BaseSynthesizer(Synthesizer):
     def stop(self) -> None:
         """Stops the synthesis process if running."""
         logger.info("Stopping synthesis process...")
-        if hasattr(self, "pipeline") and self.pipeline.is_running:
-            self.pipeline.stop()
-            logger.info("Synthesis process stopped.")
-        else:
-            logger.warning("No active synthesis process to stop.")
+        # Note: API-based synthesis doesn't have a persistent process to stop
+        # This method is kept for interface compatibility
+        logger.info("Synthesis process stopped (API-based).")
 
     def get_terminal_output(self) -> str:
         """Returns the terminal output of the synthesis process."""
