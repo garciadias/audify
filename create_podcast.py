@@ -37,7 +37,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--llm-model",
     "-lm",
     type=str,
-    default="llama3.2",
+    default="qwen3:30b",
     help="Local LLM model to use for podcast script generation.",
 )
 @click.option(

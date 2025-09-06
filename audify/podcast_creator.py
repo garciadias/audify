@@ -89,7 +89,7 @@ class LLMClient:
     """Client for interacting with local LLM using LangChain."""
 
     def __init__(
-        self, base_url: str = "http://localhost:11434", model: str = "llama3.2"
+        self, base_url: str = "http://localhost:11434", model: str = "qwen3:30b"
     ):
         self.base_url = base_url
         self.model = model
@@ -154,7 +154,7 @@ class PodcastCreator(BaseSynthesizer):
         save_text: bool = True,  # Default to True for podcast scripts
         engine: str = "kokoro",
         llm_base_url: str = "http://localhost:11434",
-        llm_model: str = "llama3.2",
+        llm_model: str = "qwen3:30b",
         max_chapters: Optional[int] = None,
         confirm: bool = True,
     ):
