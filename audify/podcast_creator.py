@@ -37,7 +37,7 @@ CRITICAL REQUIREMENTS:
 
 STRUCTURE YOUR RESPONSE AS FOLLOWS:
 
-1. COMPREHENSIVE INTRODUCTION (30-40% of total content):
+1. COMPREHENSIVE INTRODUCTION (5-10% of total content):
    - Begin with an engaging hook that draws listeners in
    - Provide extensive background context and historical perspective
    - Explain ALL prerequisite knowledge needed to understand the material
@@ -45,7 +45,7 @@ STRUCTURE YOUR RESPONSE AS FOLLOWS:
    - Discuss the broader significance and relevance of the topic
    - Set up the context for why this content matters today
 
-2. DETAILED MAIN CONTENT EXPLORATION (50-60% of total content):
+2. DETAILED MAIN CONTENT EXPLORATION (60-70% of total content):
    - Go through the material systematically and thoroughly
    - Elaborate on EVERY important point, concept, and finding
    - Provide multiple examples and analogies to clarify complex ideas
@@ -55,12 +55,12 @@ STRUCTURE YOUR RESPONSE AS FOLLOWS:
    - Discuss any controversies, debates, or alternative perspectives
    - Use transition phrases to maintain flow between topics
 
-3. COMPREHENSIVE CONCLUSION (10-15% of total content):
+3. COMPREHENSIVE CONCLUSION (20-35% of total content):
    - Synthesize all the key insights and takeaways
    - Discuss the broader implications and future directions
-   - Connect the content to related fields or current events
    - Highlight what makes this content particularly significant or innovative
    - Suggest questions for further reflection
+   - Emphasize the main milestones covered
 
 IMPORTANT GUIDELINES:
 - Write as if you're an expert lecturer who is passionate about the subject
@@ -101,12 +101,12 @@ class LLMClient:
             timeout=300,  # 5 minute timeout
             # LangChain Ollama specific parameters
             num_ctx=8 * 4096,  # Increased context window
-            temperature=0.8,   # Added creativity
-            top_p=0.9,         # Broader token selection
+            temperature=0.8,  # Added creativity
+            top_p=0.9,  # Broader token selection
             repeat_penalty=1.05,  # Slight penalty for repetition
             seed=428798,
-            top_k=60,          # Wider token selection
-            min_p=0.02,        # Lower minimum probability
+            top_k=60,  # Wider token selection
+            min_p=0.02,  # Lower minimum probability
             num_predict=4096,  # Encourage longer responses
         )
 
@@ -205,6 +205,7 @@ class PodcastCreator(BaseSynthesizer):
             )
         else:
             self.cover_image_path = None
+        self.chapter_titles: List[str] = []
 
     def _setup_paths(self, file_name_base: str) -> None:
         """Sets up the necessary output paths for podcast creation."""
@@ -300,9 +301,23 @@ class PodcastCreator(BaseSynthesizer):
             f"Cleaned text for Episode {chapter_number}:"
             " removed references and citations"
         )
+        chapter_title = (
+            self.reader.get_chapter_title(chapter_content)
+            if hasattr(self.reader, "get_chapter_title")
+            else self.reader.path.stem
+        )
+        logger.info(f"Chapter {chapter_number} title: {chapter_title}")
+        self.chapter_titles.append(chapter_title)
 
         # Generate podcast script using LLM
-        podcast_script = self.llm_client.generate_podcast_script(cleaned_text)
+        if len(cleaned_text.split()) < 200:
+            logger.warning(
+                f"Chapter {chapter_number} has very little text after cleaning. "
+                "The generated podcast may be very short."
+            )
+            podcast_script = " ".join(chapter_text)
+        else:
+            podcast_script = self.llm_client.generate_podcast_script(cleaned_text)
 
         # Save the script if requested
         if self.save_text:
@@ -351,8 +366,7 @@ class PodcastCreator(BaseSynthesizer):
         # Translate if needed
         if self.translate and self.language:
             logger.info(
-                f"Translating {len(sentences)} segments for Episode "
-                f"{episode_number}..."
+                f"Translating {len(sentences)} segments for Episode {episode_number}..."
             )
             try:
                 from audify.translate import translate_sentence
@@ -451,8 +465,7 @@ class PodcastCreator(BaseSynthesizer):
                 if episode_path.exists():
                     episode_paths.append(episode_path)
                     logger.info(
-                        f"Successfully created Episode {episode_number}: "
-                        f"{episode_path}"
+                        f"Successfully created Episode {episode_number}: {episode_path}"
                     )
                 else:
                     logger.warning(f"Failed to create Episode {episode_number}")
@@ -465,8 +478,7 @@ class PodcastCreator(BaseSynthesizer):
                 continue
 
         logger.info(
-            f"Podcast series creation complete. "
-            f"Created {len(episode_paths)} episodes."
+            f"Podcast series creation complete. Created {len(episode_paths)} episodes."
         )
 
         # Create M4B audiobook from episodes if we have episodes
@@ -502,11 +514,15 @@ class PodcastCreator(BaseSynthesizer):
         return total_duration
 
     def _log_episode_metadata(
-        self, episode_number: int, start_time_ms: int, duration_s: float
+        self,
+        episode_number: int,
+        start_time_ms: int,
+        duration_s: float,
+        chapter_title: Optional[str] = None,
     ) -> int:
         """Appends episode metadata to the FFmpeg metadata file."""
         end_time_ms = start_time_ms + int(duration_s * 1000)
-        title = f"Episode {episode_number}"
+        title = chapter_title or f"Episode {episode_number}"
 
         logger.debug(
             f"Logging metadata for '{title}': Start={start_time_ms}, "
@@ -617,12 +633,16 @@ class PodcastCreator(BaseSynthesizer):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)
                     combined_audio += audio
-
                     # Log metadata for this episode
                     duration_s = len(audio) / 1000.0
                     episode_number = i + 1
                     current_start_time_ms = self._log_episode_metadata(
-                        episode_number, current_start_time_ms, duration_s
+                        episode_number,
+                        current_start_time_ms,
+                        duration_s,
+                        chapter_title=self.chapter_titles[i]
+                        if i < len(self.chapter_titles)
+                        else None,
                     )
 
                 except CouldntDecodeError:
@@ -695,7 +715,7 @@ class PodcastCreator(BaseSynthesizer):
                     cover_temp_file.close()
                     Path(cover_temp_file.name).unlink(missing_ok=True)
                     logger.debug(
-                        f"Cleaned up temporary cover file:" f"{cover_temp_file.name}"
+                        f"Cleaned up temporary cover file:{cover_temp_file.name}"
                     )
                 except Exception as e_clean:
                     logger.warning(

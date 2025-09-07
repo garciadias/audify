@@ -44,7 +44,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--llm-url",
     "-lu",
     type=str,
-    default="http://localhost:11434",
+    default="http://localhost:11435",
     help="Base URL for the local LLM API (e.g., Ollama).",
 )
 @click.option(
