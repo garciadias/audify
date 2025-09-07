@@ -63,6 +63,7 @@ STRUCTURE YOUR RESPONSE AS FOLLOWS:
    - Emphasize the main milestones covered
 
 IMPORTANT GUIDELINES:
+- Write in the same language as the source text
 - Write as if you're an expert lecturer who is passionate about the subject
 - Include phrases like "Now, let's dive deeper into..." or "This is particularly
   fascinating because..."
@@ -148,7 +149,7 @@ class PodcastCreator(BaseSynthesizer):
         self,
         path: str | Path,
         language: Optional[str] = None,
-        speaker: str = "data/Jennifer_16khz.wav",
+        speaker: str = "af_bella",
         model_name: str | None = None,
         translate: Optional[str] = None,
         save_text: bool = True,  # Default to True for podcast scripts

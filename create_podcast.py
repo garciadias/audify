@@ -44,7 +44,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--llm-url",
     "-lu",
     type=str,
-    default="http://localhost:11435",
+    default="http://localhost:11434",
     help="Base URL for the local LLM API (e.g., Ollama).",
 )
 @click.option(
@@ -65,7 +65,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--voice",
     "-v",
     type=str,
-    default="data/Jennifer_16khz.wav",
+    default="af_bella",
     help="Path to the speaker's voice file.",
 )
 @click.option(

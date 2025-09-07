@@ -42,7 +42,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--voice",
     "-v",
     type=str,
-    default="data/Jennifer_16khz.wav",
+    default="af_bella",
     help="Path to the speaker's voice.",
 )
 @click.option(

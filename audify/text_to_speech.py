@@ -17,13 +17,16 @@ from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
 from typing_extensions import Literal
 
-from audify.constants import LANG_CODES
+from audify.constants import KOKORO_DEFAULT_VOICE, LANG_CODES
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (break_text_into_sentences, get_audio_duration,
-                          get_file_name_title)
+from audify.utils import (
+    break_text_into_sentences,
+    get_audio_duration,
+    get_file_name_title,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -32,14 +35,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
+DEFAULT_SPEAKER = KOKORO_DEFAULT_VOICE
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 DEFAULT_ENGINE = "kokoro"
 OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Kokoro API configuration
 KOKORO_API_BASE_URL = "http://localhost:8887/v1/audio"
-KOKORO_DEFAULT_VOICE = "af_bella"
 
 # Allow override via environment variable
 KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
@@ -115,27 +117,6 @@ class BaseSynthesizer(Synthesizer):
 
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
         """Synthesize sentences using the Kokoro API."""
-        synthesis_language = self.translate or self.language
-        if synthesis_language is None:
-            logger.warning(
-                "Language not specified or detected, defaulting to 'a' for Kokoro."
-            )
-            voice = KOKORO_DEFAULT_VOICE
-        else:
-            lang_code = LANG_CODES.get(synthesis_language, "a")
-            # Map language codes to appropriate voices
-            voice_mapping = {
-                "a": "af_bella",  # English
-                "e": "es_female",  # Spanish
-                "f": "fr_female",  # French
-                "p": "pt_female",  # Portuguese
-                "i": "it_female",  # Italian
-                "j": "ja_female",  # Japanese
-                "z": "zh_female",  # Chinese
-                "h": "hi_female",  # Hindi
-            }
-            voice = voice_mapping.get(lang_code, KOKORO_DEFAULT_VOICE)
-
         # Initialize API config
         api_config = KokoroAPIConfig()
         combined_audio = AudioSegment.empty()
@@ -178,8 +159,9 @@ class BaseSynthesizer(Synthesizer):
                         json={
                             "model": "kokoro",
                             "input": sentence,
-                            "voice": voice,
+                            "voice": self.speaker,
                             "response_format": "wav",
+                            "lang_code": LANG_CODES[self.translate or self.language],
                             "speed": 1.0
                         },
                         timeout=api_config.timeout
@@ -1034,7 +1016,7 @@ class EpubSynthesizer(BaseSynthesizer):
 class PdfSynthesizer(BaseSynthesizer):
     """Synthesizer for PDF files."""
 
-    DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
+    DEFAULT_SPEAKER = "af_bella"
     DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
     DEFAULT_ENGINE = "kokoro"
     DEFAULT_OUTPUT_DIR = MODULE_PATH / "../" / "data" / "output" / "articles"

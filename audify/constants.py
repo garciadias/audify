@@ -28,3 +28,4 @@ DEFAULT_LANGUAGE_LIST = [
     "ja",
     "hi",
 ]
+KOKORO_DEFAULT_VOICE = "af_bella"

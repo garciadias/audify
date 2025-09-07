@@ -88,7 +88,7 @@ def sentence_to_speech(
     model: TTS,
     output_dir: Path | str = ("/tmp/"),
     language: str = "en",
-    speaker: str | Path = "data/Jennifer_16khz.wav",
+    speaker: str | Path = "af_bella",
     file_name: str = "speech.wav",
 ) -> None:
     if isinstance(output_dir, str):

@@ -4,7 +4,7 @@ from pathlib import Path
 import streamlit as st
 from typing_extensions import Literal
 
-from audify.constants import DEFAULT_LANGUAGE_LIST
+from audify.constants import DEFAULT_LANGUAGE_LIST, KOKORO_DEFAULT_VOICE
 from audify.text_to_speech import BaseSynthesizer, EpubSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
 
@@ -103,6 +103,10 @@ if uploaded_file is not None:
                             language=language,
                             model_name=model if engine == "tts_models" else None,
                             translate=translate_language,
+                            speaker=(KOKORO_DEFAULT_VOICE
+                                     if engine == "kokoro"
+                                     else 'data/Jennifer_16khz.wav'
+                            ),
                             save_text=save_text,
                             engine=engine,
                             confirm=False,  # No confirmation needed in GUI
