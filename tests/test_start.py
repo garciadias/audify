@@ -176,10 +176,11 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
         mock_get_file_extension.return_value = ".pdf"
         # Now invoke the main command with the PDF file mocking the synthesizer run
         module_path = "audify.text_to_speech"
-        with patch(f"{module_path}.KPipeline") as mock_synthesize_kokoro:
+        with patch(f"{module_path}.requests.post") as mock_synthesize_kokoro:
             mock_synthesize_kokoro.return_value = MagicMock()
-            mock_synthesize_kokoro.return_value.pipeline = MagicMock()
-            mock_synthesize_kokoro.return_value.pipeline.run.return_value = None
+            mock_synthesize_kokoro.return_value.json.return_value = {
+                "data": {"audio_url": "http://example.com/audio.mp3"}
+            }
             result = runner.invoke(
                 start.main,
                 [
