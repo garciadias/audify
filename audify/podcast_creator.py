@@ -10,9 +10,10 @@ from langchain_ollama import OllamaLLM
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
-from audify.constants import OUTPUT_BASE_DIR, PODCAST_INSTRUCTIONS
+from audify.constants import OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL, OUTPUT_BASE_DIR
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
+from audify.prompts import PODCAST_PROMPT
 from audify.text_to_speech import BaseSynthesizer
 from audify.utils import clean_text, get_audio_duration
 
@@ -50,7 +51,7 @@ class LLMClient:
 
     def generate_podcast_script(self, chapter_text: str) -> str:
         """Generate podcast script from chapter text using LangChain."""
-        prompt = PODCAST_INSTRUCTIONS + "\n\n" + chapter_text
+        prompt = PODCAST_PROMPT + "\n\n" + chapter_text
 
         try:
             logger.info(f"Sending request to LLM at {self.base_url}")
