@@ -1,14 +1,24 @@
+import os
 from pathlib import Path
 
+MODULE_PATH = Path(__file__).parent.resolve()
+OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
+
+# Kokoro API configuration
+KOKORO_API_BASE_URL = "http://localhost:8887/v1/audio"
+
+# Allow override via environment variable
+KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
+
 AVAILABLE_LANGUAGES = {
-      "Spanish": "es",
-      "French": "fr",
-      "Hindi": "hi",
-      "Italian": "it",
-      "Portuguese": "pt",
-      "English": "en",
-      "Chinese": "zh",
-      "Japanese": "ja",
+    "Spanish": "es",
+    "French": "fr",
+    "Hindi": "hi",
+    "Italian": "it",
+    "Portuguese": "pt",
+    "English": "en",
+    "Chinese": "zh",
+    "Japanese": "ja",
 }
 
 
@@ -43,9 +53,6 @@ DEFAULT_LANGUAGE_LIST = [
     "hi",
 ]
 KOKORO_DEFAULT_VOICE = "af_bella"
-
-MODULE_PATH = Path(__file__).parent.resolve()
-OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 PODCAST_INSTRUCTIONS = """Transform the following content into a comprehensive, detailed
 talk that thoroughly explores every aspect of the material.

@@ -1,6 +1,5 @@
 import contextlib
 import logging
-import os
 import shutil
 import subprocess
 import sys
@@ -10,7 +9,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import requests
-import torch
 import tqdm
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
@@ -20,6 +18,7 @@ from typing_extensions import Literal
 from audify.constants import (
     DEFAULT_MODEL,
     DEFAULT_SPEAKER,
+    KOKORO_API_BASE_URL,
     KOKORO_DEFAULT_VOICE,
     LANG_CODES,
     OUTPUT_BASE_DIR,
@@ -41,12 +40,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-
-# Kokoro API configuration
-KOKORO_API_BASE_URL = "http://localhost:8887/v1/audio"
-
-# Allow override via environment variable
-KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
 
 
 class KokoroAPIConfig:
@@ -108,14 +101,6 @@ class BaseSynthesizer(Synthesizer):
             prefix=f"audify_{self.path.stem}_"
         )
         self.tmp_dir = Path(self.tmp_dir_context.name)
-
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Using device: {self.device}")
-        if engine == "tts_models":
-            logger.info(f"Loading TTS model: {model_name}...")
-            self.model = TTS(model_name=model_name)
-            self.model.to(self.device)
-            logger.info("TTS model loaded.")
 
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
         """Synthesize sentences using the Kokoro API."""
