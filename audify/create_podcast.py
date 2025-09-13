@@ -14,8 +14,7 @@ from pathlib import Path
 import click
 
 from audify.constants import DEFAULT_LANGUAGE_LIST
-from audify.podcast_creator import (PodcastCreator, PodcastEpubCreator,
-                                    PodcastPdfCreator)
+from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
 from audify.utils import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
@@ -30,12 +29,11 @@ def get_creator(
     translate: str | None,
     save_text: bool,
     save_scripts: bool,
-    engine: str,
     llm_base_url: str,
     llm_model: str,
     max_chapters: int | None,
-    confirm: bool
-    ) -> PodcastCreator:
+    confirm: bool,
+) -> PodcastCreator:
     """Get the appropriate PodcastCreator subclass based on file extension.
 
     Args:
@@ -55,11 +53,10 @@ def get_creator(
             model_name=model_name,
             translate=translate,
             save_text=save_text,
-            engine=engine,
             llm_base_url=llm_base_url,
             llm_model=llm_model,
             max_chapters=max_chapters,
-            confirm=confirm
+            confirm=confirm,
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
@@ -70,10 +67,9 @@ def get_creator(
             model_name=model_name,
             translate=translate,
             save_text=save_text,
-            engine=engine,
             llm_base_url=llm_base_url,
             llm_model=llm_model,
-            confirm=confirm
+            confirm=confirm,
         )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")
@@ -124,14 +120,14 @@ def get_creator(
 @click.option(
     "--llm-base-url",
     type=str,
-    default="http://localhost:11434",
-    help="Base URL for the LLM API (default: http://localhost:11434).",
+    default="http://localhost:11435",
+    help="Base URL for the LLM API (default: http://localhost:11435).",
 )
 @click.option(
     "--llm-model",
     type=str,
-    default="llama2",
-    help="The LLM model to use (default: llama2).",
+    default="qwen3:30b",
+    help="The LLM model to use (default: qwen3:30b).",
 )
 @click.option(
     "--max-chapters",
@@ -141,8 +137,8 @@ def get_creator(
     default=None,
 )
 @click.option(
-    "--confirm/--no-confirm",
-    "-y/-n",
+    "--confirm",
+    "-y",
     is_flag=True,
     default=False,
     help="Ask for confirmation before proceeding.",
@@ -157,7 +153,7 @@ def main(
     llm_base_url: str,
     llm_model: str,
     max_chapters: int | None,
-    confirm: bool
+    confirm: bool,
 ):
     """Create podcast episodes from ebooks or PDFs using LLM and TTS."""
 
@@ -178,17 +174,19 @@ def main(
     print("=" * terminal_width)
 
     try:
-        if not confirm:
-            click.confirm("Proceed with these settings?", abort=True)
         creator = get_creator(
-            file_extension,
+            file_extension=file_extension,
             path=path,
             language=language,
-            llm_model=llm_model,
-            translate=translate,
             voice=voice,
-            max_chapters=max_chapters,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_scripts,
             save_scripts=save_scripts,
+            llm_base_url=llm_base_url,
+            llm_model=llm_model,
+            max_chapters=max_chapters,
+            confirm=not confirm,
         )
         # Generate the podcast
         output_path = creator.synthesize()

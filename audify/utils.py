@@ -5,7 +5,6 @@ from pathlib import Path
 
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
-from TTS.api import TTS
 
 
 def clean_text(text: str) -> str:
@@ -81,53 +80,6 @@ def get_audio_duration(file_path: str) -> float:
     # Calculate the duration in seconds
     duration = len(audio) / 1000.0
     return duration
-
-
-def sentence_to_speech(
-    sentence: str,
-    model: TTS,
-    output_dir: Path | str = ("/tmp/"),
-    language: str = "en",
-    speaker: str | Path = "af_bella",
-    file_name: str = "speech.wav",
-) -> None:
-    if isinstance(output_dir, str):
-        output_dir = Path(output_dir)
-    if Path(output_dir).parent.is_dir() is False:
-        Path(output_dir).parent.mkdir(parents=True, exist_ok=True)
-    try:
-        if model.is_multi_lingual:
-            model.tts_to_file(
-                text=sentence,
-                file_path=output_dir / file_name,
-                language=language,
-                speaker_wav=speaker,
-                speed=1.15,
-            )
-        else:
-            model.tts_to_file(
-                text=sentence,
-                file_path=output_dir / file_name,
-                speaker_wav=speaker,
-                speed=1.15,
-            )
-    except KeyError as e:
-        error_message = "Error: " + str(e)
-        if model.is_multi_lingual:
-            model.tts_to_file(
-                text=error_message,
-                file_path=output_dir / file_name,
-                language=language,
-                speaker_wav=speaker,
-                speed=1.15,
-            )
-        else:
-            model.tts_to_file(
-                text=error_message,
-                file_path=output_dir / file_name,
-                speaker_wav=speaker,
-                speed=1.15,
-            )
 
 
 def get_file_extension(file_path: str) -> str:

@@ -9,7 +9,6 @@ from audify.text_to_speech import (
     InspectSynthesizer,
     PdfSynthesizer,
 )
-from audify.utils import sentence_to_speech
 
 
 @patch("audify.text_to_speech.TTS")
@@ -27,23 +26,6 @@ def pdf_synthesizer():
 @pytest.fixture
 def inspect_synthesizer():
     return InspectSynthesizer()
-
-
-@patch("audify.text_to_speech.TTS")
-@patch("audify.text_to_speech.Path")
-def test_sentence_to_speech(mock_path, mock_tts):
-    mock_model = MagicMock()
-    mock_path.return_value = Path("/tmp/speech.wav")
-    sentence_to_speech("This is a test sentence.", mock_model)
-    mock_model.tts_to_file.assert_called()
-
-
-@patch("audify.text_to_speech.AudioSegment")
-def test_synthesize_chapter(MockAudioSegment, synthesizer):
-    MockAudioSegment.from_wav.return_value
-    synthesizer.synthesize_chapter("chapter1", 1)
-    synthesizer.model
-    MockAudioSegment.from_wav.assert_called()
 
 
 def test_log_on_chapter_file(synthesizer):
