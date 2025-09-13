@@ -141,7 +141,6 @@ class PodcastCreator(BaseSynthesizer):
             model_name=model_name,
             translate=translate,
             save_text=save_text,
-            engine=engine,
         )
 
         # Setup cover image if available

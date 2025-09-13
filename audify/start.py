@@ -68,13 +68,6 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     help="Save the text extraction to a file.",
 )
 @click.option(
-    "--engine",
-    "-e",
-    type=str,
-    default="kokoro",
-    help="The TTS engine to use (tts_models or kokoro).",
-)
-@click.option(
     "--y",
     "-y",
     is_flag=True,
@@ -126,9 +119,8 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=engine,  # type: ignore
                 confirm=not y,
-            )
+            )  # type: ignore
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
             print("==========")
@@ -141,8 +133,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=engine,  # type: ignore
-            )
+            )  # type: ignore
             synthesizer.synthesize()
         else:
             raise ValueError("Unsupported file format")

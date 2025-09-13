@@ -12,8 +12,6 @@ import requests
 import tqdm
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
-from TTS.api import TTS
-from typing_extensions import Literal
 
 from audify.constants import (
     DEFAULT_MODEL,
@@ -23,7 +21,6 @@ from audify.constants import (
     LANG_CODES,
     OUTPUT_BASE_DIR,
 )
-from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
@@ -77,7 +74,7 @@ def suppress_stdout():
             sys.stdout = original_stdout
 
 
-class BaseSynthesizer(Synthesizer):
+class BaseSynthesizer:
     """Base class for text-to-speech synthesis."""
 
     def __init__(
@@ -86,7 +83,6 @@ class BaseSynthesizer(Synthesizer):
         voice: str,
         translate: Optional[str],
         save_text: bool,
-        engine: str,
         language: str = "en",
         model_name: str = DEFAULT_MODEL,
     ):
@@ -94,7 +90,6 @@ class BaseSynthesizer(Synthesizer):
         self.language = language
         self.speaker = voice
         self.translate = translate
-        self.engine = engine
         self.model_name = model_name
         self.save_text = save_text
         self.tmp_dir_context = tempfile.TemporaryDirectory(
@@ -196,57 +191,13 @@ class BaseSynthesizer(Synthesizer):
                 temp_file.unlink(missing_ok=True)
             raise
 
-    def _synthesize_tts_models(
-        self, sentences: List[str], output_wav_path: Path
-    ) -> None:
-        """Synthesize sentences using the TTS library models."""
-        combined_audio = AudioSegment.empty()
-        synthesis_lang = self.translate or self.language
-        temp_speech_path = self.tmp_dir / "speech_segment.wav"
-
-        logger.info("Starting TTS models synthesis...")
-        for sentence in tqdm.tqdm(sentences, desc="TTS Synthesizing", unit="sentence"):
-            if not sentence.strip():
-                continue
-            try:
-                with suppress_stdout():
-                    self.model.tts_to_file(
-                        text=sentence,
-                        speaker=self.speaker,
-                        language=synthesis_lang,
-                        file_path=str(temp_speech_path),
-                    )
-                if temp_speech_path.exists():
-                    segment = AudioSegment.from_wav(temp_speech_path)
-                    combined_audio += segment
-                    temp_speech_path.unlink()
-                else:
-                    logger.warning(
-                        f"TTS output file not found for sentence: '{sentence[:50]}...'"
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Error synthesizing sentence: '{sentence[:50]}...'. Error: {e}",
-                    exc_info=False,
-                )
-                if temp_speech_path.exists():
-                    temp_speech_path.unlink(missing_ok=True)
-
-        logger.info(f"Exporting combined TTS audio to {output_wav_path}")
-        combined_audio.export(output_wav_path, format="wav")
-
     def _synthesize_sentences(
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
         """Synthesize a list of sentences into a single WAV file."""
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if self.engine == "kokoro":
-            self._synthesize_kokoro(sentences, output_wav_path)
-        elif self.engine == "tts_models":
-            self._synthesize_tts_models(sentences, output_wav_path)
-        else:
-            raise ValueError(f"Unsupported synthesis engine: {self.engine}")
+        self._synthesize_kokoro(sentences, output_wav_path)
 
         logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
 
@@ -309,7 +260,6 @@ class EpubSynthesizer(BaseSynthesizer):
         speaker: str = DEFAULT_SPEAKER,
         translate: Optional[str] = None,
         save_text: bool = False,
-        engine: Literal["kokoro", "tts_models"] = "kokoro",
         confirm: bool = True,
         model_name: str = DEFAULT_MODEL,
     ):
@@ -343,7 +293,6 @@ class EpubSynthesizer(BaseSynthesizer):
             model_name=model_name,
             translate=translate,
             save_text=save_text,
-            engine=engine,
         )
 
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -1009,22 +958,16 @@ class EpubSynthesizer(BaseSynthesizer):
 class PdfSynthesizer(BaseSynthesizer):
     """Synthesizer for PDF files."""
 
-    DEFAULT_SPEAKER = "af_bella"
-    DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-    DEFAULT_ENGINE = "kokoro"
-    DEFAULT_OUTPUT_DIR = MODULE_PATH / "../" / "data" / "output" / "articles"
-
     def __init__(
         self,
         pdf_path: str | Path,
         language: str = "en",
         model_name: str = DEFAULT_MODEL,
         speaker: str = DEFAULT_SPEAKER,
-        output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+        output_dir: str | Path = OUTPUT_BASE_DIR,
         file_name: Optional[str] = None,
         translate: Optional[str] = None,
         save_text: bool = False,
-        engine: Literal["kokoro", "tts_models"] = "kokoro",
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
@@ -1043,7 +986,6 @@ class PdfSynthesizer(BaseSynthesizer):
             model_name=model_name,
             translate=translate,
             save_text=save_text,
-            engine=engine,
         )
 
     def synthesize(self) -> Path:
@@ -1091,64 +1033,3 @@ class PdfSynthesizer(BaseSynthesizer):
                 f"Error during PDF synthesis for {self.path.name}: {e}", exc_info=True
             )
             raise
-
-
-class InspectSynthesizer(Synthesizer):
-    """Utility class to inspect TTS model properties (speakers, languages)."""
-
-    DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-
-    def __init__(
-        self,
-        model_name: str = DEFAULT_MODEL,
-        path: str | Path = "./",
-        language: Optional[str] = None,
-        speaker: Optional[str] = None,
-    ):
-        self.model_name = model_name
-        logger.info(f"Loading model {model_name} for inspection...")
-        try:
-            self.model = TTS(model_name=model_name)
-            logger.info("Model loaded successfully for inspection.")
-        except Exception as e:
-            logger.error(
-                f"Failed to load model {model_name} for inspection: {e}", exc_info=True
-            )
-            raise
-
-    def list_languages(self) -> Optional[List[str]]:
-        """Lists available languages for the loaded model."""
-        if hasattr(self.model, "languages") and self.model.languages:
-            logger.info(
-                f"Available languages for {self.model_name}: {self.model.languages}"
-            )
-            return self.model.languages
-        else:
-            logger.warning(
-                f"Model {self.model_name} does not seem to report languages."
-            )
-            return None
-
-    def list_speakers(self) -> Optional[List[str]]:
-        """Lists available speakers for the loaded model."""
-        response = requests.get("https://api.kokoro.ai/voices")
-        if response.status_code != 200:
-            logger.error(
-                f"Failed to fetch speakers from Kokoro API: {response.status_code}"
-            )
-            return None
-        voices = response.json().get("voices", [])
-        speakers = [voice["name"] for voice in voices if "name" in voice]
-        if speakers:
-            logger.info(f"Available speakers from Kokoro API: {speakers}")
-            return speakers
-        logger.warning("No speakers found from Kokoro API.")
-        return None
-
-    def synthesize(self) -> str:
-        """Indicates that this class is not for direct synthesis."""
-        logger.warning("InspectSynthesizer is used for inspection, not synthesis.")
-        return (
-            "This class is used to inspect model options (languages, speakers, models) "
-            "and does not perform audio synthesis."
-        )
