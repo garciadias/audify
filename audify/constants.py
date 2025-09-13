@@ -1,5 +1,17 @@
 from pathlib import Path
 
+AVAILABLE_LANGUAGES = {
+      "Spanish": "es",
+      "French": "fr",
+      "Hindi": "hi",
+      "Italian": "it",
+      "Portuguese": "pt",
+      "English": "en",
+      "Chinese": "zh",
+      "Japanese": "ja",
+}
+
+
 LANG_CODES = {
     "es": "e",
     "fr": "f",
