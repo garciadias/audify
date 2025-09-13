@@ -13,7 +13,11 @@ from pathlib import Path
 
 import click
 
-from audify.constants import DEFAULT_LANGUAGE_LIST
+from audify.constants import (
+    DEFAULT_LANGUAGE_LIST,
+    OLLAMA_API_BASE_URL,
+    OLLAMA_DEFAULT_MODEL,
+)
 from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
 from audify.utils import get_file_extension
 
@@ -120,14 +124,14 @@ def get_creator(
 @click.option(
     "--llm-base-url",
     type=str,
-    default="http://localhost:11435",
-    help="Base URL for the LLM API (default: http://localhost:11435).",
+    default=OLLAMA_API_BASE_URL,
+    help=f"Base URL for the LLM API (default: {OLLAMA_API_BASE_URL}).",
 )
 @click.option(
     "--llm-model",
     type=str,
-    default="qwen3:30b",
-    help="The LLM model to use (default: qwen3:30b).",
+    default=OLLAMA_DEFAULT_MODEL,
+    help=f"The LLM model to use (default: {OLLAMA_DEFAULT_MODEL}).",
 )
 @click.option(
     "--max-chapters",

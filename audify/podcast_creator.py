@@ -30,7 +30,7 @@ class LLMClient:
     """Client for interacting with local LLM using LangChain."""
 
     def __init__(
-        self, base_url: str = "http://localhost:11435", model: str = "qwen3:30b"
+        self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
     ):
         self.base_url = base_url
         self.model = model
@@ -88,12 +88,12 @@ class PodcastCreator(BaseSynthesizer):
         path: str | Path,
         language: Optional[str] = None,
         voice: str = "af_bella",
-        model_name: str = "qwen3:30b",
+        model_name: str = OLLAMA_DEFAULT_MODEL,
         translate: Optional[str] = None,
         save_text: bool = True,  # Default to True for podcast scripts
         engine: str = "kokoro",
-        llm_base_url: str = "http://localhost:11434",
-        llm_model: str = "qwen3:30b",
+        llm_base_url: str = OLLAMA_API_BASE_URL,
+        llm_model: str = OLLAMA_DEFAULT_MODEL,
         max_chapters: Optional[int] = None,
         confirm: bool = True,
     ):

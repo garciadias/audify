@@ -6,9 +6,11 @@ OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Kokoro API configuration
 KOKORO_API_BASE_URL = "http://localhost:8887/v1/audio"
-
+OLLAMA_API_BASE_URL = "http://localhost:11434"
 # Allow override via environment variable
 KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
+OLLAMA_DEFAULT_TRANSLATION_MODEL = os.getenv("OLLAMA_TRANSLATION_MODEL", "qwen3:30b")
+OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:30b")
 
 AVAILABLE_LANGUAGES = {
     "Spanish": "es",
@@ -19,6 +21,27 @@ AVAILABLE_LANGUAGES = {
     "English": "en",
     "Chinese": "zh",
     "Japanese": "ja",
+}
+
+# Language code mapping for better prompts
+LANGUAGE_NAMES = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "pl": "Polish",
+    "tr": "Turkish",
+    "ru": "Russian",
+    "nl": "Dutch",
+    "cs": "Czech",
+    "ar": "Arabic",
+    "zh": "Chinese",
+    "hu": "Hungarian",
+    "ko": "Korean",
+    "ja": "Japanese",
+    "hi": "Hindi",
 }
 
 
