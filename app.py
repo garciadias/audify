@@ -4,7 +4,11 @@ from pathlib import Path
 import streamlit as st
 from typing_extensions import Literal
 
-from audify.constants import DEFAULT_LANGUAGE_LIST, KOKORO_DEFAULT_VOICE
+from audify.constants import (
+    DEFAULT_LANGUAGE_LIST,
+    DEFAULT_MODEL,
+    KOKORO_DEFAULT_VOICE,
+)
 from audify.text_to_speech import BaseSynthesizer, EpubSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
 
@@ -101,11 +105,14 @@ if uploaded_file is not None:
                         synthesizer = EpubSynthesizer(
                             str(temp_file_path),
                             language=language,
-                            model_name=model if engine == "tts_models" else None,
+                            model_name=model
+                            if engine == "tts_models"
+                            else DEFAULT_MODEL,
                             translate=translate_language,
-                            speaker=(KOKORO_DEFAULT_VOICE
-                                     if engine == "kokoro"
-                                     else 'data/Jennifer_16khz.wav'
+                            speaker=(
+                                KOKORO_DEFAULT_VOICE
+                                if engine == "kokoro"
+                                else "data/Jennifer_16khz.wav"
                             ),
                             save_text=save_text,
                             engine=engine,
@@ -115,7 +122,9 @@ if uploaded_file is not None:
                         synthesizer = PdfSynthesizer(
                             str(temp_file_path),
                             language=language,
-                            model_name=model if engine == "tts_models" else None,
+                            model_name=model
+                            if engine == "tts_models"
+                            else DEFAULT_MODEL,
                             translate=translate_language,
                             save_text=save_text,
                             engine=engine,
@@ -129,6 +138,7 @@ if uploaded_file is not None:
                             "Unsupported file format. Please upload "
                             "a .pdf or .epub file."
                         )
+                        st.stop()
 
                     # file exists check
                     if not output_path.exists():

@@ -12,11 +12,11 @@ def translate_sentence(
 ) -> str:
     src_lang = src_lang or "en"
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
+    model.to(device)  # type: ignore # pyright: ignore[reportGeneralTypeIssues]
     tokenizer.src_lang = src_lang
     encoded_sentences = tokenizer(sentence, return_tensors="pt").to(device)
     generated_tokens = model.generate(
-        **encoded_sentences,
+        **encoded_sentences,  # type: ignore  # pyright: ignore[reportGeneralTypeIssues]
         forced_bos_token_id=tokenizer.get_lang_id(tgt_lang),
     )
     return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]

@@ -10,6 +10,10 @@ from langchain_ollama import OllamaLLM
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
+from audify.constants import (
+    OUTPUT_BASE_DIR,
+    PODCAST_INSTRUCTIONS,
+)
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.text_to_speech import BaseSynthesizer
@@ -22,68 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
-
-PODCAST_INSTRUCTIONS = """Transform the following content into a comprehensive, detailed
-talk that thoroughly explores every aspect of the material.
-This will be converted directly to speech, so write in a natural, conversational tone
-suitable for audio consumption.
-
-CRITICAL REQUIREMENTS:
-- Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
-- Aim for at least the same amount of text as the original content
-- Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
-- Use a engaging lecture style as if explaining to an intelligent but curious audience
-
-STRUCTURE YOUR RESPONSE AS FOLLOWS:
-
-1. COMPREHENSIVE INTRODUCTION (5-10% of total content):
-   - Begin with an engaging hook that draws listeners in
-   - Provide extensive background context and historical perspective
-   - Explain ALL prerequisite knowledge needed to understand the material
-   - Define technical terms, concepts, and theories in detail
-   - Discuss the broader significance and relevance of the topic
-   - Set up the context for why this content matters today
-
-2. DETAILED MAIN CONTENT EXPLORATION (60-70% of total content):
-   - Go through the material systematically and thoroughly
-   - Elaborate on EVERY important point, concept, and finding
-   - Provide multiple examples and analogies to clarify complex ideas
-   - Discuss the methodology, reasoning, or approach behind key points
-   - Analyze the implications and connections between different concepts
-   - Include relevant real-world applications and examples
-   - Discuss any controversies, debates, or alternative perspectives
-   - Use transition phrases to maintain flow between topics
-
-3. COMPREHENSIVE CONCLUSION (20-35% of total content):
-   - Synthesize all the key insights and takeaways
-   - Discuss the broader implications and future directions
-   - Highlight what makes this content particularly significant or innovative
-   - Suggest questions for further reflection
-   - Emphasize the main milestones covered
-
-IMPORTANT GUIDELINES:
-- Write in the same language as the source text
-- Write as if you're an expert lecturer who is passionate about the subject
-- Include phrases like "Now, let's dive deeper into..." or "This is particularly
-  fascinating because..."
-- Provide context for why each point matters
-- Use concrete examples and analogies whenever possible
-- Maintain an enthusiastic but informative tone throughout
-- NO references, citations, bibliographies, or URL mentions
-- NO stage directions or meta-commentary about the podcast format
-- NO descriptions like "music fading" or anything unrelated to spoken content
-- DO NOT mention the podcast
-- NO music
-- NO directions for sound effects or podcast recording
-- ONLY include content that should be spoken aloud
-
-The goal is to create rich, comprehensive audio content that thoroughly educates and
-engages listeners with detailed explanations of every aspect of the source material.
-
-Content to transform:
---------------------
-"""
 
 
 class LLMClient:
@@ -99,7 +41,6 @@ class LLMClient:
         self.llm = OllamaLLM(
             model=self.model,
             base_url=self.base_url,
-            timeout=300,  # 5 minute timeout
             # LangChain Ollama specific parameters
             num_ctx=8 * 4096,  # Increased context window
             temperature=0.8,  # Added creativity
@@ -107,7 +48,6 @@ class LLMClient:
             repeat_penalty=1.05,  # Slight penalty for repetition
             seed=428798,
             top_k=60,  # Wider token selection
-            min_p=0.02,  # Lower minimum probability
             num_predict=4096,  # Encourage longer responses
         )
 
@@ -150,7 +90,7 @@ class PodcastCreator(BaseSynthesizer):
         path: str | Path,
         language: Optional[str] = None,
         speaker: str = "af_bella",
-        model_name: str | None = None,
+        model_name: str = "qwen3:30b",
         translate: Optional[str] = None,
         save_text: bool = True,  # Default to True for podcast scripts
         engine: str = "kokoro",
@@ -161,12 +101,13 @@ class PodcastCreator(BaseSynthesizer):
     ):
         # Initialize file reader based on extension
         file_path = Path(path)
-        if file_path.suffix.lower() == ".epub":
-            self.reader = EpubReader(path)
+        self.reader: EpubReader | PdfReader = (
+            EpubReader(path) if file_path.suffix.lower() == ".epub" else PdfReader(path)
+        )
+        if isinstance(self.reader, EpubReader):
             detected_language = self.reader.get_language()
             self.title = self.reader.title
-        elif file_path.suffix.lower() == ".pdf":
-            self.reader = PdfReader(path)
+        elif isinstance(self.reader, PdfReader):
             detected_language = "en"  # PDF reader might not detect language
             self.title = file_path.stem
         else:
@@ -196,11 +137,17 @@ class PodcastCreator(BaseSynthesizer):
 
         # Initialize parent class
         super().__init__(
-            path, resolved_language, speaker, model_name, translate, save_text, engine
+            path=path,
+            language=resolved_language,
+            speaker=speaker,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
+            engine=engine,
         )
 
         # Setup cover image if available
-        if hasattr(self.reader, "get_cover_image"):
+        if isinstance(self.reader, EpubReader):
             self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
                 self.podcast_path
             )
@@ -208,7 +155,7 @@ class PodcastCreator(BaseSynthesizer):
             self.cover_image_path = None
         self.chapter_titles: List[str] = []
 
-    def _setup_paths(self, file_name_base: str) -> None:
+    def _setup_paths(self, file_name_base: Path) -> None:
         """Sets up the necessary output paths for podcast creation."""
         if not self.output_base_dir.exists():
             logger.info(f"Creating output base directory: {self.output_base_dir}")
@@ -271,7 +218,7 @@ class PodcastCreator(BaseSynthesizer):
 
         return text.strip()
 
-    def generate_podcast_script(self, chapter_content: str, chapter_number: int) -> str:
+    def generate_podcast_script(self, chapter_text: str, chapter_number: int) -> str:
         """Generate podcast script for a single chapter."""
         logger.info(f"Generating podcast script for Chapter {chapter_number}...")
 
@@ -286,12 +233,6 @@ class PodcastCreator(BaseSynthesizer):
             with open(script_path, "r", encoding="utf-8") as f:
                 return f.read()
 
-        # Extract text from chapter
-        if hasattr(self.reader, "extract_text"):
-            chapter_text = self.reader.extract_text(chapter_content)
-        else:
-            chapter_text = chapter_content
-
         if not chapter_text.strip():
             logger.warning(f"No text found in Chapter {chapter_number}")
             return "This chapter contains no readable text content."
@@ -303,8 +244,8 @@ class PodcastCreator(BaseSynthesizer):
             " removed references and citations"
         )
         chapter_title = (
-            self.reader.get_chapter_title(chapter_content)
-            if hasattr(self.reader, "get_chapter_title")
+            self.reader.get_chapter_title(chapter_text)
+            if isinstance(self.reader, EpubReader)
             else self.reader.path.stem
         )
         logger.info(f"Chapter {chapter_number} title: {chapter_title}")
@@ -428,7 +369,7 @@ class PodcastCreator(BaseSynthesizer):
         logger.info("Starting podcast series creation...")
 
         # Get chapters based on file type
-        if hasattr(self.reader, "get_chapters"):
+        if isinstance(self.reader, EpubReader):
             chapters = self.reader.get_chapters()
         else:
             # For PDF, treat the whole document as one episode
@@ -759,7 +700,7 @@ class PodcastPdfCreator(PodcastCreator):
         logger.info("Creating podcast episode from PDF...")
 
         # Get the full PDF content
-        pdf_text = self.reader.get_cleaned_text()
+        pdf_text = self.reader.get_cleaned_text()  # type: ignore # TODO: fix typing
 
         if not pdf_text.strip():
             logger.error("No text found in PDF")

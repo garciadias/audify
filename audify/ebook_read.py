@@ -4,12 +4,10 @@ from pathlib import Path
 import bs4
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
 
-from audify.domain.interface import Reader
-
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-class EpubReader(Reader):
+class EpubReader:
     def __init__(self, path: str | Path):
         self.book = epub.read_epub(path)
         self.title = self.get_title()

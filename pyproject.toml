@@ -40,6 +40,7 @@ dev = [
     "isort>=5.13.2",
     "mypy>=1.11.2",
     "ipykernel>=6.29.5",
+    "types-requests>=2.32.4.20250913",
 ]
 gpu = ["black>=25.1.0"]
 
@@ -87,7 +88,7 @@ explicit = true
 [tool.taskipy.tasks]
 test = "uv run pytest --cov=audify --cov-report=term-missing"
 format = "ruff check . --fix"
-pre_test = "task format && mypy ."
+pre_test = "task format && mypy ./audify ./tests ./app.py --ignore-missing-imports"
 post_test = "uv run coverage html"
 run = "uv run python -m audify.start"
 up = "docker compose up"

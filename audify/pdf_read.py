@@ -17,7 +17,7 @@ class PdfReader:
         self.text = self._extract_text()
 
         # Clean the extracted text
-        self.cleaned_text = self._clean_text(self.text)
+        self.cleaned_text = clean_text(self.text)
 
     def _extract_text(self):
         """Extract text from a PDF file."""
@@ -28,21 +28,9 @@ class PdfReader:
                 text += page.extract_text()
         return text
 
-    def _clean_text(self, text: str) -> str:
-        """Clean the extracted text by removing unwanted elements.
-
-        Args:
-            text: Raw text extracted from PDF.
-
-        Returns:
-            Cleaned text suitable for TTS.
-        """
-        cleaned = clean_text(text)
-        return cleaned
-
     def get_cleaned_text(self) -> str:
         """Get the cleaned text from the PDF."""
-        return self.cleaned_text
+        return clean_text(self.text)
 
     def save_cleaned_text(self, filename: str | Path):
         """Save the cleaned text to a file.

@@ -14,10 +14,33 @@ from pathlib import Path
 import click
 
 from audify.constants import DEFAULT_LANGUAGE_LIST
-from audify.podcast_creator import PodcastEpubCreator, PodcastPdfCreator
+from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
 from audify.utils import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
+
+
+def get_creator(file_extension: str, **kwargs) -> PodcastCreator:
+    """Get the appropriate PodcastCreator subclass based on file extension.
+
+    Args:
+        file_extension: The file extension (e.g., '.epub', '.pdf').
+
+    Returns:
+        The corresponding PodcastCreator subclass.
+
+    Raises:
+        TypeError: If the file extension is unsupported.
+    """
+    if file_extension == ".epub":
+        return PodcastEpubCreator(**kwargs)
+    elif file_extension == ".pdf":
+        # remove max_chapters for PDF
+        if "max_chapters" in kwargs:
+            kwargs.pop("max_chapters")
+        return PodcastPdfCreator(**kwargs)
+    else:
+        raise TypeError(f"Unsupported file format '{file_extension}'")
 
 
 @click.command()
@@ -113,28 +136,8 @@ def main(
 
     print("=" * terminal_width)
 
-    if file_extension == ".epub":
-        print("EPUB to Podcast Series".center(terminal_width))
-        print("=" * terminal_width)
-
-        creator_class = PodcastEpubCreator
-        format_name = "EPUB"
-
-    elif file_extension == ".pdf":
-        print("PDF to Podcast Episode".center(terminal_width))
-        print("=" * terminal_width)
-
-        creator_class = PodcastPdfCreator
-        format_name = "PDF"
-
-    else:
-        print(f"Error: Unsupported file format '{file_extension}'")
-        print("Supported formats: .epub, .pdf")
-        return
-
     # Show configuration
     print(f"Source file: {file_path}")
-    print(f"Format: {format_name}")
     print(f"Language: {language}")
     print(f"LLM Model: {llm_model}")
     print(f"LLM URL: {llm_url}")
@@ -149,21 +152,21 @@ def main(
     print("=" * terminal_width)
 
     try:
-        # Create the podcast creator
-        creator = creator_class(
+        if not yes:
+            click.confirm("Proceed with these settings?", abort=True)
+        creator = get_creator(
+            file_extension,
             path=file_path,
             language=language,
-            speaker=voice,
-            model_name=tts_model,
-            translate=translate,
-            save_text=save_scripts,
-            engine=engine,
-            llm_base_url=llm_url,
             llm_model=llm_model,
+            llm_url=llm_url,
+            tts_model=tts_model,
+            translate=translate,
+            voice=voice,
+            engine=engine,
             max_chapters=max_chapters,
-            confirm=not yes,
+            save_scripts=save_scripts,
         )
-
         # Generate the podcast
         output_path = creator.synthesize()
 

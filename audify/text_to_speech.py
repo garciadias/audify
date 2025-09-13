@@ -17,7 +17,13 @@ from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
 from typing_extensions import Literal
 
-from audify.constants import KOKORO_DEFAULT_VOICE, LANG_CODES
+from audify.constants import (
+    DEFAULT_MODEL,
+    DEFAULT_SPEAKER,
+    KOKORO_DEFAULT_VOICE,
+    LANG_CODES,
+    OUTPUT_BASE_DIR,
+)
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
@@ -35,10 +41,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-DEFAULT_SPEAKER = KOKORO_DEFAULT_VOICE
-DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-DEFAULT_ENGINE = "kokoro"
-OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Kokoro API configuration
 KOKORO_API_BASE_URL = "http://localhost:8887/v1/audio"
@@ -88,12 +90,12 @@ class BaseSynthesizer(Synthesizer):
     def __init__(
         self,
         path: str | Path,
-        language: Optional[str],
         speaker: str,
-        model_name: str | None,
         translate: Optional[str],
         save_text: bool,
         engine: str,
+        language: str = "en",
+        model_name: str = DEFAULT_MODEL,
     ):
         self.path = Path(path).resolve()
         self.language = language
@@ -162,9 +164,9 @@ class BaseSynthesizer(Synthesizer):
                             "voice": self.speaker,
                             "response_format": "wav",
                             "lang_code": LANG_CODES[self.translate or self.language],
-                            "speed": 1.0
+                            "speed": 1.0,
                         },
-                        timeout=api_config.timeout
+                        timeout=api_config.timeout,
                     )
 
                     if response.status_code == 200:
@@ -320,11 +322,11 @@ class EpubSynthesizer(BaseSynthesizer):
         path: str | Path,
         language: Optional[str] = None,
         speaker: str = DEFAULT_SPEAKER,
-        model_name: str | None = DEFAULT_MODEL,
         translate: Optional[str] = None,
         save_text: bool = False,
         engine: Literal["kokoro", "tts_models"] = "kokoro",
         confirm: bool = True,
+        model_name: str = DEFAULT_MODEL,
     ):
         self.reader = EpubReader(path)
         detected_language = self.reader.get_language()
@@ -350,7 +352,13 @@ class EpubSynthesizer(BaseSynthesizer):
         self.confirm = confirm
 
         super().__init__(
-            path, resolved_language, speaker, model_name, translate, save_text, engine
+            path=path,
+            language=resolved_language,
+            speaker=speaker,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
+            engine=engine,
         )
 
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -1025,7 +1033,7 @@ class PdfSynthesizer(BaseSynthesizer):
         self,
         pdf_path: str | Path,
         language: str = "en",
-        model_name: str | None = DEFAULT_MODEL,
+        model_name: str = DEFAULT_MODEL,
         speaker: str = DEFAULT_SPEAKER,
         output_dir: str | Path = DEFAULT_OUTPUT_DIR,
         file_name: Optional[str] = None,
@@ -1044,7 +1052,13 @@ class PdfSynthesizer(BaseSynthesizer):
         self.output_wav_path = output_dir / f"{output_base_name}.wav"
 
         super().__init__(
-            pdf_path, language, speaker, model_name, translate, save_text, engine
+            path=pdf_path,
+            language=language,
+            speaker=speaker,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
+            engine=engine,
         )
 
     def synthesize(self) -> Path:
@@ -1132,45 +1146,19 @@ class InspectSynthesizer(Synthesizer):
 
     def list_speakers(self) -> Optional[List[str]]:
         """Lists available speakers for the loaded model."""
-        if self.model.is_multi_speaker:
-            if (
-                "xtts" in self.model_name.lower()
-                and hasattr(self.model, "speaker_manager")
-                and hasattr(self.model.speaker_manager, "speaker_ids")
-            ):
-                speakers = list(self.model.speaker_manager.speaker_ids.keys())
-                logger.info(
-                    f"Available speakers (IDs/Names) for {self.model_name}: {speakers}"
-                )
-                return speakers
-            elif hasattr(self.model, "speaker_ids") and self.model.speaker_ids:
-                speakers = list(self.model.speaker_ids.keys())
-                logger.info(
-                    f"Available speakers (IDs) for {self.model_name}: {speakers}"
-                )
-                return speakers
-            else:
-                logger.warning(
-                    f"Could not determine speaker list for multi-speaker model"
-                    f" {self.model_name}."
-                )
-                return None
-        else:
-            logger.info(f"Model {self.model_name} is single-speaker.")
-            return None
-
-    def list_models(self) -> List[str]:
-        """Lists available TTS models from the TTS library."""
-        logger.info("Fetching list of available TTS models...")
-        try:
-            available_models = TTS.list_models()
-            logger.info(f"Found {len(available_models)} available models.")
-            return available_models
-        except Exception as e:
+        response = requests.get("https://api.kokoro.ai/voices")
+        if response.status_code != 200:
             logger.error(
-                f"Failed to fetch list of available models: {e}", exc_info=True
+                f"Failed to fetch speakers from Kokoro API: {response.status_code}"
             )
-            return []
+            return None
+        voices = response.json().get("voices", [])
+        speakers = [voice["name"] for voice in voices if "name" in voice]
+        if speakers:
+            logger.info(f"Available speakers from Kokoro API: {speakers}")
+            return speakers
+        logger.warning("No speakers found from Kokoro API.")
+        return None
 
     def synthesize(self) -> str:
         """Indicates that this class is not for direct synthesis."""

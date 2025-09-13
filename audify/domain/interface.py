@@ -4,28 +4,6 @@ from pathlib import Path
 from TTS.api import TTS
 
 
-class Reader(ABC):
-    @abstractmethod
-    def __init__(self, path: str | Path):
-        ...
-
-    @abstractmethod
-    def get_chapters(self) -> list[str]:
-        ...
-
-    @abstractmethod
-    def get_language(self) -> str:
-        ...
-
-    @abstractmethod
-    def get_title(self) -> str:
-        ...
-
-    @abstractmethod
-    def get_cover_image(self, output_path) -> Path | None:
-        ...
-
-
 class Synthesizer(ABC):
     @abstractmethod
     def __init__(
@@ -39,5 +17,4 @@ class Synthesizer(ABC):
         self.model: TTS
 
     @abstractmethod
-    def synthesize(self) -> str | Path:
-        ...
+    def synthesize(self) -> str | Path: ...
