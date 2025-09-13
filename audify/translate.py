@@ -3,11 +3,8 @@ from typing import Optional
 
 from langchain_ollama import OllamaLLM
 
-from audify.constants import (
-    LANGUAGE_NAMES,
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_TRANSLATION_MODEL,
-)
+from audify.constants import (LANGUAGE_NAMES, OLLAMA_API_BASE_URL,
+                              OLLAMA_DEFAULT_TRANSLATION_MODEL)
 from audify.prompts import TRANSLATE_PROMPT
 
 # Configure logging
@@ -79,6 +76,9 @@ def translate_sentence(
 
         # Get translation using LangChain
         translated_text = llm.invoke(prompt).strip()
+        # If model is a thinking model, take the text after </think>
+        if "</think>" in translated_text:
+            translated_text = translated_text.split("</think>", 1)[1].strip()
 
         if translated_text:
             logger.debug(
