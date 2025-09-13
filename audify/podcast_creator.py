@@ -10,10 +10,7 @@ from langchain_ollama import OllamaLLM
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
-from audify.constants import (
-    OUTPUT_BASE_DIR,
-    PODCAST_INSTRUCTIONS,
-)
+from audify.constants import OUTPUT_BASE_DIR, PODCAST_INSTRUCTIONS
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.text_to_speech import BaseSynthesizer
@@ -89,7 +86,7 @@ class PodcastCreator(BaseSynthesizer):
         self,
         path: str | Path,
         language: Optional[str] = None,
-        speaker: str = "af_bella",
+        voice: str = "af_bella",
         model_name: str = "qwen3:30b",
         translate: Optional[str] = None,
         save_text: bool = True,  # Default to True for podcast scripts
@@ -139,7 +136,7 @@ class PodcastCreator(BaseSynthesizer):
         super().__init__(
             path=path,
             language=resolved_language,
-            speaker=speaker,
+            voice=voice,
             model_name=model_name,
             translate=translate,
             save_text=save_text,

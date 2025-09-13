@@ -14,13 +14,28 @@ from pathlib import Path
 import click
 
 from audify.constants import DEFAULT_LANGUAGE_LIST
-from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
+from audify.podcast_creator import (PodcastCreator, PodcastEpubCreator,
+                                    PodcastPdfCreator)
 from audify.utils import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-def get_creator(file_extension: str, **kwargs) -> PodcastCreator:
+def get_creator(
+    file_extension: str,
+    path: str,
+    language: str,
+    voice: str,
+    model_name: str,
+    translate: str | None,
+    save_text: bool,
+    save_scripts: bool,
+    engine: str,
+    llm_base_url: str,
+    llm_model: str,
+    max_chapters: int | None,
+    confirm: bool
+    ) -> PodcastCreator:
     """Get the appropriate PodcastCreator subclass based on file extension.
 
     Args:
@@ -33,55 +48,58 @@ def get_creator(file_extension: str, **kwargs) -> PodcastCreator:
         TypeError: If the file extension is unsupported.
     """
     if file_extension == ".epub":
-        return PodcastEpubCreator(**kwargs)
+        return PodcastEpubCreator(
+            path=path,
+            language=language,
+            voice=voice,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
+            engine=engine,
+            llm_base_url=llm_base_url,
+            llm_model=llm_model,
+            max_chapters=max_chapters,
+            confirm=confirm
+        )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
-        if "max_chapters" in kwargs:
-            kwargs.pop("max_chapters")
-        return PodcastPdfCreator(**kwargs)
+        return PodcastPdfCreator(
+            path=path,
+            language=language,
+            voice=voice,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
+            engine=engine,
+            llm_base_url=llm_base_url,
+            llm_model=llm_model,
+            confirm=confirm
+        )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")
 
 
 @click.command()
-@click.argument(
-    "file_path",
-    type=click.Path(exists=True),
-    required=True,
-)
+@click.argument("path", type=click.Path(exists=True))
 @click.option(
     "--language",
     "-l",
     type=click.Choice(DEFAULT_LANGUAGE_LIST, case_sensitive=False),
     default="en",
-    help="Language of the source text.",
+    help="Language of the synthesized podcast.",
 )
 @click.option(
-    "--llm-model",
-    "-lm",
+    "--model-name",
+    "-m",
     type=str,
-    default="qwen3:30b",
-    help="Local LLM model to use for podcast script generation.",
-)
-@click.option(
-    "--llm-url",
-    "-lu",
-    type=str,
-    default="http://localhost:11434",
-    help="Base URL for the local LLM API (e.g., Ollama).",
-)
-@click.option(
-    "--tts-model",
-    "-tm",
-    type=str,
-    default=None,
-    help="TTS model to use for speech synthesis.",
+    default="kokoro",
+    help="Path to the TTS model or 'kokoro' to use Kokoro TTS API.",
 )
 @click.option(
     "--translate",
     "-t",
     type=click.Choice(DEFAULT_LANGUAGE_LIST, case_sensitive=False),
-    help="Translate the text to the specified language before TTS.",
+    help="Translate the text to the specified language.",
     default=None,
 )
 @click.option(
@@ -89,61 +107,69 @@ def get_creator(file_extension: str, **kwargs) -> PodcastCreator:
     "-v",
     type=str,
     default="af_bella",
-    help="Path to the speaker's voice file.",
+    help="Path to the speaker's voice or voice name if using Kokoro API.",
 )
 @click.option(
-    "--engine",
-    "-e",
-    type=click.Choice(["kokoro", "tts_models"], case_sensitive=False),
-    default="kokoro",
-    help="The TTS engine to use.",
+    "--save-scripts",
+    "-st",
+    is_flag=True,
+    help="Save the text extraction to a file.",
+)
+@click.option(
+    "--save-scripts",
+    "-ss",
+    is_flag=True,
+    help="Save the generated podcast scripts to files.",
+)
+@click.option(
+    "--llm-base-url",
+    type=str,
+    default="http://localhost:11434",
+    help="Base URL for the LLM API (default: http://localhost:11434).",
+)
+@click.option(
+    "--llm-model",
+    type=str,
+    default="llama2",
+    help="The LLM model to use (default: llama2).",
 )
 @click.option(
     "--max-chapters",
     "-mc",
     type=int,
-    help="Maximum number of chapters/episodes to create.",
+    help="Maximum number of chapters/episodes to create (only for EPUB).",
     default=None,
 )
 @click.option(
-    "--save-scripts/--no-save-scripts",
-    default=True,
-    help="Save generated podcast scripts to files.",
-)
-@click.option(
-    "--yes",
-    "-y",
+    "--confirm/--no-confirm",
+    "-y/-n",
     is_flag=True,
-    help="Skip confirmation prompts.",
+    default=False,
+    help="Ask for confirmation before proceeding.",
 )
 def main(
-    file_path: str,
+    path: str,
     language: str,
-    llm_model: str,
-    llm_url: str,
-    tts_model: str | None,
-    translate: str | None,
     voice: str,
-    engine: str,
-    max_chapters: int | None,
+    model_name: str,
+    translate: str | None,
     save_scripts: bool,
-    yes: bool,
+    llm_base_url: str,
+    llm_model: str,
+    max_chapters: int | None,
+    confirm: bool
 ):
     """Create podcast episodes from ebooks or PDFs using LLM and TTS."""
 
     terminal_width = os.get_terminal_size()[0]
-    file_extension = get_file_extension(file_path)
+    file_extension = get_file_extension(path)
 
     print("=" * terminal_width)
 
     # Show configuration
-    print(f"Source file: {file_path}")
+    print(f"Source file: {path}")
     print(f"Language: {language}")
     print(f"LLM Model: {llm_model}")
-    print(f"LLM URL: {llm_url}")
-    print(f"TTS Engine: {engine}")
-    if tts_model:
-        print(f"TTS Model: {tts_model}")
     if translate:
         print(f"Translation: {language} -> {translate}")
     if max_chapters:
@@ -152,18 +178,15 @@ def main(
     print("=" * terminal_width)
 
     try:
-        if not yes:
+        if not confirm:
             click.confirm("Proceed with these settings?", abort=True)
         creator = get_creator(
             file_extension,
-            path=file_path,
+            path=path,
             language=language,
             llm_model=llm_model,
-            llm_url=llm_url,
-            tts_model=tts_model,
             translate=translate,
             voice=voice,
-            engine=engine,
             max_chapters=max_chapters,
             save_scripts=save_scripts,
         )

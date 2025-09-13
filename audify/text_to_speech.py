@@ -15,23 +15,15 @@ from pydub.exceptions import CouldntDecodeError
 from TTS.api import TTS
 from typing_extensions import Literal
 
-from audify.constants import (
-    DEFAULT_MODEL,
-    DEFAULT_SPEAKER,
-    KOKORO_API_BASE_URL,
-    KOKORO_DEFAULT_VOICE,
-    LANG_CODES,
-    OUTPUT_BASE_DIR,
-)
+from audify.constants import (DEFAULT_MODEL, DEFAULT_SPEAKER,
+                              KOKORO_API_BASE_URL, KOKORO_DEFAULT_VOICE,
+                              LANG_CODES, OUTPUT_BASE_DIR)
 from audify.domain.interface import Synthesizer
 from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (
-    break_text_into_sentences,
-    get_audio_duration,
-    get_file_name_title,
-)
+from audify.utils import (break_text_into_sentences, get_audio_duration,
+                          get_file_name_title)
 
 # Configure logging
 logging.basicConfig(
@@ -83,7 +75,7 @@ class BaseSynthesizer(Synthesizer):
     def __init__(
         self,
         path: str | Path,
-        speaker: str,
+        voice: str,
         translate: Optional[str],
         save_text: bool,
         engine: str,
@@ -92,7 +84,7 @@ class BaseSynthesizer(Synthesizer):
     ):
         self.path = Path(path).resolve()
         self.language = language
-        self.speaker = speaker
+        self.speaker = voice
         self.translate = translate
         self.engine = engine
         self.model_name = model_name
@@ -339,7 +331,7 @@ class EpubSynthesizer(BaseSynthesizer):
         super().__init__(
             path=path,
             language=resolved_language,
-            speaker=speaker,
+            voice=speaker,
             model_name=model_name,
             translate=translate,
             save_text=save_text,
@@ -1039,7 +1031,7 @@ class PdfSynthesizer(BaseSynthesizer):
         super().__init__(
             path=pdf_path,
             language=language,
-            speaker=speaker,
+            voice=speaker,
             model_name=model_name,
             translate=translate,
             save_text=save_text,
