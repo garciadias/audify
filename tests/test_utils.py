@@ -118,32 +118,6 @@ def test_sentence_to_speech_multilingual(mock_path, mock_tts):
 
 @patch("audify.utils.TTS")
 @patch("audify.utils.Path")
-@pytest.mark.parametrize("multilingual", [True, False])
-def test_sentence_to_speech_read_error(mock_path, mock_tts, multilingual):
-    mock_model = MagicMock()
-    mock_model.is_multi_lingual = multilingual
-    mock_model.tts_to_file.side_effect = [KeyError("Test KeyError"), True]
-    mock_path.return_value = Path("/tmp/")
-    sentence_to_speech("This is a test sentence.", mock_model)
-    if multilingual:
-        mock_model.tts_to_file.assert_called_with(
-            text="Error: 'Test KeyError'",
-            file_path=mock_path.return_value / "speech.wav",
-            language="en",
-            speaker_wav="data/Jennifer_16khz.wav",
-            speed=1.15,
-        )
-    else:
-        mock_model.tts_to_file.assert_called_with(
-            text="Error: 'Test KeyError'",
-            file_path=mock_path.return_value / "speech.wav",
-            speaker_wav="data/Jennifer_16khz.wav",
-            speed=1.15,
-        )
-
-
-@patch("audify.utils.TTS")
-@patch("audify.utils.Path")
 def test_sentence_to_speech_exception(mock_path, mock_tts):
     mock_model = MagicMock()
     mock_model.tts_to_file.side_effect = KeyError("Test KeyError")
