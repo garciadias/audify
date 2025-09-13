@@ -1,12 +1,16 @@
 import os
+import warnings
 from pathlib import Path
 
 import click
+import requests
 
-from audify.constants import DEFAULT_LANGUAGE_LIST
-from audify.domain.interface import Synthesizer
-from audify.text_to_speech import EpubSynthesizer, InspectSynthesizer, PdfSynthesizer
+from audify.constants import AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE_LIST
+from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
+
+# Ignore UserWarning from pkg_resources about package metadata
+warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -90,17 +94,26 @@ def main(
 ):
     terminal_width = os.get_terminal_size()[0]
     if list_languages:
-        synthesizer: Synthesizer = InspectSynthesizer()
         print("=" * terminal_width)
         print("Available languages:".center(terminal_width))
         print("=" * terminal_width)
-        print(", ".join(synthesizer.model.languages))
+        print("Language\tCode")
+        print("--------\t----")
+        for lang, code in AVAILABLE_LANGUAGES.items():
+            print(f"{lang:<10}\t{code}")
+        print("=" * terminal_width)
     elif list_models:
-        synthesizer = InspectSynthesizer()
         print("=" * terminal_width)
         print("Available models:".center(terminal_width))
         print("=" * terminal_width)
-        print("\n".join(synthesizer.model.models))
+        try:
+            response = requests.get("http://localhost:8887/v1/models")
+            response.raise_for_status()
+            models = response.json().get("data", [])
+            model_names = sorted(model.get("id") for model in models if "id" in model)
+            print("\n".join(model_names))
+        except requests.RequestException as e:
+            print(f"Error fetching models from Kokoro API: {e}")
     else:
         if get_file_extension(file_path) == ".epub":
             print("=" * terminal_width)
