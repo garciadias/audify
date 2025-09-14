@@ -3,8 +3,11 @@ from typing import Optional
 
 from langchain_ollama import OllamaLLM
 
-from audify.constants import (LANGUAGE_NAMES, OLLAMA_API_BASE_URL,
-                              OLLAMA_DEFAULT_TRANSLATION_MODEL)
+from audify.constants import (
+    LANGUAGE_NAMES,
+    OLLAMA_API_BASE_URL,
+    OLLAMA_DEFAULT_TRANSLATION_MODEL,
+)
 from audify.prompts import TRANSLATE_PROMPT
 
 # Configure logging

@@ -15,11 +15,12 @@ from audify.ebook_read import EpubReader
 from audify.pdf_read import PdfReader
 from audify.prompts import PODCAST_PROMPT
 from audify.text_to_speech import BaseSynthesizer
+from audify.translate import translate_sentence
 from audify.utils import clean_text, get_audio_duration
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -49,9 +50,17 @@ class LLMClient:
             num_predict=4096,  # Encourage longer responses
         )
 
-    def generate_podcast_script(self, chapter_text: str) -> str:
+    def generate_podcast_script(
+        self, chapter_text: str, language: Optional[str]
+    ) -> str:
         """Generate podcast script from chapter text using LangChain."""
-        prompt = PODCAST_PROMPT + "\n\n" + chapter_text
+        if language:
+            translated_prompt = translate_sentence(
+                PODCAST_PROMPT, src_lang="en", tgt_lang=language
+            )
+            prompt = translated_prompt + "\n\n" + chapter_text
+        else:
+            prompt = PODCAST_PROMPT + "\n\n" + chapter_text
 
         try:
             logger.info(f"Sending request to LLM at {self.base_url}")
@@ -91,7 +100,6 @@ class PodcastCreator(BaseSynthesizer):
         model_name: str = OLLAMA_DEFAULT_MODEL,
         translate: Optional[str] = None,
         save_text: bool = True,  # Default to True for podcast scripts
-        engine: str = "kokoro",
         llm_base_url: str = OLLAMA_API_BASE_URL,
         llm_model: str = OLLAMA_DEFAULT_MODEL,
         max_chapters: Optional[int] = None,
@@ -111,8 +119,8 @@ class PodcastCreator(BaseSynthesizer):
         else:
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
-        resolved_language = language or detected_language
-        if not resolved_language:
+        self.resolved_language = language or detected_language
+        if not self.resolved_language:
             raise ValueError(
                 "Language must be provided or detectable from the file metadata."
             )
@@ -136,7 +144,7 @@ class PodcastCreator(BaseSynthesizer):
         # Initialize parent class
         super().__init__(
             path=path,
-            language=resolved_language,
+            language=self.resolved_language,
             voice=voice,
             model_name=model_name,
             translate=translate,
@@ -215,13 +223,15 @@ class PodcastCreator(BaseSynthesizer):
 
         return text.strip()
 
-    def generate_podcast_script(self, chapter_text: str, chapter_number: int) -> str:
+    def generate_podcast_script(
+        self, chapter_text: str, chapter_number: int, language: Optional[str]
+    ) -> str:
         """Generate podcast script for a single chapter."""
+
         logger.info(f"Generating podcast script for Chapter {chapter_number}...")
 
         # Save script path
         script_path = self.scripts_path / f"episode_{chapter_number:03d}_script.txt"
-
         # Check if script already exists
         if script_path.exists() and not self.confirm:
             logger.info(
@@ -240,6 +250,10 @@ class PodcastCreator(BaseSynthesizer):
             f"Cleaned text for Episode {chapter_number}:"
             " removed references and citations"
         )
+        logger.info(
+            f"Original length: {len(chapter_text.split())} words, "
+            f"Cleaned length: {len(cleaned_text.split())} words"
+        )
         chapter_title = (
             self.reader.get_chapter_title(chapter_text)
             if isinstance(self.reader, EpubReader)
@@ -256,7 +270,20 @@ class PodcastCreator(BaseSynthesizer):
             )
             podcast_script = " ".join(chapter_text)
         else:
-            podcast_script = self.llm_client.generate_podcast_script(cleaned_text)
+            if self.translate and language:
+                translated_prompt = translate_sentence(
+                    PODCAST_PROMPT, src_lang="en", tgt_lang=language
+                )
+                prompt = translated_prompt + "\n\n" + cleaned_text
+            else:
+                prompt = PODCAST_PROMPT + "\n\n" + cleaned_text
+            logger.debug(f"LLM Prompt for Episode {chapter_number}:\n{prompt[:500]}...")
+            logger.debug(f"Using language: {language}")
+            logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
+            podcast_script = self.llm_client.generate_podcast_script(
+                prompt,
+                language=self.resolved_language if self.translate else self.translate,
+            )
 
         # Save the script if requested
         if self.save_text:
@@ -395,7 +422,15 @@ class PodcastCreator(BaseSynthesizer):
             try:
                 # Generate podcast script
                 podcast_script = self.generate_podcast_script(
-                    chapter_content, episode_number
+                    chapter_content,
+                    episode_number,
+                    language=self.resolved_language
+                    if self.translate
+                    else self.translate,
+                )
+                logger.debug(
+                    f"Podcast Script for Episode {episode_number}:"
+                    f"\n{podcast_script[:500]}..."
                 )
 
                 # Synthesize episode
@@ -698,7 +733,7 @@ class PodcastPdfCreator(PodcastCreator):
 
         # Get the full PDF content
         pdf_text = self.reader.get_cleaned_text()  # type: ignore # TODO: fix typing
-
+        logger.info(f"Extracted PDF text length: {len(pdf_text.split())} words")
         if not pdf_text.strip():
             logger.error("No text found in PDF")
             return []
@@ -710,9 +745,28 @@ class PodcastPdfCreator(PodcastCreator):
                 return []
 
         try:
+            logger.info(f"Using language: {self.language}")
+            if len(pdf_text.split()) < 200:
+                logger.warning(
+                    "PDF has very little text. The generated podcast may be very short."
+                )
+            logger.debug(f"Sample of cleaned prompt text:\n{pdf_text[:500]}...")
+            if self.translate and self.language:
+                translated_prompt = translate_sentence(
+                    PODCAST_PROMPT, src_lang="en", tgt_lang=self.language
+                )
+                prompt = translated_prompt + "\n\n" + pdf_text
+            else:
+                prompt = PODCAST_PROMPT + "\n\n" + pdf_text
+            logger.info(f"LLM Prompt for PDF Episode:\n{prompt[:500]}...")
             # Generate podcast script
-            podcast_script = self.generate_podcast_script(pdf_text, 1)
+            podcast_script = self.generate_podcast_script(
+                prompt,
+                1,
+                self.resolved_language if self.translate else self.translate,
+            )
 
+            logger.info(f"Podcast Script for PDF Episode:\n{podcast_script[:500]}...")
             # Synthesize episode
             episode_path = self.synthesize_episode(podcast_script, 1)
 

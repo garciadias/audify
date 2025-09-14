@@ -56,7 +56,7 @@ def break_too_long_sentences(sentences: list[str], max_length: int = 239) -> lis
 
 
 def break_text_into_sentences(
-    text: str, max_length: int = 23900, min_length: int = 1000
+    text: str, max_length: int = 500, min_length: int = 20
 ) -> list[str]:
     # Split text into sentences using punctuation marks
     sentences = re.split(r"(?<=[.!?;:¿¡]) +", text)
