@@ -751,7 +751,7 @@ class PodcastPdfCreator(PodcastCreator):
                     "PDF has very little text. The generated podcast may be very short."
                 )
             logger.debug(f"Sample of cleaned prompt text:\n{pdf_text[:500]}...")
-            if self.translate and self.language:
+            if not self.language == "en":
                 translated_prompt = translate_sentence(
                     PODCAST_PROMPT, src_lang="en", tgt_lang=self.language
                 )
