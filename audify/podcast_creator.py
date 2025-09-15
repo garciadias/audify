@@ -271,7 +271,7 @@ class PodcastCreator(BaseSynthesizer):
                 f"Chapter {chapter_number} has very little text after cleaning. "
                 "The generated podcast may be very short."
             )
-            podcast_script = " ".join(chapter_text)
+            podcast_script = chapter_text
         else:
             if self.translate and language:
                 translated_prompt = translate_sentence(
