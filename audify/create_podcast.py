@@ -115,12 +115,6 @@ def get_creator(
     help="Save the text extraction to a file.",
 )
 @click.option(
-    "--save-scripts",
-    "-ss",
-    is_flag=True,
-    help="Save the generated podcast scripts to files.",
-)
-@click.option(
     "--llm-base-url",
     type=str,
     default=OLLAMA_API_BASE_URL,

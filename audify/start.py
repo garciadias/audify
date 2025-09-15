@@ -5,7 +5,11 @@ from pathlib import Path
 import click
 import requests
 
-from audify.constants import AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE_LIST
+from audify.constants import (
+    AVAILABLE_LANGUAGES,
+    DEFAULT_LANGUAGE_LIST,
+    KOKORO_API_BASE_URL,
+)
 from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
 from audify.utils import get_file_extension
 
@@ -100,7 +104,7 @@ def main(
         print("Available models:".center(terminal_width))
         print("=" * terminal_width)
         try:
-            response = requests.get("http://localhost:8887/v1/models")
+            response = requests.get(f"{KOKORO_API_BASE_URL}/models")
             response.raise_for_status()
             models = response.json().get("data", [])
             model_names = sorted(model.get("id") for model in models if "id" in model)

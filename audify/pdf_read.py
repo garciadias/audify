@@ -28,10 +28,6 @@ class PdfReader:
                 text += page.extract_text()
         return text
 
-    def get_cleaned_text(self) -> str:
-        """Get the cleaned text from the PDF."""
-        return self.cleaned_text
-
     def save_cleaned_text(self, filename: str | Path):
         """Save the cleaned text to a file.
 
@@ -48,7 +44,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     reader = PdfReader(sys.argv[1])
-    cleaned_text = reader.get_cleaned_text()
+    cleaned_text = reader.cleaned_text
 
     # Print first 200 characters of cleaned text to verify
     print(cleaned_text[:200])

@@ -43,7 +43,7 @@ class KokoroAPIConfig:
     """Configuration for Kokoro API."""
 
     def __init__(self, base_url: Optional[str] = None):
-        self.base_url = base_url or KOKORO_API_BASE_URL
+        self.base_url = base_url or f"{KOKORO_API_BASE_URL}/audio"
         self.default_voice = KOKORO_DEFAULT_VOICE
         self.timeout = 30
 
@@ -136,6 +136,14 @@ class BaseSynthesizer:
 
                 try:
                     # Make API request for each sentence
+                    if self.speaker not in available_voices:
+                        raise ValueError(
+                            f"Speaker '{self.speaker}' not available in Kokoro voices."
+                        )
+                    if self.language not in LANG_CODES.keys():
+                        raise ValueError(
+                            f"Language code '{self.language}' is not supported."
+                        )
                     response = requests.post(
                         api_config.speech_url,
                         json={
@@ -143,14 +151,7 @@ class BaseSynthesizer:
                             "input": sentence,
                             "voice": self.speaker,
                             "response_format": "wav",
-                            "lang_code": LANG_CODES.get(
-                                self.translate or self.language, LANG_CODES.get("en", "en")
-                            ),
-                            # If the language code is missing, log a warning
-                            # (This is handled below, but you may want to add more robust error handling)
-                            # Optionally, you could add:
-                            # if (self.translate or self.language) not in LANG_CODES:
-                            #     logger.warning(f"Language code '{self.translate or self.language}' not found in LANG_CODES. Using default 'en'.")
+                            "lang_code": LANG_CODES[self.translate or self.language],
                             "speed": 1.0,
                         },
                         timeout=api_config.timeout,
@@ -1001,8 +1002,8 @@ class PdfSynthesizer(BaseSynthesizer):
         try:
             reader = PdfReader(self.path)
             logger.info("Extracting and cleaning text from PDF...")
-            cleaned_text = reader.get_cleaned_text()
-            sentences = break_text_into_sentences(cleaned_text)
+
+            sentences = break_text_into_sentences(reader.cleaned_text)
 
             if not sentences:
                 logger.warning("No text extracted from PDF. Cannot synthesize.")
@@ -1026,7 +1027,7 @@ class PdfSynthesizer(BaseSynthesizer):
                 except Exception as e:
                     logger.error(f"Error translating PDF content: {e}", exc_info=True)
                     logger.warning("Proceeding with original text for synthesis.")
-                    sentences = break_text_into_sentences(cleaned_text)
+                    sentences = break_text_into_sentences(reader.cleaned_text)
 
             self.output_wav_path.parent.mkdir(parents=True, exist_ok=True)
 

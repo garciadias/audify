@@ -400,7 +400,7 @@ class PodcastCreator(BaseSynthesizer):
             chapters = self.reader.get_chapters()
         else:
             # For PDF, treat the whole document as one episode
-            chapters = [self.reader.get_cleaned_text()]
+            chapters = [self.reader.cleaned_text]
 
         num_chapters = len(chapters)
         if self.max_chapters:
