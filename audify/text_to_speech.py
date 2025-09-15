@@ -143,7 +143,14 @@ class BaseSynthesizer:
                             "input": sentence,
                             "voice": self.speaker,
                             "response_format": "wav",
-                            "lang_code": LANG_CODES[self.translate or self.language],
+                            "lang_code": LANG_CODES.get(
+                                self.translate or self.language, LANG_CODES.get("en", "en")
+                            ),
+                            # If the language code is missing, log a warning
+                            # (This is handled below, but you may want to add more robust error handling)
+                            # Optionally, you could add:
+                            # if (self.translate or self.language) not in LANG_CODES:
+                            #     logger.warning(f"Language code '{self.translate or self.language}' not found in LANG_CODES. Using default 'en'.")
                             "speed": 1.0,
                         },
                         timeout=api_config.timeout,
