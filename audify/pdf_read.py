@@ -30,7 +30,7 @@ class PdfReader:
 
     def get_cleaned_text(self) -> str:
         """Get the cleaned text from the PDF."""
-        return clean_text(self.text)
+        return self.cleaned_text
 
     def save_cleaned_text(self, filename: str | Path):
         """Save the cleaned text to a file.
