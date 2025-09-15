@@ -1,4 +1,5 @@
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -179,8 +180,10 @@ class PodcastCreator(BaseSynthesizer):
         """
         Clean text by removing references, citations, and other non-content elements.
         """
-        import re
-
+        text = str(text)  # Ensure text is a string
+        print("Cleaning text to remove references and citations...")
+        print("Original text length:", len(text))
+        print("Original text snippet:", text[:500])
         # Remove common reference patterns
         # Remove numbered references like [1], [2], etc.
         text = re.sub(r"\[\d+\]", "", text)
