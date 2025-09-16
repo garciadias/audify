@@ -727,15 +727,13 @@ class PodcastPdfCreator(PodcastCreator):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not hasattr(self.reader, "get_cleaned_text"):
-            raise ValueError("PodcastPdfCreator requires a PDF reader")
 
     def create_podcast_series(self) -> List[Path]:
         """Create a single podcast episode from the PDF content."""
         logger.info("Creating podcast episode from PDF...")
 
         # Get the full PDF content
-        pdf_text = self.reader.get_cleaned_text()  # type: ignore # TODO: fix typing
+        pdf_text = self.reader.cleaned_text
         logger.info(f"Extracted PDF text length: {len(pdf_text.split())} words")
         if not pdf_text.strip():
             logger.error("No text found in PDF")
@@ -753,7 +751,7 @@ class PodcastPdfCreator(PodcastCreator):
                 logger.warning(
                     "PDF has very little text. The generated podcast may be very short."
                 )
-            logger.debug(f"Sample of cleaned prompt text:\n{pdf_text[:500]}...")
+
             if not self.language == "en":
                 translated_prompt = translate_sentence(
                     PODCAST_PROMPT, src_lang="en", tgt_lang=self.language
@@ -761,7 +759,7 @@ class PodcastPdfCreator(PodcastCreator):
                 prompt = translated_prompt + "\n\n" + pdf_text
             else:
                 prompt = PODCAST_PROMPT + "\n\n" + pdf_text
-            logger.info(f"LLM Prompt for PDF Episode:\n{prompt[:500]}...")
+
             # Generate podcast script
             podcast_script = self.generate_podcast_script(
                 prompt,
@@ -769,7 +767,6 @@ class PodcastPdfCreator(PodcastCreator):
                 self.resolved_language if self.translate else self.translate,
             )
 
-            logger.info(f"Podcast Script for PDF Episode:\n{podcast_script[:500]}...")
             # Synthesize episode
             episode_path = self.synthesize_episode(podcast_script, 1)
 

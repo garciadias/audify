@@ -6,7 +6,7 @@ OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Kokoro API configuration
 KOKORO_API_BASE_URL = "http://localhost:8887/v1"
-OLLAMA_API_BASE_URL = "http://localhost:11435"
+OLLAMA_API_BASE_URL = "http://localhost:11434"
 # Allow override via environment variable
 KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
 OLLAMA_DEFAULT_TRANSLATION_MODEL = os.getenv(

@@ -23,7 +23,7 @@
             "program": "${workspaceFolder}/audify/create_podcast.py",
             "console": "integratedTerminal",
             "args": [
-                "data/test1.pdf",
+                "~/Downloads/mao_jones.pdf",
                 "-l",
                 "en",
                 "--llm-model",
