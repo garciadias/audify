@@ -177,7 +177,8 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
         # Now invoke the main command with the PDF file mocking all API calls
         with patch("audify.text_to_speech.requests.get") as mock_get_voices, \
              patch("audify.text_to_speech.requests.post") as mock_post_synthesis, \
-             patch("audify.translate.OllamaTranslationConfig.create_llm") as mock_llm:
+             patch("audify.translate.OllamaTranslationConfig.create_llm") as mock_llm, \
+             patch("audify.text_to_speech.subprocess.run") as mock_subprocess:
 
             # Mock the voices GET request
             mock_voices_response = MagicMock()
@@ -201,6 +202,13 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             mock_translation_llm = MagicMock()
             mock_translation_llm.invoke.return_value = "This is test PDF content."
             mock_llm.return_value = mock_translation_llm
+
+            # Mock subprocess.run for ffmpeg calls
+            mock_ffmpeg_result = MagicMock()
+            mock_ffmpeg_result.stdout = "FFmpeg mock output"
+            mock_ffmpeg_result.stderr = ""
+            mock_ffmpeg_result.returncode = 0
+            mock_subprocess.return_value = mock_ffmpeg_result
             result = runner.invoke(
                 start.main,
                 [
