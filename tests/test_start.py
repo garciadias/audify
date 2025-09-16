@@ -178,7 +178,9 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
         with patch("audify.text_to_speech.requests.get") as mock_get_voices, \
              patch("audify.text_to_speech.requests.post") as mock_post_synthesis, \
              patch("audify.translate.OllamaTranslationConfig.create_llm") as mock_llm, \
-             patch("audify.text_to_speech.subprocess.run") as mock_subprocess:
+             patch("audify.text_to_speech.subprocess.run") as mock_subprocess, \
+             patch("audify.text_to_speech.AudioSegment") as mock_audio_segment, \
+             patch("pathlib.Path.unlink") as mock_unlink:
 
             # Mock the voices GET request
             mock_voices_response = MagicMock()
@@ -191,6 +193,7 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
 
             # Mock the synthesis POST request
             mock_synthesis_response = MagicMock()
+            mock_synthesis_response.status_code = 200
             mock_synthesis_response.json.return_value = {
                 "data": {"audio_url": "http://example.com/audio.mp3"}
             }
@@ -209,6 +212,15 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             mock_ffmpeg_result.stderr = ""
             mock_ffmpeg_result.returncode = 0
             mock_subprocess.return_value = mock_ffmpeg_result
+
+            # Mock AudioSegment for pydub audio processing
+            mock_audio_instance = MagicMock()
+            mock_audio_segment.from_wav.return_value = mock_audio_instance
+            mock_audio_segment.empty.return_value = mock_audio_instance
+            mock_audio_instance.export.return_value = None
+
+            # Mock file operations
+            mock_unlink.return_value = None  # File deletion succeeds
             result = runner.invoke(
                 start.main,
                 [
