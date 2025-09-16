@@ -13,12 +13,12 @@ from pathlib import Path
 
 import click
 
-from audify.constants import (
+from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
+from audify.utils.constants import (
     DEFAULT_LANGUAGE_LIST,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
 )
-from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
 from audify.utils.text import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]

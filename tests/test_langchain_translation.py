@@ -52,8 +52,8 @@ def test_translation_interface():
         print(f"\nTest case: '{sentence}' ({src_lang} -> {tgt_lang})")
         print("This would call LangChain OllamaLLM with:")
 
-        from audify.constants import LANGUAGE_NAMES
-        from audify.prompts import TRANSLATE_PROMPT
+        from audify.utils.constants import LANGUAGE_NAMES
+        from audify.utils.prompts import TRANSLATE_PROMPT
 
         src_lang_name = LANGUAGE_NAMES.get(src_lang, src_lang)
         tgt_lang_name = LANGUAGE_NAMES.get(tgt_lang, tgt_lang)

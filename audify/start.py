@@ -5,12 +5,12 @@ from pathlib import Path
 import click
 import requests
 
-from audify.constants import (
+from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
+from audify.utils.constants import (
     AVAILABLE_LANGUAGES,
     DEFAULT_LANGUAGE_LIST,
     KOKORO_API_BASE_URL,
 )
-from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
 from audify.utils.text import get_file_extension
 
 # Ignore UserWarning from pkg_resources about package metadata

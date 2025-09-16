@@ -13,7 +13,10 @@ import tqdm
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
-from audify.constants import (
+from audify.readers.ebook import EpubReader
+from audify.readers.pdf import PdfReader
+from audify.translate import translate_sentence
+from audify.utils.constants import (
     DEFAULT_MODEL,
     DEFAULT_SPEAKER,
     KOKORO_API_BASE_URL,
@@ -21,9 +24,6 @@ from audify.constants import (
     LANG_CODES,
     OUTPUT_BASE_DIR,
 )
-from audify.readers.ebook import EpubReader
-from audify.readers.pdf import PdfReader
-from audify.translate import translate_sentence
 from audify.utils.text import (
     break_text_into_sentences,
     get_audio_duration,

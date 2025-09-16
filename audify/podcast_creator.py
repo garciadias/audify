@@ -11,12 +11,16 @@ from langchain_ollama import OllamaLLM
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
-from audify.constants import OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL, OUTPUT_BASE_DIR
-from audify.prompts import PODCAST_PROMPT
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer
 from audify.translate import translate_sentence
+from audify.utils.constants import (
+    OLLAMA_API_BASE_URL,
+    OLLAMA_DEFAULT_MODEL,
+    OUTPUT_BASE_DIR,
+)
+from audify.utils.prompts import PODCAST_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_audio_duration
 
 # Configure logging
