@@ -1,4 +1,3 @@
-# %%
 from pathlib import Path
 
 import bs4
@@ -11,16 +10,17 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
 class EpubReader(Reader):
     def __init__(self, path: str | Path):
         self.path = Path(path).resolve()
+        self.book = self.read()
         self.title = self.get_title()
 
     def read(self):
-        self.book = epub.read_epub(self.path)
+        return epub.read_epub(self.path)
 
     def get_chapters(self) -> list[str]:
         chapters = []
         for item in self.book.get_items():
             if item.get_type() == ITEM_DOCUMENT:
-                chapters.append(item.get_body_content())
+                chapters.append(item.get_body_content().decode('utf-8'))
         return chapters
 
     def extract_text(self, chapter: str) -> str:
@@ -42,7 +42,7 @@ class EpubReader(Reader):
             if self.book.get_metadata("DC", "title")[0]:
                 title = self.book.get_metadata("DC", "title")[0][0]
         if not title:
-            "missing title"
+            title = "missing title"
         return title
 
     def get_cover_image(self, output_path: str | Path) -> Path | None:
