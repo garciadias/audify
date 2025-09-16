@@ -132,7 +132,8 @@ class TestEpubReader:
         mock_read_epub.return_value = mock_epub_book
 
         reader = EpubReader(temp_epub_path)
-        html_content = '<html><body><h1>Chapter Title</h1><p>This is paragraph text.</p><div>More content</div></body></html>'
+        html_content = '<html><body><h1>Chapter Title</h1>' \
+            '<p>This is paragraph text.</p><div>More content</div></body></html>'
 
         text = reader.extract_text(html_content)
 
@@ -140,7 +141,8 @@ class TestEpubReader:
         assert text == expected_text
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_extract_text_empty_html(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_extract_text_empty_html(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test extracting text from empty HTML."""
         mock_read_epub.return_value = mock_epub_book
 
@@ -155,7 +157,8 @@ class TestEpubReader:
         mock_read_epub.return_value = mock_epub_book
 
         reader = EpubReader(temp_epub_path)
-        html_content = '<html><body><h1>Chapter One</h1><p>Content here</p></body></html>'
+        html_content = '<html><body><h1>Chapter One</h1>' \
+            '<p>Content here</p></body></html>'
 
         title = reader.get_chapter_title(html_content)
 
@@ -167,38 +170,44 @@ class TestEpubReader:
         mock_read_epub.return_value = mock_epub_book
 
         reader = EpubReader(temp_epub_path)
-        html_content = '<html><body><h2>Chapter Two</h2><p>Content here</p></body></html>'
+        html_content = '<html><body><h2>Chapter Two</h2>' \
+            '<p>Content here</p></body></html>'
 
         title = reader.get_chapter_title(html_content)
 
         assert title == "Chapter Two"
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_chapter_title_from_title_tag(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_get_chapter_title_from_title_tag(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test getting chapter title from title tag."""
         mock_read_epub.return_value = mock_epub_book
 
         reader = EpubReader(temp_epub_path)
-        html_content = '<html><head><title>Page Title</title></head><body><p>Content here</p></body></html>'
+        html_content = '<html><head><title>Page Title</title>' \
+            '</head><body><p>Content here</p></body></html>'
 
         title = reader.get_chapter_title(html_content)
 
         assert title == "Page Title"
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_chapter_title_from_header(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_get_chapter_title_from_header(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test getting chapter title from header tag."""
         mock_read_epub.return_value = mock_epub_book
 
         reader = EpubReader(temp_epub_path)
-        html_content = '<html><body><header>Header Title</header><p>Content here</p></body></html>'
+        html_content = '<html><body><header>Header Title' \
+            '</header><p>Content here</p></body></html>'
 
         title = reader.get_chapter_title(html_content)
 
         assert title == "Header Title"
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_chapter_title_unknown(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_get_chapter_title_unknown(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test getting chapter title when no title elements found."""
         mock_read_epub.return_value = mock_epub_book
 
@@ -259,9 +268,12 @@ class TestEpubReader:
 
     @patch('builtins.open', new_callable=mock_open)
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_cover_image_with_cover_item(self, mock_read_epub, mock_file_open, temp_epub_path, mock_epub_book, mock_epub_items):
+    def test_get_cover_image_with_cover_item(
+        self, mock_read_epub, mock_file_open,
+        temp_epub_path, mock_epub_book, mock_epub_items):
         """Test getting cover image when ITEM_COVER exists."""
-        mock_epub_book.get_items.return_value = [mock_epub_items['cover'], mock_epub_items['image']]
+        mock_epub_book.get_items.return_value = [
+            mock_epub_items['cover'], mock_epub_items['image']]
         mock_read_epub.return_value = mock_epub_book
 
         reader = EpubReader(temp_epub_path)
@@ -276,7 +288,9 @@ class TestEpubReader:
 
     @patch('builtins.open', new_callable=mock_open)
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_cover_image_fallback_to_first_image(self, mock_read_epub, mock_file_open, temp_epub_path, mock_epub_book, mock_epub_items):
+    def test_get_cover_image_fallback_to_first_image(
+        self, mock_read_epub, mock_file_open,
+        temp_epub_path, mock_epub_book, mock_epub_items):
         """Test getting cover image when no ITEM_COVER, fallback to first ITEM_IMAGE."""
         mock_epub_book.get_items.return_value = [mock_epub_items['image']]
         mock_read_epub.return_value = mock_epub_book
@@ -292,7 +306,8 @@ class TestEpubReader:
             mock_file_open().write.assert_called_with(b'fake_image_data')
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_cover_image_no_images(self, mock_read_epub, temp_epub_path, mock_epub_book, mock_epub_items):
+    def test_get_cover_image_no_images(
+        self, mock_read_epub, temp_epub_path, mock_epub_book, mock_epub_items):
         """Test getting cover image when no images exist."""
         mock_epub_book.get_items.return_value = mock_epub_items['chapters']
         mock_read_epub.return_value = mock_epub_book
@@ -307,7 +322,9 @@ class TestEpubReader:
 
     @patch('builtins.open', new_callable=mock_open)
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_cover_image_with_path_object(self, mock_read_epub, mock_file_open, temp_epub_path, mock_epub_book, mock_epub_items):
+    def test_get_cover_image_with_path_object(
+        self, mock_read_epub, mock_file_open,
+        temp_epub_path, mock_epub_book, mock_epub_items):
         """Test getting cover image with Path object as output_path."""
         mock_epub_book.get_items.return_value = [mock_epub_items['cover']]
         mock_read_epub.return_value = mock_epub_book
@@ -323,7 +340,8 @@ class TestEpubReader:
             mock_file_open.assert_called_with(f"{temp_dir}/cover.jpg", "wb")
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_language(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_get_language(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test getting language from metadata."""
         mock_epub_book.get_metadata.return_value = [("en", {})]
         mock_read_epub.return_value = mock_epub_book
@@ -336,7 +354,8 @@ class TestEpubReader:
         mock_epub_book.get_metadata.assert_called_with("DC", "language")
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_get_language_multiple_languages(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_get_language_multiple_languages(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test getting language when multiple languages in metadata."""
         mock_epub_book.get_metadata.return_value = [("en", {}), ("fr", {})]
         mock_read_epub.return_value = mock_epub_book
@@ -356,7 +375,8 @@ class TestEpubReader:
             EpubReader(temp_epub_path)
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_bs4_parsing_malformed_html(self, mock_read_epub, temp_epub_path, mock_epub_book):
+    def test_bs4_parsing_malformed_html(
+        self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test BeautifulSoup handling of malformed HTML."""
         mock_read_epub.return_value = mock_epub_book
 
@@ -385,7 +405,8 @@ class TestEpubReader:
         assert reader.path == Path(relative_path).resolve()
 
     @patch('audify.readers.ebook.epub.read_epub')
-    def test_file_write_exception_handling(self, mock_read_epub, temp_epub_path, mock_epub_book, mock_epub_items):
+    def test_file_write_exception_handling(
+        self, mock_read_epub, temp_epub_path, mock_epub_book, mock_epub_items):
         """Test handling of file write exceptions when saving cover image."""
         mock_epub_book.get_items.return_value = [mock_epub_items['cover']]
         mock_read_epub.return_value = mock_epub_book
