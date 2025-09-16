@@ -6,13 +6,9 @@ from PIL import Image
 MODULE_PATH = Path(__file__).parents[1]
 
 
-if __name__ == "__main__":
-    finished_path = MODULE_PATH / "data" / "covers" / "finished"
-    list_im = list((finished_path).rglob("*.jpg"))
-    list_im += list((finished_path).rglob("*.png"))
-    list_im += list((finished_path).rglob("*.jpeg"))
-    sorted_im = sorted(list_im, key=lambda x: x.stat().st_mtime, reverse=False)
-    imgs = [Image.open(i) for i in list_im]
+def combine_covers(image_paths, output_path):
+    sorted_im = sorted(image_paths, key=lambda x: x.stat().st_mtime, reverse=False)
+    imgs = [Image.open(i) for i in sorted_im]
 
     # Resize images to a 420px width while maintaining aspect ratio
     all_imgs = [i.resize((420, int(420 * i.height / i.width))) for i in imgs]
@@ -40,4 +36,12 @@ if __name__ == "__main__":
 
         # Save the combined image
         print(f"Saving combined image {page}...")
-        new_im.save(MODULE_PATH / "data" / "covers" / f"combined_covers_{page}.jpg")
+        new_im.save(output_path / f"combined_covers_{page}.jpg")
+
+
+if __name__ == "__main__":
+    finished_path = MODULE_PATH / "data" / "covers" / "finished"
+    list_im = list((finished_path).rglob("*.jpg"))
+    list_im += list((finished_path).rglob("*.png"))
+    list_im += list((finished_path).rglob("*.jpeg"))
+    combine_covers(list_im, MODULE_PATH / "data" / "covers")

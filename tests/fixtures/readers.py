@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from reportlab.pdfgen import canvas
 
-from audify.pdf_read import PdfReader
+from audify.readers.pdf import PdfReader
 
 MODULE_PATH = Path(__file__).resolve().parents[2]
 

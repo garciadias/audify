@@ -1,12 +1,20 @@
 import os
+import warnings
 from pathlib import Path
 
 import click
+import requests
 
-from audify.constants import DEFAULT_LANGUAGE_LIST
-from audify.domain.interface import Synthesizer
-from audify.text_to_speech import EpubSynthesizer, InspectSynthesizer, PdfSynthesizer
-from audify.utils import get_file_extension
+from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
+from audify.utils.constants import (
+    AVAILABLE_LANGUAGES,
+    DEFAULT_LANGUAGE_LIST,
+    KOKORO_API_BASE_URL,
+)
+from audify.utils.text import get_file_extension
+
+# Ignore UserWarning from pkg_resources about package metadata
+warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -42,7 +50,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     "--voice",
     "-v",
     type=str,
-    default="data/Jennifer_16khz.wav",
+    default="af_bella",
     help="Path to the speaker's voice.",
 )
 @click.option(
@@ -64,13 +72,6 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     help="Save the text extraction to a file.",
 )
 @click.option(
-    "--engine",
-    "-e",
-    type=str,
-    default="kokoro",
-    help="The TTS engine to use (tts_models or kokoro).",
-)
-@click.option(
     "--y",
     "-y",
     is_flag=True,
@@ -90,17 +91,26 @@ def main(
 ):
     terminal_width = os.get_terminal_size()[0]
     if list_languages:
-        synthesizer: Synthesizer = InspectSynthesizer()
         print("=" * terminal_width)
         print("Available languages:".center(terminal_width))
         print("=" * terminal_width)
-        print(", ".join(synthesizer.model.languages))
+        print("Language\tCode")
+        print("--------\t----")
+        for lang, code in AVAILABLE_LANGUAGES.items():
+            print(f"{lang:<10}\t{code}")
+        print("=" * terminal_width)
     elif list_models:
-        synthesizer = InspectSynthesizer()
         print("=" * terminal_width)
         print("Available models:".center(terminal_width))
         print("=" * terminal_width)
-        print("\n".join(synthesizer.model.models))
+        try:
+            response = requests.get(f"{KOKORO_API_BASE_URL}/models")
+            response.raise_for_status()
+            models = response.json().get("data", [])
+            model_names = sorted(model.get("id") for model in models if "id" in model)
+            print("\n".join(model_names))
+        except requests.RequestException as e:
+            print(f"Error fetching models from Kokoro API: {e}")
     else:
         if get_file_extension(file_path) == ".epub":
             print("=" * terminal_width)
@@ -113,9 +123,8 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=engine,  # type: ignore
                 confirm=not y,
-            )
+            )  # type: ignore
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
             print("==========")
@@ -128,8 +137,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
-                engine=engine,  # type: ignore
-            )
+            )  # type: ignore
             synthesizer.synthesize()
         else:
             raise ValueError("Unsupported file format")

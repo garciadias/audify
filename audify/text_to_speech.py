@@ -6,23 +6,25 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any, Generator, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-import soundfile as sf
-import torch
+import requests
 import tqdm
-from kokoro import KPipeline
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
-from TTS.api import TTS
-from typing_extensions import Literal
 
-from audify.constants import LANG_CODES
-from audify.domain.interface import Synthesizer
-from audify.ebook_read import EpubReader
-from audify.pdf_read import PdfReader
+from audify.readers.ebook import EpubReader
+from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (
+from audify.utils.constants import (
+    DEFAULT_MODEL,
+    DEFAULT_SPEAKER,
+    KOKORO_API_BASE_URL,
+    KOKORO_DEFAULT_VOICE,
+    LANG_CODES,
+    OUTPUT_BASE_DIR,
+)
+from audify.utils.text import (
     break_text_into_sentences,
     get_audio_duration,
     get_file_name_title,
@@ -35,10 +37,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
-DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-DEFAULT_ENGINE = "kokoro"
-OUTPUT_BASE_DIR = MODULE_PATH / "../" / "data" / "output"
+
+
+class KokoroAPIConfig:
+    """Configuration for Kokoro API."""
+
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = base_url or f"{KOKORO_API_BASE_URL}/audio"
+        self.default_voice = KOKORO_DEFAULT_VOICE
+        self.timeout = 30
+
+    @property
+    def voices_url(self) -> str:
+        return f"{self.base_url}/voices"
+
+    @property
+    def speech_url(self) -> str:
+        return f"{self.base_url}/speech"
+
 
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -58,24 +74,22 @@ def suppress_stdout():
             sys.stdout = original_stdout
 
 
-class BaseSynthesizer(Synthesizer):
+class BaseSynthesizer:
     """Base class for text-to-speech synthesis."""
 
     def __init__(
         self,
         path: str | Path,
-        language: Optional[str],
-        speaker: str,
-        model_name: str | None,
+        voice: str,
         translate: Optional[str],
         save_text: bool,
-        engine: str,
+        language: str = "en",
+        model_name: str = DEFAULT_MODEL,
     ):
         self.path = Path(path).resolve()
         self.language = language
-        self.speaker = speaker
+        self.speaker = voice
         self.translate = translate
-        self.engine = engine
         self.model_name = model_name
         self.save_text = save_text
         self.tmp_dir_context = tempfile.TemporaryDirectory(
@@ -83,50 +97,81 @@ class BaseSynthesizer(Synthesizer):
         )
         self.tmp_dir = Path(self.tmp_dir_context.name)
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Using device: {self.device}")
-        if engine == "tts_models":
-            logger.info(f"Loading TTS model: {model_name}...")
-            self.model = TTS(model_name=model_name)
-            self.model.to(self.device)
-            logger.info("TTS model loaded.")
-
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
-        """Synthesize sentences using the Kokoro engine."""
-        synthesis_language = self.translate or self.language
-        if synthesis_language is None:
-            logger.warning(
-                "Language not specified or detected, defaulting to 'a' for Kokoro."
-            )
-            lang_code = "a"
-        else:
-            lang_code = LANG_CODES.get(synthesis_language, "a")
-
-        if not hasattr(self, "pipeline") or self.pipeline.lang_code != lang_code:
-            logger.info(f"Initializing Kokoro pipeline for language: {lang_code}")
-            self.pipeline: KPipeline = KPipeline(lang_code=lang_code)
-
+        """Synthesize sentences using the Kokoro API."""
+        # Initialize API config
+        api_config = KokoroAPIConfig()
         combined_audio = AudioSegment.empty()
         temp_audio_files: List[Path] = []
 
         try:
-            logger.info("Starting Kokoro synthesis...")
-            generator: Generator[Tuple[int, str, Any], None, None] = self.pipeline(
-                sentences,
-                voice="af_heart",
-                speed=1,
-                split_pattern=r"\n+",
-            )
+            logger.info("Starting Kokoro API synthesis...")
 
-            for i, (_, _, audio_data) in tqdm.tqdm(
-                enumerate(generator),
+            # Check if API is available
+            try:
+                response = requests.get(api_config.voices_url, timeout=5)
+                if response.status_code != 200:
+                    raise requests.RequestException(
+                        f"API returned status {response.status_code}"
+                    )
+                available_voices = response.json().get("voices", [])
+                logger.info(
+                    f"Connected to Kokoro API. Available voices: "
+                    f"{len(available_voices)}"
+                )
+            except requests.RequestException as e:
+                logger.error(
+                    f"Failed to connect to Kokoro API at {api_config.base_url}: {e}"
+                )
+                raise
+
+            for i, sentence in tqdm.tqdm(
+                enumerate(sentences),
                 desc="Kokoro Synthesizing",
                 total=len(sentences),
                 unit="sentence",
             ):
-                temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
-                sf.write(temp_wav_path, audio_data, 24000)
-                temp_audio_files.append(temp_wav_path)
+                if not sentence.strip():
+                    continue
+
+                try:
+                    # Make API request for each sentence
+                    if self.speaker not in available_voices:
+                        raise ValueError(
+                            f"Speaker '{self.speaker}' not available in Kokoro voices."
+                        )
+                    if self.language not in LANG_CODES.keys():
+                        raise ValueError(
+                            f"Language code '{self.language}' is not supported."
+                        )
+                    response = requests.post(
+                        api_config.speech_url,
+                        json={
+                            "model": "kokoro",
+                            "input": sentence,
+                            "voice": self.speaker,
+                            "response_format": "wav",
+                            "lang_code": LANG_CODES[self.translate or self.language],
+                            "speed": 1.0,
+                        },
+                        timeout=api_config.timeout,
+                    )
+
+                    if response.status_code == 200:
+                        temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
+                        with open(temp_wav_path, "wb") as f:
+                            f.write(response.content)
+                        temp_audio_files.append(temp_wav_path)
+                    else:
+                        logger.warning(
+                            f"API request failed for sentence {i}: "
+                            f"{response.status_code}"
+                        )
+                        continue
+
+                except requests.RequestException as e:
+                    logger.warning(f"Request failed for sentence {i}: {e}")
+                    continue
 
             logger.info("Combining Kokoro audio segments...")
             for temp_wav_path in tqdm.tqdm(
@@ -149,49 +194,10 @@ class BaseSynthesizer(Synthesizer):
             combined_audio.export(output_wav_path, format="wav")
 
         except Exception as e:
-            logger.error(f"Error during Kokoro synthesis: {e}", exc_info=True)
+            logger.error(f"Error during Kokoro API synthesis: {e}", exc_info=True)
             for temp_file in temp_audio_files:
                 temp_file.unlink(missing_ok=True)
             raise
-
-    def _synthesize_tts_models(
-        self, sentences: List[str], output_wav_path: Path
-    ) -> None:
-        """Synthesize sentences using the TTS library models."""
-        combined_audio = AudioSegment.empty()
-        synthesis_lang = self.translate or self.language
-        temp_speech_path = self.tmp_dir / "speech_segment.wav"
-
-        logger.info("Starting TTS models synthesis...")
-        for sentence in tqdm.tqdm(sentences, desc="TTS Synthesizing", unit="sentence"):
-            if not sentence.strip():
-                continue
-            try:
-                with suppress_stdout():
-                    self.model.tts_to_file(
-                        text=sentence,
-                        speaker=self.speaker,
-                        language=synthesis_lang,
-                        file_path=str(temp_speech_path),
-                    )
-                if temp_speech_path.exists():
-                    segment = AudioSegment.from_wav(temp_speech_path)
-                    combined_audio += segment
-                    temp_speech_path.unlink()
-                else:
-                    logger.warning(
-                        f"TTS output file not found for sentence: '{sentence[:50]}...'"
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Error synthesizing sentence: '{sentence[:50]}...'. Error: {e}",
-                    exc_info=False,
-                )
-                if temp_speech_path.exists():
-                    temp_speech_path.unlink(missing_ok=True)
-
-        logger.info(f"Exporting combined TTS audio to {output_wav_path}")
-        combined_audio.export(output_wav_path, format="wav")
 
     def _synthesize_sentences(
         self, sentences: List[str], output_wav_path: Path
@@ -199,12 +205,7 @@ class BaseSynthesizer(Synthesizer):
         """Synthesize a list of sentences into a single WAV file."""
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if self.engine == "kokoro":
-            self._synthesize_kokoro(sentences, output_wav_path)
-        elif self.engine == "tts_models":
-            self._synthesize_tts_models(sentences, output_wav_path)
-        else:
-            raise ValueError(f"Unsupported synthesis engine: {self.engine}")
+        self._synthesize_kokoro(sentences, output_wav_path)
 
         logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
 
@@ -243,11 +244,9 @@ class BaseSynthesizer(Synthesizer):
     def stop(self) -> None:
         """Stops the synthesis process if running."""
         logger.info("Stopping synthesis process...")
-        if hasattr(self, "pipeline") and self.pipeline.is_running:
-            self.pipeline.stop()
-            logger.info("Synthesis process stopped.")
-        else:
-            logger.warning("No active synthesis process to stop.")
+        # Note: API-based synthesis doesn't have a persistent process to stop
+        # This method is kept for interface compatibility
+        logger.info("Synthesis process stopped (API-based).")
 
     def get_terminal_output(self) -> str:
         """Returns the terminal output of the synthesis process."""
@@ -267,11 +266,10 @@ class EpubSynthesizer(BaseSynthesizer):
         path: str | Path,
         language: Optional[str] = None,
         speaker: str = DEFAULT_SPEAKER,
-        model_name: str | None = DEFAULT_MODEL,
         translate: Optional[str] = None,
         save_text: bool = False,
-        engine: Literal["kokoro", "tts_models"] = "kokoro",
         confirm: bool = True,
+        model_name: str = DEFAULT_MODEL,
     ):
         self.reader = EpubReader(path)
         detected_language = self.reader.get_language()
@@ -297,7 +295,12 @@ class EpubSynthesizer(BaseSynthesizer):
         self.confirm = confirm
 
         super().__init__(
-            path, resolved_language, speaker, model_name, translate, save_text, engine
+            path=path,
+            language=resolved_language,
+            voice=speaker,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
         )
 
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -963,22 +966,16 @@ class EpubSynthesizer(BaseSynthesizer):
 class PdfSynthesizer(BaseSynthesizer):
     """Synthesizer for PDF files."""
 
-    DEFAULT_SPEAKER = "data/Jennifer_16khz.wav"
-    DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-    DEFAULT_ENGINE = "kokoro"
-    DEFAULT_OUTPUT_DIR = MODULE_PATH / "../" / "data" / "output" / "articles"
-
     def __init__(
         self,
         pdf_path: str | Path,
         language: str = "en",
-        model_name: str | None = DEFAULT_MODEL,
+        model_name: str = DEFAULT_MODEL,
         speaker: str = DEFAULT_SPEAKER,
-        output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+        output_dir: str | Path = OUTPUT_BASE_DIR,
         file_name: Optional[str] = None,
         translate: Optional[str] = None,
         save_text: bool = False,
-        engine: Literal["kokoro", "tts_models"] = "kokoro",
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
@@ -991,7 +988,12 @@ class PdfSynthesizer(BaseSynthesizer):
         self.output_wav_path = output_dir / f"{output_base_name}.wav"
 
         super().__init__(
-            pdf_path, language, speaker, model_name, translate, save_text, engine
+            path=pdf_path,
+            language=language,
+            voice=speaker,
+            model_name=model_name,
+            translate=translate,
+            save_text=save_text,
         )
 
     def synthesize(self) -> Path:
@@ -1000,8 +1002,8 @@ class PdfSynthesizer(BaseSynthesizer):
         try:
             reader = PdfReader(self.path)
             logger.info("Extracting and cleaning text from PDF...")
-            cleaned_text = reader.get_cleaned_text()
-            sentences = break_text_into_sentences(cleaned_text)
+
+            sentences = break_text_into_sentences(reader.cleaned_text)
 
             if not sentences:
                 logger.warning("No text extracted from PDF. Cannot synthesize.")
@@ -1025,7 +1027,7 @@ class PdfSynthesizer(BaseSynthesizer):
                 except Exception as e:
                     logger.error(f"Error translating PDF content: {e}", exc_info=True)
                     logger.warning("Proceeding with original text for synthesis.")
-                    sentences = break_text_into_sentences(cleaned_text)
+                    sentences = break_text_into_sentences(reader.cleaned_text)
 
             self.output_wav_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1039,90 +1041,3 @@ class PdfSynthesizer(BaseSynthesizer):
                 f"Error during PDF synthesis for {self.path.name}: {e}", exc_info=True
             )
             raise
-
-
-class InspectSynthesizer(Synthesizer):
-    """Utility class to inspect TTS model properties (speakers, languages)."""
-
-    DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
-
-    def __init__(
-        self,
-        model_name: str = DEFAULT_MODEL,
-        path: str | Path = "./",
-        language: Optional[str] = None,
-        speaker: Optional[str] = None,
-    ):
-        self.model_name = model_name
-        logger.info(f"Loading model {model_name} for inspection...")
-        try:
-            self.model = TTS(model_name=model_name)
-            logger.info("Model loaded successfully for inspection.")
-        except Exception as e:
-            logger.error(
-                f"Failed to load model {model_name} for inspection: {e}", exc_info=True
-            )
-            raise
-
-    def list_languages(self) -> Optional[List[str]]:
-        """Lists available languages for the loaded model."""
-        if hasattr(self.model, "languages") and self.model.languages:
-            logger.info(
-                f"Available languages for {self.model_name}: {self.model.languages}"
-            )
-            return self.model.languages
-        else:
-            logger.warning(
-                f"Model {self.model_name} does not seem to report languages."
-            )
-            return None
-
-    def list_speakers(self) -> Optional[List[str]]:
-        """Lists available speakers for the loaded model."""
-        if self.model.is_multi_speaker:
-            if (
-                "xtts" in self.model_name.lower()
-                and hasattr(self.model, "speaker_manager")
-                and hasattr(self.model.speaker_manager, "speaker_ids")
-            ):
-                speakers = list(self.model.speaker_manager.speaker_ids.keys())
-                logger.info(
-                    f"Available speakers (IDs/Names) for {self.model_name}: {speakers}"
-                )
-                return speakers
-            elif hasattr(self.model, "speaker_ids") and self.model.speaker_ids:
-                speakers = list(self.model.speaker_ids.keys())
-                logger.info(
-                    f"Available speakers (IDs) for {self.model_name}: {speakers}"
-                )
-                return speakers
-            else:
-                logger.warning(
-                    f"Could not determine speaker list for multi-speaker model"
-                    f" {self.model_name}."
-                )
-                return None
-        else:
-            logger.info(f"Model {self.model_name} is single-speaker.")
-            return None
-
-    def list_models(self) -> List[str]:
-        """Lists available TTS models from the TTS library."""
-        logger.info("Fetching list of available TTS models...")
-        try:
-            available_models = TTS.list_models()
-            logger.info(f"Found {len(available_models)} available models.")
-            return available_models
-        except Exception as e:
-            logger.error(
-                f"Failed to fetch list of available models: {e}", exc_info=True
-            )
-            return []
-
-    def synthesize(self) -> str:
-        """Indicates that this class is not for direct synthesis."""
-        logger.warning("InspectSynthesizer is used for inspection, not synthesis.")
-        return (
-            "This class is used to inspect model options (languages, speakers, models) "
-            "and does not perform audio synthesis."
-        )
