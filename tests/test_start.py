@@ -174,13 +174,33 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
         mock_pdf_synthesizer_class.return_value = mock_pdf_synthesizer
         mock_pdf_synthesizer.synthesize.return_value = None  # Mock synthesize method
         mock_get_file_extension.return_value = ".pdf"
-        # Now invoke the main command with the PDF file mocking the synthesizer run
-        module_path = "audify.start"
-        with patch(f"{module_path}.requests.post") as mock_synthesize_kokoro:
-            mock_synthesize_kokoro.return_value = MagicMock()
-            mock_synthesize_kokoro.return_value.json.return_value = {
+        # Now invoke the main command with the PDF file mocking all API calls
+        with patch("audify.text_to_speech.requests.get") as mock_get_voices, \
+             patch("audify.text_to_speech.requests.post") as mock_post_synthesis, \
+             patch("audify.translate.OllamaTranslationConfig.create_llm") as mock_llm:
+
+            # Mock the voices GET request
+            mock_voices_response = MagicMock()
+            mock_voices_response.status_code = 200
+            mock_voices_response.json.return_value = {
+                "voices": ["af_bella", "other_voice"]
+            }
+            mock_voices_response.raise_for_status.return_value = None
+            mock_get_voices.return_value = mock_voices_response
+
+            # Mock the synthesis POST request
+            mock_synthesis_response = MagicMock()
+            mock_synthesis_response.json.return_value = {
                 "data": {"audio_url": "http://example.com/audio.mp3"}
             }
+            mock_synthesis_response.content = b"fake_audio_data"
+            mock_synthesis_response.raise_for_status.return_value = None
+            mock_post_synthesis.return_value = mock_synthesis_response
+
+            # Mock the translation LLM
+            mock_translation_llm = MagicMock()
+            mock_translation_llm.invoke.return_value = "This is test PDF content."
+            mock_llm.return_value = mock_translation_llm
             result = runner.invoke(
                 start.main,
                 [
