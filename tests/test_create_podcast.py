@@ -111,7 +111,8 @@ class TestMain:
     @patch('audify.create_podcast.get_creator')
     @patch('audify.create_podcast.get_file_extension')
     @patch('os.get_terminal_size')
-    def test_main_epub_success(self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
+    def test_main_epub_success(
+        self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
         """Test main function with successful EPUB processing."""
         # Setup mocks
         mock_terminal_size.return_value = (80, 24)
@@ -141,7 +142,9 @@ class TestMain:
     @patch('audify.create_podcast.get_creator')
     @patch('audify.create_podcast.get_file_extension')
     @patch('os.get_terminal_size')
-    def test_main_pdf_success(self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
+    def test_main_pdf_success(
+            self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+        ):
         """Test main function with successful PDF processing."""
         # Setup mocks
         mock_terminal_size.return_value = (80, 24)
@@ -166,7 +169,9 @@ class TestMain:
     @patch('audify.create_podcast.get_creator')
     @patch('audify.create_podcast.get_file_extension')
     @patch('os.get_terminal_size')
-    def test_main_keyboard_interrupt(self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
+    def test_main_keyboard_interrupt(
+            self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+        ):
         """Test main function handles KeyboardInterrupt gracefully."""
         # Setup mocks
         mock_terminal_size.return_value = (80, 24)
@@ -185,7 +190,9 @@ class TestMain:
     @patch('audify.create_podcast.get_creator')
     @patch('audify.create_podcast.get_file_extension')
     @patch('os.get_terminal_size')
-    def test_main_generic_exception(self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
+    def test_main_generic_exception(
+            self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+        ):
         """Test main function handles generic exceptions."""
         # Setup mocks
         mock_terminal_size.return_value = (80, 24)
@@ -205,18 +212,22 @@ class TestMain:
     @patch('audify.create_podcast.get_creator')
     @patch('audify.create_podcast.get_file_extension')
     @patch('os.get_terminal_size')
-    def test_main_llm_connection_error(self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
+    def test_main_llm_connection_error(
+        self, mock_terminal_size, mock_get_extension, mock_get_creator, runner):
         """Test main function handles LLM connection errors with helpful tips."""
         # Setup mocks
         mock_terminal_size.return_value = (80, 24)
         mock_get_extension.return_value = '.epub'
 
         mock_creator = Mock()
-        mock_creator.synthesize.side_effect = Exception("Could not connect to LLM server")
+        mock_creator.synthesize.side_effect = Exception(
+            "Could not connect to LLM server")
         mock_get_creator.return_value = mock_creator
 
         with tempfile.NamedTemporaryFile(suffix='.epub') as temp_file:
-            result = runner.invoke(main, [temp_file.name, '--llm-model', 'custom-model'])
+            result = runner.invoke(
+                main, [temp_file.name, '--llm-model', 'custom-model']
+            )
 
         assert result.exit_code == 0
         assert 'Could not connect to LLM' in result.output
@@ -226,7 +237,8 @@ class TestMain:
 
     @patch('audify.create_podcast.get_file_extension')
     @patch('os.get_terminal_size')
-    def test_main_configuration_display(self, mock_terminal_size, mock_get_extension, runner):
+    def test_main_configuration_display(
+        self, mock_terminal_size, mock_get_extension, runner):
         """Test main function displays configuration correctly."""
         # Setup mocks
         mock_terminal_size.return_value = (80, 24)
