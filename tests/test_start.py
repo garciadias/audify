@@ -188,7 +188,7 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
                     "--language",
                     "fr",
                     "--voice",
-                    "speaker.wav",
+                    "af_bella",
                     "--save-text",
                     "--translate",
                     "en",

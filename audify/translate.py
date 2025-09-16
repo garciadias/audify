@@ -66,9 +66,7 @@ def translate_sentence(
 
     # Create translation prompt
     prompt = TRANSLATE_PROMPT.format(
-        src_lang_name=src_lang_name,
-        tgt_lang_name=tgt_lang_name,
-        sentence=sentence
+        src_lang_name=src_lang_name, tgt_lang_name=tgt_lang_name, sentence=sentence
     )
 
     try:
@@ -84,9 +82,7 @@ def translate_sentence(
             translated_text = translated_text.split("</think>", 1)[1].strip()
 
         if translated_text:
-            logger.debug(
-                f"Translation successful: '{sentence}' -> '{translated_text}'"
-            )
+            logger.debug(f"Translation successful: '{sentence}' -> '{translated_text}'")
             return translated_text
         else:
             logger.warning("Empty translation response from Ollama")

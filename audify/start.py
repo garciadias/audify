@@ -11,7 +11,7 @@ from audify.constants import (
     KOKORO_API_BASE_URL,
 )
 from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
-from audify.utils import get_file_extension
+from audify.utils.text import get_file_extension
 
 # Ignore UserWarning from pkg_resources about package metadata
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")

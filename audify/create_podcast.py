@@ -19,7 +19,7 @@ from audify.constants import (
     OLLAMA_DEFAULT_MODEL,
 )
 from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
-from audify.utils import get_file_extension
+from audify.utils.text import get_file_extension
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 

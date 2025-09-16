@@ -3,14 +3,18 @@ from pathlib import Path
 
 import bs4
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
+from typing_extensions import Reader
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
-class EpubReader:
+class EpubReader(Reader):
     def __init__(self, path: str | Path):
-        self.book = epub.read_epub(path)
+        self.path = Path(path).resolve()
         self.title = self.get_title()
+
+    def read(self):
+        self.book = epub.read_epub(self.path)
 
     def get_chapters(self) -> list[str]:
         chapters = []

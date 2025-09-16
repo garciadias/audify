@@ -21,10 +21,10 @@ from audify.constants import (
     LANG_CODES,
     OUTPUT_BASE_DIR,
 )
-from audify.ebook_read import EpubReader
-from audify.pdf_read import PdfReader
+from audify.readers.ebook import EpubReader
+from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
-from audify.utils import (
+from audify.utils.text import (
     break_text_into_sentences,
     get_audio_duration,
     get_file_name_title,

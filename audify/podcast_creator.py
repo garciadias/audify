@@ -12,12 +12,12 @@ from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
 from audify.constants import OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL, OUTPUT_BASE_DIR
-from audify.ebook_read import EpubReader
-from audify.pdf_read import PdfReader
 from audify.prompts import PODCAST_PROMPT
+from audify.readers.ebook import EpubReader
+from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer
 from audify.translate import translate_sentence
-from audify.utils import clean_text, get_audio_duration
+from audify.utils.text import break_text_into_sentences, clean_text, get_audio_duration
 
 # Configure logging
 logging.basicConfig(
@@ -108,7 +108,7 @@ class PodcastCreator(BaseSynthesizer):
     ):
         # Initialize file reader based on extension
         file_path = Path(path)
-        self.reader: EpubReader | PdfReader = (
+        self.reader = (
             EpubReader(path) if file_path.suffix.lower() == ".epub" else PdfReader(path)
         )
         if isinstance(self.reader, EpubReader):
@@ -363,7 +363,6 @@ class PodcastCreator(BaseSynthesizer):
 
     def _break_script_into_segments(self, script: str) -> List[str]:
         """Break podcast script into segments suitable for TTS."""
-        from audify.utils import break_text_into_sentences
 
         # First break into sentences
         sentences = break_text_into_sentences(script)
@@ -733,7 +732,10 @@ class PodcastPdfCreator(PodcastCreator):
         logger.info("Creating podcast episode from PDF...")
 
         # Get the full PDF content
-        pdf_text = self.reader.cleaned_text
+        if isinstance(self.reader, PdfReader):
+            pdf_text = self.reader.cleaned_text
+        else:
+            raise ValueError("PodcastPdfCreator requires a PDF reader")
         logger.info(f"Extracted PDF text length: {len(pdf_text.split())} words")
         if not pdf_text.strip():
             logger.error("No text found in PDF")
