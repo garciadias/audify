@@ -237,3 +237,72 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
 
         assert result.exit_code == 0
         assert "PDF to mp3" in result.output
+
+
+@patch("os.get_terminal_size", return_value=(80, 24))
+@patch("requests.get")
+def test_main_list_models_api_error(mock_get, mock_terminal_size, runner):
+    """Test main command with --list-models flag when API fails."""
+    import requests
+
+    # Mock requests.get to raise a RequestException
+    mock_get.side_effect = requests.RequestException("Connection failed")
+
+    result = runner.invoke(start.main, ["--list-models"])
+
+    assert result.exit_code == 0
+    assert "Error fetching models from Kokoro API" in result.output
+
+
+@patch("os.get_terminal_size", return_value=(80, 24))
+@patch("requests.get")
+def test_main_list_models_request_exception(mock_get, mock_terminal_size, runner):
+    """Test main command with --list-models flag with RequestException."""
+    import requests
+    mock_get.side_effect = requests.RequestException("Network error")
+
+    result = runner.invoke(start.main, ["--list-models"])
+
+    assert result.exit_code == 0
+    assert "Error fetching models from Kokoro API" in result.output
+
+
+@patch("os.get_terminal_size", return_value=(80, 24))
+@patch("requests.get")
+def test_main_list_models_success(mock_get, mock_terminal_size, runner):
+    """Test main command with --list-models flag with successful API response."""
+    # Mock successful API response
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.json.return_value = {
+        "data": [
+            {"id": "model1"},
+            {"id": "model2"},
+            {"name": "model_without_id"}  # Test model without "id" key
+        ]
+    }
+    mock_get.return_value = mock_response
+
+    result = runner.invoke(start.main, ["--list-models"])
+
+    assert result.exit_code == 0
+    assert "model1" in result.output
+    assert "model2" in result.output
+
+
+@patch("os.get_terminal_size", return_value=(80, 24))
+def test_main_unsupported_file_format(mock_terminal_size, runner):
+    """Test main command with unsupported file format."""
+    with TemporaryDirectory() as temp_dir:
+        # Create a temporary file with unsupported extension
+        unsupported_file = f"{temp_dir}/test.txt"
+        with open(unsupported_file, "w") as f:
+            f.write("Test content")
+
+        with patch("audify.start.get_file_extension", return_value=".txt"):
+            result = runner.invoke(start.main, [unsupported_file])
+
+        assert result.exit_code == 1
+        # The exception message doesn't get printed by Click, just the exit code
+        assert isinstance(result.exception, ValueError)
+        assert "Unsupported file format" in str(result.exception)

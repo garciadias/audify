@@ -1,45 +1,137 @@
 #!/usr/bin/env python3
 """
-Test script to demonstrate LangChain Ollama translation integration.
-This script shows how the modified translate.py works with LangChain OllamaLLM.
+Test script for audify.translate module with comprehensive coverage.
 """
+from unittest.mock import Mock, patch
 
 from audify.translate import OllamaTranslationConfig, translate_sentence
 
 
+def test_ollama_config_defaults():
+    """Test OllamaTranslationConfig with default values."""
+    config = OllamaTranslationConfig()
+    assert config.base_url == "http://localhost:11434"  # Default from constants
+    assert config.model == "mistral-nemo:12b"  # Default from constants
+
+
+def test_ollama_config_custom():
+    """Test OllamaTranslationConfig with custom values."""
+    config = OllamaTranslationConfig(
+        base_url="http://custom-host:8080",
+        model="custom-model"
+    )
+    assert config.base_url == "http://custom-host:8080"
+    assert config.model == "custom-model"
+
+
+def test_create_llm():
+    """Test LLM creation with proper configuration."""
+    config = OllamaTranslationConfig(
+        base_url="http://test:11434",
+        model="test-model"
+    )
+
+    with patch('audify.translate.OllamaLLM') as mock_llm:
+        config.create_llm()
+        mock_llm.assert_called_once_with(
+            model="test-model",
+            base_url="http://test:11434",
+            temperature=0.1,
+            top_p=0.9,
+        )
+
+
+def test_translate_sentence_same_language():
+    """Test translation when source and target languages are the same."""
+    sentence = "Hello world"
+    result = translate_sentence(sentence, src_lang="en", tgt_lang="en")
+    assert result == sentence
+
+
+def test_translate_sentence_none_src_lang():
+    """Test translation with None source language defaults to 'en'."""
+    sentence = "Hello world"
+    result = translate_sentence(sentence, src_lang=None, tgt_lang="en")
+    assert result == sentence  # Same language after defaulting to 'en'
+
+
+@patch('audify.translate.OllamaTranslationConfig')
+def test_translate_sentence_successful(mock_config_class):
+    """Test successful translation."""
+    # Mock the config and LLM
+    mock_config = Mock()
+    mock_llm = Mock()
+    mock_llm.invoke.return_value = "Hola mundo"
+    mock_config.create_llm.return_value = mock_llm
+    mock_config_class.return_value = mock_config
+
+    result = translate_sentence("Hello world", src_lang="en", tgt_lang="es")
+    assert result == "Hola mundo"
+
+
+@patch('audify.translate.OllamaTranslationConfig')
+def test_translate_sentence_with_thinking_model(mock_config_class):
+    """Test translation with thinking model response."""
+    # Mock the config and LLM
+    mock_config = Mock()
+    mock_llm = Mock()
+    mock_llm.invoke.return_value = "<think>This is thinking</think>Hola mundo"
+    mock_config.create_llm.return_value = mock_llm
+    mock_config_class.return_value = mock_config
+
+    result = translate_sentence("Hello world", src_lang="en", tgt_lang="es")
+    assert result == "Hola mundo"
+
+
+@patch('audify.translate.OllamaTranslationConfig')
+def test_translate_sentence_empty_response(mock_config_class):
+    """Test translation with empty response."""
+    # Mock the config and LLM
+    mock_config = Mock()
+    mock_llm = Mock()
+    mock_llm.invoke.return_value = ""
+    mock_config.create_llm.return_value = mock_llm
+    mock_config_class.return_value = mock_config
+
+    sentence = "Hello world"
+    result = translate_sentence(sentence, src_lang="en", tgt_lang="es")
+    assert result == sentence  # Should return original on empty response
+
+
+@patch('audify.translate.OllamaTranslationConfig')
+def test_translate_sentence_exception(mock_config_class):
+    """Test translation with exception handling."""
+    # Mock the config and LLM to raise exception
+    mock_config = Mock()
+    mock_llm = Mock()
+    mock_llm.invoke.side_effect = Exception("Connection failed")
+    mock_config.create_llm.return_value = mock_llm
+    mock_config_class.return_value = mock_config
+    mock_config.base_url = "http://localhost:11434"
+
+    sentence = "Hello world"
+    result = translate_sentence(sentence, src_lang="en", tgt_lang="es")
+    assert result == sentence  # Should return original on exception
+
+
 def test_langchain_config():
     """Test the OllamaTranslationConfig class with LangChain."""
-    print("Testing OllamaTranslationConfig with LangChain...")
-
     # Test default configuration
     config = OllamaTranslationConfig()
-    print(f"Default base URL: {config.base_url}")
-    print(f"Default model: {config.model}")
-
-    # Test LLM creation
-    try:
-        llm = config.create_llm()
-        print("✓ LangChain OllamaLLM created successfully")
-        print(f"  Model: {llm.model}")
-        print(f"  Base URL: {llm.base_url}")
-        print(f"  Temperature: {llm.temperature}")
-        print(f"  Top P: {llm.top_p}")
-    except Exception as e:
-        print(f"✗ Error creating LLM: {e}")
+    assert config.base_url is not None
+    assert config.model is not None
 
     # Test custom configuration
     custom_config = OllamaTranslationConfig(
         base_url="http://custom-host:11434",
         model="llama3.1"
     )
-    print(f"Custom base URL: {custom_config.base_url}")
-    print(f"Custom model: {custom_config.model}")
+    assert custom_config.base_url == "http://custom-host:11434"
+    assert custom_config.model == "llama3.1"
 
 
 def test_translation_interface():
     """Test the translation function interface with LangChain."""
-    print("\nTesting LangChain translation interface...")
-
     # Test sentences for different languages
     test_cases = [
         ("Hello world!", "en", "es"),
@@ -49,9 +141,6 @@ def test_translation_interface():
     ]
 
     for sentence, src_lang, tgt_lang in test_cases:
-        print(f"\nTest case: '{sentence}' ({src_lang} -> {tgt_lang})")
-        print("This would call LangChain OllamaLLM with:")
-
         from audify.utils.constants import LANGUAGE_NAMES
         from audify.utils.prompts import TRANSLATE_PROMPT
 
@@ -63,81 +152,5 @@ def test_translation_interface():
             tgt_lang_name=tgt_lang_name,
             sentence=sentence
         )
-
-        print(f"  Prompt preview: {prompt[:80]}...")
-
-
-def simulate_langchain_translation():
-    """Simulate what LangChain translation calls would look like."""
-    print("\n" + "=" * 60)
-    print("LangChain Ollama Translation Simulation")
-    print("=" * 60)
-
-    # Note: These will attempt actual translation if Ollama is running
-    test_sentences = [
-        "Hello, how are you?",
-        "This is a beautiful day.",
-        "Thank you for your help.",
-    ]
-
-    for sentence in test_sentences:
-        print(f"\nTranslating: '{sentence}' (EN -> ES)")
-        print("Using: LangChain OllamaLLM.invoke() method")
-
-        try:
-            result = translate_sentence(sentence, src_lang="en", tgt_lang="es")
-            if result == sentence:
-                print(
-                f"Result: {result} (returned original - may indicate translation issue)"
-                )
-            else:
-                print(f"Result: {result}")
-        except Exception as e:
-            print(f"Error: {e}")
-
-
-def compare_implementations():
-    """Compare the old requests vs new LangChain implementation."""
-    print("\n" + "=" * 60)
-    print("Implementation Comparison")
-    print("=" * 60)
-
-    print("BEFORE (requests):")
-    print("  import requests")
-    print("  response = requests.post(url, json={...})")
-    print("  result = response.json()['response']")
-    print()
-
-    print("AFTER (LangChain):")
-    print("  from langchain_ollama import OllamaLLM")
-    print("  llm = OllamaLLM(model=..., base_url=...)")
-    print("  result = llm.invoke(prompt)")
-    print()
-
-    print("Benefits of LangChain approach:")
-    print("  ✓ Simplified API usage")
-    print("  ✓ Built-in error handling")
-    print("  ✓ Better integration with LangChain ecosystem")
-    print("  ✓ Automatic retries and connection management")
-    print("  ✓ Consistent interface across different LLM providers")
-
-
-if __name__ == "__main__":
-    print("LangChain Ollama Translation Integration Test")
-    print("=" * 60)
-    test_langchain_config()
-    test_translation_interface()
-    simulate_langchain_translation()
-    compare_implementations()
-
-    print("\n" + "=" * 60)
-    print("Migration Summary:")
-    print("✓ Replaced requests with langchain_ollama.OllamaLLM")
-    print("✓ Simplified API calls using LangChain invoke() method")
-    print("✓ Maintained existing function interface compatibility")
-    print("✓ Enhanced error handling through LangChain")
-    print("✓ Better integration with LangChain ecosystem")
-
-    print("\nEnvironment Variables (unchanged):")
-    print("- OLLAMA_API_BASE_URL: Set Ollama API base URL")
-    print("- OLLAMA_DEFAULT_TRANSLATION_MODEL: Set model to use")
+        assert len(prompt) > 0
+        assert sentence in prompt
