@@ -197,12 +197,12 @@ Audify uses a modern microservices architecture:
 
 ```text
 ┌─────────────────┐    ┌──────────────┐    ┌────────────────┐
-   Audify CLI                  Kokoro             Ollama    
-                               TTS API            LLM API   
+   Audify CLI               Kokoro              Ollama    
+                            TTS API             LLM API   
                                                        
- • EPUB/PDF Read            • Speech            • Translation
- • Text Process               Synthesis         • Podcast scripts
- • Audio Combine            • Multi-voice      
+ • EPUB/PDF Read          • Speech             • Translation
+ • Text Process             Synthesis          • Podcast scripts
+ • Audio Combine          • Multi-voice      
 └─────────────────┘    └──────────────┘    └────────────────┘
 ```
 
