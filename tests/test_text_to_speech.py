@@ -1,4 +1,5 @@
 """Tests for audify.text_to_speech module."""
+
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -7,10 +8,10 @@ import pytest
 from audify.text_to_speech import (
     BaseSynthesizer,
     EpubSynthesizer,
-    KokoroAPIConfig,
     PdfSynthesizer,
     suppress_stdout,
 )
+from audify.utils.api_config import KokoroAPIConfig
 
 
 class TestKokoroAPIConfig:
@@ -59,16 +60,17 @@ class TestBaseSynthesizer:
         """Test BaseSynthesizer initialization."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
 
-        with patch("pathlib.Path.exists", return_value=False), \
-             patch("pathlib.Path.mkdir"):
-
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.mkdir"),
+        ):
             synthesizer = BaseSynthesizer(
                 path="test.txt",
                 voice="test_voice",
                 translate=None,
                 save_text=False,
                 language="en",
-                model_name="test_model"
+                model_name="test_model",
             )
 
             assert synthesizer.speaker == "test_voice"
@@ -88,7 +90,7 @@ class TestBaseSynthesizer:
             translate=None,
             save_text=False,
             language="en",
-            model_name="test_model"
+            model_name="test_model",
         )
 
         with patch("pathlib.Path.exists", return_value=False):
@@ -96,8 +98,10 @@ class TestBaseSynthesizer:
             assert "No terminal output available" in result
 
         test_content = "Test output content"
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("builtins.open", mock_open(read_data=test_content)):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=test_content)),
+        ):
             result = synthesizer.get_terminal_output()
             assert result == test_content
 
@@ -117,10 +121,11 @@ class TestEpubSynthesizer:
         mock_epub_reader_instance.get_cover_image.return_value = None
 
         mock_file = mock_open()
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("pathlib.Path.mkdir"), \
-             patch("builtins.open", mock_file):
-
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.mkdir"),
+            patch("builtins.open", mock_file),
+        ):
             synthesizer = EpubSynthesizer(path="test.epub")
 
             assert synthesizer.path.name == "test.epub"
@@ -141,9 +146,10 @@ class TestPdfSynthesizer:
         """Test successful PdfSynthesizer initialization."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
 
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("pathlib.Path.mkdir"):
-
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.mkdir"),
+        ):
             synthesizer = PdfSynthesizer(pdf_path="test.pdf")
 
             assert synthesizer.path.name == "test.pdf"
@@ -163,11 +169,12 @@ class TestPdfSynthesizer:
 
         mock_break.return_value = ["Sentence 1.", "Sentence 2."]
 
-        with patch("pathlib.Path.exists", return_value=True), \
-             patch("pathlib.Path.mkdir"), \
-             patch.object(PdfSynthesizer, "_synthesize_sentences") as mock_synth, \
-             patch.object(PdfSynthesizer, "_convert_to_mp3") as mock_convert:
-
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.mkdir"),
+            patch.object(PdfSynthesizer, "_synthesize_sentences") as mock_synth,
+            patch.object(PdfSynthesizer, "_convert_to_mp3") as mock_convert,
+        ):
             mock_convert.return_value = Path("output.mp3")
 
             synthesizer = PdfSynthesizer(pdf_path="test.pdf")

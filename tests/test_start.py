@@ -175,13 +175,16 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
         mock_pdf_synthesizer.synthesize.return_value = None  # Mock synthesize method
         mock_get_file_extension.return_value = ".pdf"
         # Now invoke the main command with the PDF file mocking all API calls
-        with patch("audify.text_to_speech.requests.get") as mock_get_voices, \
-             patch("audify.text_to_speech.requests.post") as mock_post_synthesis, \
-             patch("audify.translate.OllamaTranslationConfig.create_llm") as mock_llm, \
-             patch("audify.text_to_speech.subprocess.run") as mock_subprocess, \
-             patch("audify.text_to_speech.AudioSegment") as mock_audio_segment, \
-             patch("pathlib.Path.unlink") as mock_unlink:
-
+        with (
+            patch("audify.text_to_speech.requests.get") as mock_get_voices,
+            patch("audify.text_to_speech.requests.post") as mock_post_synthesis,
+            patch(
+                "audify.translate.OllamaTranslationConfig.create_translation_llm"
+            ) as mock_llm,
+            patch("audify.text_to_speech.subprocess.run") as mock_subprocess,
+            patch("audify.text_to_speech.AudioSegment") as mock_audio_segment,
+            patch("pathlib.Path.unlink") as mock_unlink,
+        ):
             # Mock the voices GET request
             mock_voices_response = MagicMock()
             mock_voices_response.status_code = 200
@@ -221,20 +224,33 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
 
             # Mock file operations
             mock_unlink.return_value = None  # File deletion succeeds
-            result = runner.invoke(
-                start.main,
-                [
-                    pdf_file_path,
-                    "--language",
-                    "fr",
-                    "--voice",
-                    "af_bella",
-                    "--save-text",
-                    "--translate",
-                    "en",
-                ],
-            )
 
+            # Mock AudioProcessor to avoid file operations
+            with patch(
+                "audify.utils.audio.AudioProcessor.convert_wav_to_mp3"
+            ) as mock_convert:
+                from pathlib import Path
+
+                mock_convert.return_value = Path("/fake/output.mp3")
+
+                result = runner.invoke(
+                    start.main,
+                    [
+                        pdf_file_path,
+                        "--language",
+                        "fr",
+                        "--voice",
+                        "af_bella",
+                        "--save-text",
+                        "--translate",
+                        "en",
+                    ],
+                )
+
+        if result.exit_code != 0:
+            print(f"Exit code: {result.exit_code}")
+            print(f"Output: {result.output}")
+            print(f"Exception: {result.exception}")
         assert result.exit_code == 0
         assert "PDF to mp3" in result.output
 
@@ -259,6 +275,7 @@ def test_main_list_models_api_error(mock_get, mock_terminal_size, runner):
 def test_main_list_models_request_exception(mock_get, mock_terminal_size, runner):
     """Test main command with --list-models flag with RequestException."""
     import requests
+
     mock_get.side_effect = requests.RequestException("Network error")
 
     result = runner.invoke(start.main, ["--list-models"])
@@ -278,7 +295,7 @@ def test_main_list_models_success(mock_get, mock_terminal_size, runner):
         "data": [
             {"id": "model1"},
             {"id": "model2"},
-            {"name": "model_without_id"}  # Test model without "id" key
+            {"name": "model_without_id"},  # Test model without "id" key
         ]
     }
     mock_get.return_value = mock_response

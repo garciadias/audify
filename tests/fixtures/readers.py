@@ -26,5 +26,4 @@ def pdfs() -> list[str]:
 
 @pytest.fixture
 def readers(pdfs):
-
     return [PdfReader(file_path) for file_path in pdfs]

@@ -11,7 +11,7 @@ from audify.readers.pdf import PdfReader
 @pytest.fixture
 def temp_pdf_path():
     """Create a temporary PDF file path."""
-    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
         temp_path = Path(temp_file.name)
     yield temp_path
     # Cleanup
@@ -22,32 +22,36 @@ def temp_pdf_path():
 @pytest.fixture
 def mock_pdf_content():
     """Mock PDF content for testing."""
-    return "This is sample PDF text content.\n" \
-           "With multiple lines.\nAnd some special characters: àáâã"
+    return (
+        "This is sample PDF text content.\n"
+        "With multiple lines.\nAnd some special characters: àáâã"
+    )
 
 
 @pytest.fixture
 def mock_cleaned_text():
     """Mock cleaned text output."""
-    return "This is sample PDF text content. With multiple lines." \
-           " And some special characters: àáâã"
+    return (
+        "This is sample PDF text content. With multiple lines."
+        " And some special characters: àáâã"
+    )
 
 
 class TestPdfReader:
     """Test suite for PdfReader class."""
 
-    @patch('audify.readers.pdf.clean_text')
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('pathlib.Path.exists')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.clean_text")
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("pathlib.Path.exists")
+    @patch("builtins.open", new_callable=mock_open)
     def test_init_success(
-            self,
-            mock_file_open,
-            mock_exists,
-            mock_pdf_reader,
-            mock_clean_text,
-            temp_pdf_path
-        ):
+        self,
+        mock_file_open,
+        mock_exists,
+        mock_pdf_reader,
+        mock_clean_text,
+        temp_pdf_path,
+    ):
         """Test successful initialization of PdfReader."""
         # Setup mocks
         mock_exists.return_value = True
@@ -69,7 +73,7 @@ class TestPdfReader:
         mock_pdf_reader.assert_called_once()
         mock_clean_text.assert_called_once_with("Sample PDF text")
 
-    @patch('pathlib.Path.exists')
+    @patch("pathlib.Path.exists")
     def test_init_file_not_found(self, mock_exists):
         """Test FileNotFoundError when PDF file doesn't exist."""
         mock_exists.return_value = False
@@ -77,12 +81,13 @@ class TestPdfReader:
         with pytest.raises(FileNotFoundError, match="PDF file not found at"):
             PdfReader("/nonexistent/path/file.pdf")
 
-    @patch('audify.readers.pdf.clean_text')
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('pathlib.Path.exists')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.clean_text")
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("pathlib.Path.exists")
+    @patch("builtins.open", new_callable=mock_open)
     def test_init_with_string_path(
-        self, mock_file_open, mock_exists, mock_pdf_reader, mock_clean_text):
+        self, mock_file_open, mock_exists, mock_pdf_reader, mock_clean_text
+    ):
         """Test initialization with string path."""
         mock_exists.return_value = True
         mock_page = Mock()
@@ -97,8 +102,8 @@ class TestPdfReader:
         assert isinstance(reader.path, Path)
         assert reader.text == "Text from string path"
 
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("builtins.open", new_callable=mock_open)
     def test_read_single_page(self, mock_file_open, mock_pdf_reader, temp_pdf_path):
         """Test reading text from a single-page PDF."""
         # Setup mock for single page
@@ -108,8 +113,8 @@ class TestPdfReader:
         mock_pdf_reader_instance.pages = [mock_page]
         mock_pdf_reader.return_value = mock_pdf_reader_instance
 
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('audify.readers.pdf.clean_text', return_value="cleaned"):
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("audify.readers.pdf.clean_text", return_value="cleaned"):
                 reader = PdfReader(temp_pdf_path)
                 result = reader.read()
 
@@ -117,8 +122,8 @@ class TestPdfReader:
         mock_file_open.assert_called_with(temp_pdf_path, "rb")
         mock_pdf_reader.assert_called()
 
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("builtins.open", new_callable=mock_open)
     def test_read_multiple_pages(self, mock_file_open, mock_pdf_reader, temp_pdf_path):
         """Test reading text from a multi-page PDF."""
         # Setup mocks for multiple pages
@@ -133,33 +138,34 @@ class TestPdfReader:
         mock_pdf_reader_instance.pages = [mock_page1, mock_page2, mock_page3]
         mock_pdf_reader.return_value = mock_pdf_reader_instance
 
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('audify.readers.pdf.clean_text', return_value="cleaned"):
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("audify.readers.pdf.clean_text", return_value="cleaned"):
                 reader = PdfReader(temp_pdf_path)
                 result = reader.read()
 
         expected_text = "Page 1 contentPage 2 contentPage 3 content"
         assert result == expected_text
 
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("builtins.open", new_callable=mock_open)
     def test_read_empty_pdf(self, mock_file_open, mock_pdf_reader, temp_pdf_path):
         """Test reading from an empty PDF (no pages)."""
         mock_pdf_reader_instance = Mock()
         mock_pdf_reader_instance.pages = []
         mock_pdf_reader.return_value = mock_pdf_reader_instance
 
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('audify.readers.pdf.clean_text', return_value=""):
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("audify.readers.pdf.clean_text", return_value=""):
                 reader = PdfReader(temp_pdf_path)
                 result = reader.read()
 
         assert result == ""
 
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("builtins.open", new_callable=mock_open)
     def test_read_pdf_with_special_characters(
-        self, mock_file_open, mock_pdf_reader, temp_pdf_path):
+        self, mock_file_open, mock_pdf_reader, temp_pdf_path
+    ):
         """Test reading PDF with special characters and encoding."""
         mock_page = Mock()
         special_text = "Text with special chars: àáâã ñ ç 中文 🙂"
@@ -168,21 +174,21 @@ class TestPdfReader:
         mock_pdf_reader_instance.pages = [mock_page]
         mock_pdf_reader.return_value = mock_pdf_reader_instance
 
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('audify.readers.pdf.clean_text', return_value="cleaned"):
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("audify.readers.pdf.clean_text", return_value="cleaned"):
                 reader = PdfReader(temp_pdf_path)
                 result = reader.read()
 
         assert result == special_text
 
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("builtins.open", new_callable=mock_open)
     def test_save_cleaned_text_with_path_object(self, mock_file_open, temp_pdf_path):
         """Test saving cleaned text to file using Path object."""
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('audify.readers.pdf.PyPDF2.PdfReader') as mock_pdf_reader:
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("audify.readers.pdf.PyPDF2.PdfReader") as mock_pdf_reader:
                 with patch(
-                    'audify.readers.pdf.clean_text',
-                    return_value="Cleaned test content"):
+                    "audify.readers.pdf.clean_text", return_value="Cleaned test content"
+                ):
                     # Setup basic mocks for initialization
                     mock_page = Mock()
                     mock_page.extract_text.return_value = "raw content"
@@ -198,14 +204,14 @@ class TestPdfReader:
         mock_file_open.assert_called_with(output_path, "w", encoding="utf-8")
         mock_file_open().write.assert_called_with("Cleaned test content")
 
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("builtins.open", new_callable=mock_open)
     def test_save_cleaned_text_with_string(self, mock_file_open, temp_pdf_path):
         """Test saving cleaned text to file using string filename."""
-        with patch('pathlib.Path.exists', return_value=True):
-            with patch('audify.readers.pdf.PyPDF2.PdfReader') as mock_pdf_reader:
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("audify.readers.pdf.PyPDF2.PdfReader") as mock_pdf_reader:
                 with patch(
-                    'audify.readers.pdf.clean_text',
-                    return_value="Cleaned test content"):
+                    "audify.readers.pdf.clean_text", return_value="Cleaned test content"
+                ):
                     # Setup basic mocks for initialization
                     mock_page = Mock()
                     mock_page.extract_text.return_value = "raw content"
@@ -221,24 +227,30 @@ class TestPdfReader:
         mock_file_open.assert_called_with(output_filename, "w", encoding="utf-8")
         mock_file_open().write.assert_called_with("Cleaned test content")
 
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("builtins.open", new_callable=mock_open)
     def test_pypdf2_exception_handling(
-        self, mock_file_open, mock_pdf_reader, temp_pdf_path):
+        self, mock_file_open, mock_pdf_reader, temp_pdf_path
+    ):
         """Test handling of PyPDF2 exceptions during PDF reading."""
         mock_pdf_reader.side_effect = PyPDF2.errors.PdfReadError("Corrupted PDF file")
 
-        with patch('pathlib.Path.exists', return_value=True):
+        with patch("pathlib.Path.exists", return_value=True):
             with pytest.raises(PyPDF2.errors.PdfReadError):
                 PdfReader(temp_pdf_path)
 
-    @patch('audify.readers.pdf.clean_text')
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('pathlib.Path.exists')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.clean_text")
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("pathlib.Path.exists")
+    @patch("builtins.open", new_callable=mock_open)
     def test_text_cleaning_integration(
-        self, mock_file_open, mock_exists,
-        mock_pdf_reader, mock_clean_text, temp_pdf_path):
+        self,
+        mock_file_open,
+        mock_exists,
+        mock_pdf_reader,
+        mock_clean_text,
+        temp_pdf_path,
+    ):
         """Test integration with text cleaning utility."""
         mock_exists.return_value = True
 
@@ -260,20 +272,20 @@ class TestPdfReader:
         assert reader.text == raw_text
         assert reader.cleaned_text == cleaned_text
 
-    @patch('builtins.open', side_effect=IOError("Permission denied"))
+    @patch("builtins.open", side_effect=IOError("Permission denied"))
     def test_file_open_exception(self, mock_file_open, temp_pdf_path):
         """Test handling of file I/O exceptions."""
-        with patch('pathlib.Path.exists', return_value=True):
+        with patch("pathlib.Path.exists", return_value=True):
             with pytest.raises(IOError, match="Permission denied"):
                 PdfReader(temp_pdf_path)
 
-    @patch('audify.readers.pdf.clean_text')
-    @patch('audify.readers.pdf.PyPDF2.PdfReader')
-    @patch('pathlib.Path.exists')
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("audify.readers.pdf.clean_text")
+    @patch("audify.readers.pdf.PyPDF2.PdfReader")
+    @patch("pathlib.Path.exists")
+    @patch("builtins.open", new_callable=mock_open)
     def test_path_resolution(
         self, mock_file_open, mock_exists, mock_pdf_reader, mock_clean_text
-        ):
+    ):
         """Test that paths are properly resolved to absolute paths."""
         mock_exists.return_value = True
         mock_page = Mock()
