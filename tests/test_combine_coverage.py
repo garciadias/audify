@@ -54,12 +54,16 @@ def temp_output_dir():
         yield Path(temp_dir)
 
 
-@patch('audify.utils.combine_covers.Image.open')
-@patch('audify.utils.combine_covers.Image.new')
-@patch('builtins.print')
+@patch("audify.utils.combine_covers.Image.open")
+@patch("audify.utils.combine_covers.Image.new")
+@patch("builtins.print")
 def test_combine_covers_basic_functionality(
-    mock_print, mock_image_new, mock_image_open,
-    mock_images, mock_image_paths, temp_output_dir
+    mock_print,
+    mock_image_new,
+    mock_image_open,
+    mock_images,
+    mock_image_paths,
+    temp_output_dir,
 ):
     """Test basic functionality with 3 images (single page)."""
     # Setup mocks
@@ -92,12 +96,12 @@ def test_combine_covers_basic_functionality(
     mock_new_image.save.assert_called_once()
 
 
-@patch('audify.utils.combine_covers.Image.open')
-@patch('audify.utils.combine_covers.Image.new')
-@patch('builtins.print')
+@patch("audify.utils.combine_covers.Image.open")
+@patch("audify.utils.combine_covers.Image.new")
+@patch("builtins.print")
 def test_combine_covers_multiple_pages(
-        mock_print, mock_image_new, mock_image_open, temp_output_dir
-    ):
+    mock_print, mock_image_new, mock_image_open, temp_output_dir
+):
     """Test with more than 25 images to create multiple pages."""
     # Create 30 mock images and paths
     mock_images = []
@@ -130,17 +134,17 @@ def test_combine_covers_multiple_pages(
     # Verify correct file names
     expected_calls = [
         call(temp_output_dir / "combined_covers_0.jpg"),
-        call(temp_output_dir / "combined_covers_1.jpg")
+        call(temp_output_dir / "combined_covers_1.jpg"),
     ]
     mock_new_image.save.assert_has_calls(expected_calls)
 
 
-@patch('audify.utils.combine_covers.Image.open')
-@patch('audify.utils.combine_covers.Image.new')
-@patch('builtins.print')
+@patch("audify.utils.combine_covers.Image.open")
+@patch("audify.utils.combine_covers.Image.new")
+@patch("builtins.print")
 def test_combine_covers_single_image(
-        mock_print, mock_image_new, mock_image_open, temp_output_dir
-    ):
+    mock_print, mock_image_new, mock_image_open, temp_output_dir
+):
     """Test with single image."""
     mock_img = Mock(spec=Image.Image)
     mock_img.width = 300
@@ -189,12 +193,12 @@ def test_image_sorting_by_modification_time():
     assert sorted_paths[2].stat().st_mtime == 1003
 
 
-@patch('audify.utils.combine_covers.Image.open')
-@patch('audify.utils.combine_covers.Image.new')
-@patch('builtins.print')
+@patch("audify.utils.combine_covers.Image.open")
+@patch("audify.utils.combine_covers.Image.new")
+@patch("builtins.print")
 def test_image_resizing_logic(
-        mock_print, mock_image_new, mock_image_open, temp_output_dir
-    ):
+    mock_print, mock_image_new, mock_image_open, temp_output_dir
+):
     """Test that images are properly resized to 420px width maintaining aspect ratio."""
     # Create mock image with known dimensions
     mock_img = Mock(spec=Image.Image)
@@ -222,12 +226,12 @@ def test_image_resizing_logic(
     mock_img.resize.assert_called_with((420, expected_height))
 
 
-@patch('audify.utils.combine_covers.Image.open')
-@patch('audify.utils.combine_covers.Image.new')
-@patch('builtins.print')
+@patch("audify.utils.combine_covers.Image.open")
+@patch("audify.utils.combine_covers.Image.new")
+@patch("builtins.print")
 def test_image_height_adjustment(
-        mock_print, mock_image_new, mock_image_open, temp_output_dir
-    ):
+    mock_print, mock_image_new, mock_image_open, temp_output_dir
+):
     """Test image height adjustment logic (resize shorter images, crop taller ones)."""
     # Create mock images with different heights after initial resize
     mock_imgs = []

@@ -1,5 +1,4 @@
 import contextlib
-import logging
 import shutil
 import subprocess
 import sys
@@ -16,45 +15,21 @@ from pydub.exceptions import CouldntDecodeError
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
+from audify.utils.api_config import KokoroAPIConfig
+from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     DEFAULT_MODEL,
     DEFAULT_SPEAKER,
-    KOKORO_API_BASE_URL,
-    KOKORO_DEFAULT_VOICE,
     LANG_CODES,
     OUTPUT_BASE_DIR,
 )
-from audify.utils.text import (
-    break_text_into_sentences,
-    get_audio_duration,
-    get_file_name_title,
-)
+from audify.utils.logging_utils import setup_logging
+from audify.utils.text import break_text_into_sentences, get_file_name_title
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(module_name=__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
-
-
-class KokoroAPIConfig:
-    """Configuration for Kokoro API."""
-
-    def __init__(self, base_url: Optional[str] = None):
-        self.base_url = base_url or f"{KOKORO_API_BASE_URL}/audio"
-        self.default_voice = KOKORO_DEFAULT_VOICE
-        self.timeout = 30
-
-    @property
-    def voices_url(self) -> str:
-        return f"{self.base_url}/voices"
-
-    @property
-    def speech_url(self) -> str:
-        return f"{self.base_url}/speech"
-
 
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -211,20 +186,7 @@ class BaseSynthesizer:
 
     def _convert_to_mp3(self, wav_path: Path) -> Path:
         """Converts a WAV file to MP3 and removes the original WAV."""
-        mp3_path = wav_path.with_suffix(".mp3")
-        logger.info(f"Converting {wav_path.name} to MP3...")
-        try:
-            audio = AudioSegment.from_wav(wav_path)
-            audio.export(mp3_path, format="mp3", bitrate="192k")
-            logger.info(f"MP3 conversion successful: {mp3_path.name}")
-            wav_path.unlink(missing_ok=True)
-            return mp3_path
-        except FileNotFoundError:
-            logger.error(f"WAV file not found for conversion: {wav_path}")
-            raise
-        except Exception as e:
-            logger.error(f"Error converting {wav_path.name} to MP3: {e}", exc_info=True)
-            raise
+        return AudioProcessor.convert_wav_to_mp3(wav_path)
 
     def synthesize(self) -> Path:
         """Abstract method for the main synthesis process."""
@@ -388,50 +350,15 @@ class EpubSynthesizer(BaseSynthesizer):
         """Calculate total duration of MP3 files in seconds."""
         total_duration = 0.0
         for mp3_file in mp3_files:
-            try:
-                duration = get_audio_duration(str(mp3_file))
-                total_duration += duration
-            except Exception as e:
-                logger.warning(f"Could not get duration for {mp3_file}: {e}")
+            duration = AudioProcessor.get_duration(str(mp3_file))
+            total_duration += duration
         return total_duration
 
     def _split_chapters_by_duration(
         self, chapter_mp3_files: List[Path], max_hours: float = 15.0
     ) -> List[List[Path]]:
         """Split chapter MP3 files into chunks with maximum duration in hours."""
-        max_duration_seconds = max_hours * 3600  # Convert hours to seconds
-        chunks = []
-        current_chunk: list[Path] = []
-        current_duration = 0.0
-
-        for mp3_file in chapter_mp3_files:
-            try:
-                file_duration = get_audio_duration(str(mp3_file))
-
-                # If adding this file would exceed the limit, start a new chunk
-                if (
-                    current_chunk
-                    and (current_duration + file_duration) > max_duration_seconds
-                ):
-                    chunks.append(current_chunk)
-                    current_chunk = [mp3_file]
-                    current_duration = file_duration
-                else:
-                    current_chunk.append(mp3_file)
-                    current_duration += file_duration
-
-            except Exception as e:
-                logger.warning(
-                    f"Could not get duration for {mp3_file}: {e}, "
-                    f"adding to current chunk anyway"
-                )
-                current_chunk.append(mp3_file)
-
-        # Add the last chunk if it has files
-        if current_chunk:
-            chunks.append(current_chunk)
-
-        return chunks
+        return AudioProcessor.split_audio_by_duration(chapter_mp3_files, max_hours)
 
     def _create_temp_m4b_for_chunk(
         self, chunk_files: List[Path], chunk_index: int
@@ -510,7 +437,7 @@ class EpubSynthesizer(BaseSynthesizer):
                     try:
                         # Extract chapter number from filename
                         chapter_num = int(mp3_file.stem.split("_")[1])
-                        duration = get_audio_duration(str(mp3_file))
+                        duration = AudioProcessor.get_duration(str(mp3_file))
 
                         if duration > 0:
                             end_time_ms = current_start_time_ms + int(duration * 1000)
@@ -876,7 +803,7 @@ class EpubSynthesizer(BaseSynthesizer):
         if chapter_exists:
             logger.info(f"Chapter {chapter_index} ('{title}') already synthesized.")
             try:
-                duration_s = get_audio_duration(str(chapter_mp3_path))
+                duration_s = AudioProcessor.get_duration(str(chapter_mp3_path))
             except Exception as e:
                 logger.warning(
                     f"Could not get duration for existing chapter {chapter_index}: {e}."
@@ -890,7 +817,7 @@ class EpubSynthesizer(BaseSynthesizer):
                     chapter_content, chapter_index
                 )
                 if synthesized_path.exists():
-                    duration_s = get_audio_duration(str(synthesized_path))
+                    duration_s = AudioProcessor.get_duration(str(synthesized_path))
                 else:
                     logger.warning(
                         f"Synthesized chapter {chapter_index} MP3 not found at"

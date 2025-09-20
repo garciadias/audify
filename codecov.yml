@@ -1,0 +1,37 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 85% # Your project has 90% coverage, so this is reasonable
+        threshold: 2% # Allow 2% decrease
+        base: auto
+    patch:
+      default:
+        target: 70% # New code should have good coverage
+        threshold: 5%
+        base: auto
+
+comment:
+  layout: "reach,diff,flags,files,tree"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "tests/"
+  - "**/__pycache__/"
+  - "*.venv/"
+  - ".venv/"
+  - "data/"
+  - "htmlcov/"
+  - "docs/"
+  - "*.egg-info/"
+  - "build/"
+  - "dist/"
+
+github_checks:
+  annotations: true
+
+flags:
+  unittests:
+    paths:
+      - audify/

@@ -1,34 +1,12 @@
-import logging
 from typing import Optional
 
-from langchain_ollama import OllamaLLM
-
-from audify.utils.constants import (
-    LANGUAGE_NAMES,
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_TRANSLATION_MODEL,
-)
+from audify.utils.api_config import OllamaTranslationConfig
+from audify.utils.constants import LANGUAGE_NAMES
+from audify.utils.logging_utils import get_logger
 from audify.utils.prompts import TRANSLATE_PROMPT
 
 # Configure logging
-logger = logging.getLogger(__name__)
-
-
-class OllamaTranslationConfig:
-    """Configuration for Ollama translation using LangChain."""
-
-    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
-        self.base_url = base_url or OLLAMA_API_BASE_URL
-        self.model = model or OLLAMA_DEFAULT_TRANSLATION_MODEL
-
-    def create_llm(self) -> OllamaLLM:
-        """Create and configure OllamaLLM instance."""
-        return OllamaLLM(
-            model=self.model,
-            base_url=self.base_url,
-            temperature=0.1,  # Low temperature for consistent translation
-            top_p=0.9,
-        )
+logger = get_logger(__name__)
 
 
 def translate_sentence(
@@ -73,7 +51,7 @@ def translate_sentence(
         logger.info(f"Translating from {src_lang_name} to {tgt_lang_name} using Ollama")
 
         # Create LangChain Ollama LLM instance
-        llm = config.create_llm()
+        llm = config.create_translation_llm()
 
         # Get translation using LangChain
         translated_text = llm.invoke(prompt).strip()

@@ -20,7 +20,7 @@ class EpubReader(Reader):
         chapters = []
         for item in self.book.get_items():
             if item.get_type() == ITEM_DOCUMENT:
-                chapters.append(item.get_body_content().decode('utf-8'))
+                chapters.append(item.get_body_content().decode("utf-8"))
         return chapters
 
     def extract_text(self, chapter: str) -> str:

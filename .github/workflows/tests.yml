@@ -2,7 +2,7 @@ name: Run Tests
 
 on: 
   push:
-    branches: [ master ]
+    branches: [ master, organize_and_test ]
     paths:
       - 'audify/**'
       - 'tests/**'
@@ -12,7 +12,7 @@ on:
       - 'audify/**'
       - 'tests/**'
       - '.github/workflows/tests.yml'
-    branches: [ master ]
+    branches: [ master, organize_and_test ]
 jobs:
   unittest:
     runs-on: ubuntu-latest
@@ -35,6 +35,17 @@ jobs:
     - name: Install uv (if used for dependency management)
       run: pip install uv
 
-    - name: Run tests with pytest (example)
-      # Replace with your actual test command
+    - name: Run tests with pytest and coverage
       run: uv run task test
+
+    - name: Generate coverage report
+      run: uv run coverage xml
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
