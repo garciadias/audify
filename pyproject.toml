@@ -79,7 +79,7 @@ url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.taskipy.tasks]
-test = "uv run pytest --cov=audify --cov-report=term-missing"
+test = "uv run pytest --cov=audify --cov-report=term-missing --cov-report=xml"
 format = "ruff check . --fix"
 pre_test = "task format && mypy ./audify ./tests --ignore-missing-imports"
 post_test = "uv run coverage html"
