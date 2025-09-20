@@ -337,8 +337,6 @@ class PodcastCreator(BaseSynthesizer):
                 f"Translating {len(sentences)} segments for Episode {episode_number}..."
             )
             try:
-                from audify.translate import translate_sentence
-
                 sentences = [
                     translate_sentence(
                         sentence, src_lang=self.language, tgt_lang=self.translate

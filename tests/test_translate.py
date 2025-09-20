@@ -6,6 +6,8 @@ Test script for audify.translate module with comprehensive coverage.
 from unittest.mock import Mock, patch
 
 from audify.translate import OllamaTranslationConfig, translate_sentence
+from audify.utils.constants import LANGUAGE_NAMES
+from audify.utils.prompts import TRANSLATE_PROMPT
 
 
 def test_ollama_config_defaults():
@@ -142,8 +144,6 @@ def test_translation_interface():
     ]
 
     for sentence, src_lang, tgt_lang in test_cases:
-        from audify.utils.constants import LANGUAGE_NAMES
-        from audify.utils.prompts import TRANSLATE_PROMPT
 
         src_lang_name = LANGUAGE_NAMES.get(src_lang, src_lang)
         tgt_lang_name = LANGUAGE_NAMES.get(tgt_lang, tgt_lang)

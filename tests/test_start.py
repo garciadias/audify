@@ -1,9 +1,11 @@
 # tests/test_start.py
 import sys
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from click.testing import CliRunner
 from reportlab.pdfgen import canvas
 
@@ -229,7 +231,6 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             with patch(
                 "audify.utils.audio.AudioProcessor.convert_wav_to_mp3"
             ) as mock_convert:
-                from pathlib import Path
 
                 mock_convert.return_value = Path("/fake/output.mp3")
 
@@ -259,7 +260,6 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
 @patch("requests.get")
 def test_main_list_models_api_error(mock_get, mock_terminal_size, runner):
     """Test main command with --list-models flag when API fails."""
-    import requests
 
     # Mock requests.get to raise a RequestException
     mock_get.side_effect = requests.RequestException("Connection failed")
@@ -274,7 +274,6 @@ def test_main_list_models_api_error(mock_get, mock_terminal_size, runner):
 @patch("requests.get")
 def test_main_list_models_request_exception(mock_get, mock_terminal_size, runner):
     """Test main command with --list-models flag with RequestException."""
-    import requests
 
     mock_get.side_effect = requests.RequestException("Network error")
 

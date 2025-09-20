@@ -5,6 +5,7 @@ This module provides standardized logging setup to reduce code duplication
 and ensure consistent logging behavior throughout the application.
 """
 
+import inspect
 import logging
 import sys
 from typing import Optional
@@ -39,9 +40,6 @@ def setup_logging(
 
     # Return logger for the specific module
     if module_name is None:
-        # Try to get the caller's module name
-        import inspect
-
         frame = inspect.currentframe()
         if frame and frame.f_back:
             module_name = frame.f_back.f_globals.get("__name__", "audify")
@@ -62,9 +60,6 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         Logger instance
     """
     if name is None:
-        # Try to get the caller's module name
-        import inspect
-
         frame = inspect.currentframe()
         if frame and frame.f_back:
             name = frame.f_back.f_globals.get("__name__", "audify")
