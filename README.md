@@ -1,5 +1,8 @@
 # Audify
 
+[![codecov](https://codecov.io/github/garciadias/audify/branch/master/graph/badge.svg)](https://codecov.io/github/garciadias/audify)
+[![Tests](https://github.com/garciadias/audify/workflows/Run%20Tests/badge.svg)](https://github.com/garciadias/audify/actions)
+
 Convert ebooks and PDFs to audiobooks and podcasts using AI text-to-speech and translation services.
 
 Audify is a API-based system that transforms written content into high-quality audio using:

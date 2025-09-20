@@ -1,4 +1,3 @@
-import logging
 import re
 import shutil
 import subprocess
@@ -7,7 +6,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import tqdm
-from langchain_ollama import OllamaLLM
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
@@ -15,19 +13,19 @@ from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer
 from audify.translate import translate_sentence
+from audify.utils.api_config import OllamaAPIConfig
+from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OUTPUT_BASE_DIR,
 )
+from audify.utils.logging_utils import setup_logging
 from audify.utils.prompts import PODCAST_PROMPT
-from audify.utils.text import break_text_into_sentences, clean_text, get_audio_duration
+from audify.utils.text import break_text_into_sentences, clean_text
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(module_name=__name__)
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
 
@@ -38,22 +36,7 @@ class LLMClient:
     def __init__(
         self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
     ):
-        self.base_url = base_url
-        self.model = model
-
-        # Initialize LangChain Ollama client
-        self.llm = OllamaLLM(
-            model=self.model,
-            base_url=self.base_url,
-            # LangChain Ollama specific parameters
-            num_ctx=8 * 4096,  # Increased context window
-            temperature=0.8,  # Added creativity
-            top_p=0.9,  # Broader token selection
-            repeat_penalty=1.05,  # Slight penalty for repetition
-            seed=428798,
-            top_k=60,  # Wider token selection
-            num_predict=4096,  # Encourage longer responses
-        )
+        self.config = OllamaAPIConfig(base_url=base_url, model=model)
 
     def generate_podcast_script(
         self, chapter_text: str, language: Optional[str]
@@ -68,8 +51,20 @@ class LLMClient:
             prompt = PODCAST_PROMPT + "\n\n" + chapter_text
 
         try:
-            logger.info(f"Sending request to LLM at {self.base_url}")
-            response = self.llm.invoke(prompt)
+            logger.info(f"Sending request to LLM at {self.config.base_url}")
+
+            # Create LLM with podcast-specific parameters
+            llm = self.config.create_llm(
+                num_ctx=8 * 4096,  # Increased context window
+                temperature=0.8,  # Added creativity
+                top_p=0.9,  # Broader token selection
+                repeat_penalty=1.05,  # Slight penalty for repetition
+                seed=428798,
+                top_k=60,  # Wider token selection
+                num_predict=4096,  # Encourage longer responses
+            )
+
+            response = llm.invoke(prompt)
 
             # Clean the response
             if response:
@@ -86,7 +81,7 @@ class LLMClient:
             if "connection" in str(e).lower():
                 return (
                     "Error: Could not connect to local LLM server. "
-                    f"Please ensure Ollama is running at {self.base_url}."
+                    f"Please ensure Ollama is running at {self.config.base_url}."
                 )
             elif "timeout" in str(e).lower():
                 return "Error: Request to LLM timed out. Content might be too long."
@@ -342,8 +337,6 @@ class PodcastCreator(BaseSynthesizer):
                 f"Translating {len(sentences)} segments for Episode {episode_number}..."
             )
             try:
-                from audify.translate import translate_sentence
-
                 sentences = [
                     translate_sentence(
                         sentence, src_lang=self.language, tgt_lang=self.translate
@@ -487,7 +480,7 @@ class PodcastCreator(BaseSynthesizer):
         total_duration = 0.0
         for mp3_file in mp3_files:
             try:
-                duration = get_audio_duration(str(mp3_file))
+                duration = AudioProcessor.get_duration(str(mp3_file))
                 total_duration += duration
             except Exception as e:
                 logger.warning(f"Could not get duration for {mp3_file}: {e}")
