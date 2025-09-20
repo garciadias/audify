@@ -290,5 +290,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [Kokoro TTS](https://github.com/hexgrad/kokoro) for high-quality speech synthesis
+- [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) accessible kokoro via FastAPI
 - [Ollama](https://ollama.ai/) for local LLM inference
 - [LangChain](https://langchain.com/) for LLM orchestration
