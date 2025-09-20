@@ -4,9 +4,12 @@ Simplified tests for audify.podcast_creator module focusing on testable componen
 """
 
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
+
+import pytest
 
 from audify.podcast_creator import LLMClient, PodcastCreator
 from audify.readers.ebook import EpubReader
@@ -909,3 +912,592 @@ class TestPodcastCreatorGenerateScript:
             assert result == "Generated script"
             # Verify files were written (script and original text)
             assert mock_file.call_count == 2
+
+
+class TestPodcastCreatorM4BCreation:
+    """Test M4B creation functionality."""
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_build_ffmpeg_command_with_cover(self, mock_init):
+        """Test FFmpeg command building with cover image."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.metadata_path = Path('/fake/metadata.txt')
+        creator.final_m4b_path = Path('/fake/final.m4b')
+        creator.cover_image_path = Path('/fake/cover.jpg')
+
+        with patch('pathlib.Path.exists', return_value=True), \
+             patch('tempfile.NamedTemporaryFile') as mock_temp, \
+             patch('shutil.copy') as mock_copy:
+
+            mock_temp_file = Mock()
+            mock_temp_file.name = '/tmp/cover_temp.jpg'
+            mock_temp.return_value = mock_temp_file
+
+            command, cover_temp_file = creator._build_ffmpeg_command()
+
+            # Verify command structure
+            assert 'ffmpeg' in command
+            assert str(creator.temp_m4b_path) in command
+            assert str(creator.metadata_path) in command
+            assert '-map' in command
+            assert '0:a' in command
+            assert '2:v' in command
+            assert '-disposition:v' in command
+            assert 'attached_pic' in command
+
+            # Verify cover handling
+            assert cover_temp_file == mock_temp_file
+            mock_copy.assert_called_once()
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_build_ffmpeg_command_without_cover(self, mock_init):
+        """Test FFmpeg command building without cover image."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.metadata_path = Path('/fake/metadata.txt')
+        creator.final_m4b_path = Path('/fake/final.m4b')
+
+        with patch('pathlib.Path.exists', return_value=False):
+            command, cover_temp_file = creator._build_ffmpeg_command()
+
+            # Verify command structure without cover
+            assert 'ffmpeg' in command
+            assert str(creator.temp_m4b_path) in command
+            assert str(creator.metadata_path) in command
+            assert '-map' in command
+            assert '0:a' in command
+            assert '2:v' not in command  # No video mapping without cover
+
+            # No cover temp file
+            assert cover_temp_file is None
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    @patch('pathlib.Path.glob')
+    def test_create_m4b_no_episodes(self, mock_glob, mock_init):
+        """Test create_m4b with no episode files."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.episodes_path = Path('/fake/episodes')
+        creator.podcast_path = Path('/fake/podcast')
+        creator.file_name = 'test'
+
+        # No episode files found
+        mock_glob.return_value = []
+
+        result = creator.create_m4b()
+
+        # Should return early with no episodes
+        assert result is None
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    @patch('pathlib.Path.glob')
+    def test_create_m4b_success(self, mock_glob, mock_init):
+        """Test successful M4B creation."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.episodes_path = Path('/fake/episodes')
+        creator.podcast_path = Path('/fake/podcast')
+        creator.file_name = 'test'
+
+        # Mock episode files
+        episode_files = [Path('/fake/episode_001.mp3'), Path('/fake/episode_002.mp3')]
+        mock_glob.return_value = episode_files
+
+        with patch.object(creator, '_initialize_metadata_file') as mock_init_meta, \
+             patch.object(creator, '_calculate_total_duration', return_value=3600.0), \
+             patch.object(creator, '_create_single_m4b') as mock_create:
+
+            creator.create_m4b()
+
+            # Verify paths are set up
+            assert creator.temp_m4b_path == Path('/fake/podcast/test.tmp.m4b')
+            assert creator.final_m4b_path == Path('/fake/podcast/test.m4b')
+
+            # Verify methods were called
+            mock_init_meta.assert_called_once()
+            mock_create.assert_called_once_with(episode_files)
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_create_single_m4b_empty_audio(self, mock_init):
+        """Test _create_single_m4b with empty audio."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.chapter_titles = []
+
+        episode_files = [Path('/fake/episode_001.mp3')]
+
+        with patch('pathlib.Path.exists', return_value=False), \
+             patch('audify.podcast_creator.AudioSegment') as mock_audio_seg, \
+             patch('audify.podcast_creator.tqdm.tqdm',
+                   side_effect=lambda x, **kwargs: x):
+
+            # Mock empty audio
+            mock_empty = Mock()
+            mock_empty.__len__ = Mock(return_value=0)
+            mock_audio_seg.empty.return_value = mock_empty
+            mock_audio_seg.from_mp3.side_effect = lambda x: Mock(
+                __len__=Mock(return_value=1000)
+            )
+
+            result = creator._create_single_m4b(episode_files)
+
+            # Should return early with empty audio
+            assert result is None
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_create_single_m4b_success(self, mock_init):
+        """Test successful _create_single_m4b creation."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.metadata_path = Path('/fake/metadata.txt')
+        creator.final_m4b_path = Path('/fake/final.m4b')
+        creator.chapter_titles = ['Chapter 1', 'Chapter 2']
+
+        episode_files = [Path('/fake/episode_001.mp3'), Path('/fake/episode_002.mp3')]
+
+        with patch('pathlib.Path.exists', return_value=False), \
+             patch('audify.podcast_creator.AudioSegment') as mock_audio_seg, \
+             patch(
+                 'audify.podcast_creator.tqdm.tqdm', side_effect=lambda x, **kwargs: x
+                 ), \
+             patch.object(creator, '_log_episode_metadata', side_effect=[1000, 2000]), \
+             patch.object(
+                 creator, '_build_ffmpeg_command',
+                 return_value=(['ffmpeg', 'cmd'], None)
+                ), \
+             patch('subprocess.run') as mock_subprocess, \
+             patch('pathlib.Path.unlink') as mock_unlink:
+
+            # Mock audio segments
+            mock_combined = Mock()
+            mock_combined.__len__ = Mock(return_value=5000)  # Non-empty
+            mock_combined.__add__ = Mock(return_value=mock_combined)
+            mock_combined.export = Mock()
+            mock_audio_seg.empty.return_value = mock_combined
+
+            mock_episode_audio = Mock()
+            mock_episode_audio.__len__ = Mock(return_value=2500)
+            mock_audio_seg.from_mp3.return_value = mock_episode_audio
+
+            # Mock successful subprocess
+            mock_result = Mock()
+            mock_result.stdout = 'Success'
+            mock_result.stderr = ''
+            mock_subprocess.return_value = mock_result
+
+            creator._create_single_m4b(episode_files)
+
+            # Verify audio processing
+            assert mock_audio_seg.from_mp3.call_count == 2
+            mock_combined.export.assert_called_once()
+
+            # Verify FFmpeg execution
+            mock_subprocess.assert_called_once()
+
+            # Verify cleanup
+            mock_unlink.assert_called()
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_create_single_m4b_decode_error(self, mock_init):
+        """Test _create_single_m4b with decode error."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.chapter_titles = []
+
+        episode_files = [Path('/fake/episode_001.mp3')]
+
+        with patch('pathlib.Path.exists', return_value=False), \
+             patch('audify.podcast_creator.AudioSegment') as mock_audio_seg, \
+             patch(
+                 'audify.podcast_creator.tqdm.tqdm', side_effect=lambda x, **kwargs: x):
+
+            # Mock CouldntDecodeError
+            from pydub.exceptions import CouldntDecodeError
+            mock_audio_seg.from_mp3.side_effect = CouldntDecodeError("Decode error")
+
+            mock_combined = Mock()
+            mock_combined.__len__ = Mock(return_value=0)  # Empty after error
+            mock_audio_seg.empty.return_value = mock_combined
+
+            result = creator._create_single_m4b(episode_files)
+
+            # Should handle error gracefully
+            assert result is None
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_create_single_m4b_ffmpeg_error(self, mock_init):
+        """Test _create_single_m4b with FFmpeg error."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.chapter_titles = []
+
+        episode_files = [Path('/fake/episode_001.mp3')]
+
+        with patch('pathlib.Path.exists', return_value=False), \
+             patch('audify.podcast_creator.AudioSegment') as mock_audio_seg, \
+             patch(
+                 'audify.podcast_creator.tqdm.tqdm', side_effect=lambda x, **kwargs: x
+                ), \
+             patch.object(creator, '_log_episode_metadata', return_value=1000), \
+             patch.object(
+                 creator, '_build_ffmpeg_command', return_value=(['ffmpeg'], None)), \
+             patch('subprocess.run') as mock_subprocess:
+
+            # Mock successful audio creation
+            mock_combined = Mock()
+            mock_combined.__len__ = Mock(return_value=5000)
+            mock_combined.__add__ = Mock(return_value=mock_combined)
+            mock_combined.export = Mock()
+            mock_audio_seg.empty.return_value = mock_combined
+            mock_audio_seg.from_mp3.return_value = Mock(__len__=Mock(return_value=2500))
+
+            # Mock FFmpeg failure
+            error = subprocess.CalledProcessError(1, 'ffmpeg')
+            error.stdout = ''
+            error.stderr = 'FFmpeg error'
+            mock_subprocess.side_effect = error
+
+            # Should raise the subprocess error
+            with pytest.raises(subprocess.CalledProcessError):
+                creator._create_single_m4b(episode_files)
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_create_single_m4b_ffmpeg_not_found(self, mock_init):
+        """Test _create_single_m4b with FFmpeg not found."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.temp_m4b_path = Path('/fake/temp.m4b')
+        creator.chapter_titles = []
+
+        episode_files = [Path('/fake/episode_001.mp3')]
+
+        with patch('pathlib.Path.exists', return_value=False), \
+             patch('audify.podcast_creator.AudioSegment') as mock_audio_seg, \
+             patch(
+                 'audify.podcast_creator.tqdm.tqdm', side_effect=lambda x, **kwargs: x
+                ), \
+             patch.object(creator, '_log_episode_metadata', return_value=1000), \
+             patch.object(
+                 creator, '_build_ffmpeg_command', return_value=(['ffmpeg'], None)), \
+             patch('subprocess.run') as mock_subprocess:
+
+            # Mock successful audio creation
+            mock_combined = Mock()
+            mock_combined.__len__ = Mock(return_value=5000)
+            mock_combined.__add__ = Mock(return_value=mock_combined)
+            mock_combined.export = Mock()
+            mock_audio_seg.empty.return_value = mock_combined
+            mock_audio_seg.from_mp3.return_value = Mock(__len__=Mock(return_value=2500))
+
+            # Mock FFmpeg not found
+            mock_subprocess.side_effect = FileNotFoundError("ffmpeg not found")
+
+            # Should raise FileNotFoundError
+            with pytest.raises(FileNotFoundError):
+                creator._create_single_m4b(episode_files)
+
+
+class TestPodcastEpubCreator:
+    """Test the PodcastEpubCreator specialized class."""
+
+    @patch('audify.readers.ebook.EpubReader')
+    @patch('audify.podcast_creator.BaseSynthesizer.__init__')
+    @patch('pathlib.Path.exists', return_value=True)
+    @patch('pathlib.Path.mkdir')
+    def test_epub_creator_initialization_success(self, mock_mkdir, mock_exists,
+                                                 mock_base_init, mock_epub_reader):
+        """Test successful PodcastEpubCreator initialization."""
+        # Setup mocks
+        mock_epub_instance = Mock()
+        mock_epub_instance.get_language.return_value = "en"
+        mock_epub_instance.title = "Test Book"
+        mock_epub_instance.get_cover_image.return_value = None
+        mock_epub_instance.get_chapters = Mock(return_value=['Ch1', 'Ch2'])
+        mock_epub_reader.return_value = mock_epub_instance
+
+        from audify.podcast_creator import PodcastEpubCreator
+
+        creator = PodcastEpubCreator(path='test.epub', llm_model='test-model')
+
+        # Verify it's properly initialized
+        assert hasattr(creator.reader, 'get_chapters')
+
+    @patch('audify.readers.pdf.PdfReader')
+    @patch('audify.podcast_creator.BaseSynthesizer.__init__')
+    @patch('pathlib.Path.exists', return_value=True)
+    @patch('pathlib.Path.mkdir')
+    def test_epub_creator_initialization_failure(self, mock_mkdir, mock_exists,
+                                                 mock_base_init, mock_pdf_reader):
+        """Test PodcastEpubCreator initialization failure with PDF reader."""
+        # Setup PDF reader instead of EPUB
+        mock_pdf_instance = Mock()
+        mock_pdf_reader.return_value = mock_pdf_instance
+
+        from audify.podcast_creator import PodcastEpubCreator
+
+        with pytest.raises(ValueError, match="requires an EPUB reader"):
+            PodcastEpubCreator(path='test.pdf', llm_model='test-model')
+
+
+class TestPodcastPdfCreator:
+    """Test the PodcastPdfCreator specialized class."""
+
+    @patch('audify.readers.pdf.PdfReader')
+    @patch('audify.podcast_creator.BaseSynthesizer.__init__')
+    @patch('pathlib.Path.exists', return_value=True)
+    @patch('pathlib.Path.mkdir')
+    def test_pdf_creator_initialization(self, mock_mkdir, mock_exists,
+                                       mock_base_init, mock_pdf_reader):
+        """Test PodcastPdfCreator initialization."""
+        # Setup mocks
+        mock_pdf_instance = Mock()
+        mock_pdf_reader.return_value = mock_pdf_instance
+
+        from audify.podcast_creator import PodcastPdfCreator
+
+        creator = PodcastPdfCreator(path='test.pdf', llm_model='test-model')
+
+        # Should initialize without error
+        assert creator is not None
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_success(self, mock_init):
+        """Test successful PDF podcast series creation."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+        creator.language = 'en'
+        creator.resolved_language = 'en'
+        creator.translate = None
+
+        # Mock PDF reader
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "This is a long PDF text content " * 50
+        creator.reader = mock_reader
+
+        with patch.object(creator, 'generate_podcast_script',
+                         return_value="Generated script"), \
+             patch.object(creator, 'synthesize_episode',
+                         return_value=Path('/fake/episode_001.mp3')), \
+             patch('pathlib.Path.exists', return_value=True):
+
+            result = creator.create_podcast_series()
+
+            assert len(result) == 1
+            assert result[0] == Path('/fake/episode_001.mp3')
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_with_confirmation(self, mock_init):
+        """Test PDF podcast series creation with user confirmation."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = True
+        creator.language = 'en'
+        creator.resolved_language = 'en'
+        creator.translate = None
+
+        # Mock PDF reader
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "PDF content"
+        creator.reader = mock_reader
+
+        with patch('builtins.input', return_value='y'), \
+             patch.object(creator, 'generate_podcast_script',
+                         return_value="Generated script"), \
+             patch.object(creator, 'synthesize_episode',
+                         return_value=Path('/fake/episode_001.mp3')), \
+             patch('pathlib.Path.exists', return_value=True):
+
+            result = creator.create_podcast_series()
+
+            assert len(result) == 1
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_user_cancels(self, mock_init):
+        """Test PDF podcast series creation when user cancels."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = True
+
+        # Mock PDF reader
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "PDF content"
+        creator.reader = mock_reader
+
+        with patch('builtins.input', return_value='n'):
+            result = creator.create_podcast_series()
+
+            assert result == []
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_empty_text(self, mock_init):
+        """Test PDF podcast series creation with empty text."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+
+        # Mock PDF reader with empty text
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = ""
+        creator.reader = mock_reader
+
+        result = creator.create_podcast_series()
+
+        assert result == []
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_short_text_warning(self, mock_init):
+        """Test PDF podcast series creation with short text warning."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+        creator.language = 'en'
+        creator.resolved_language = 'en'
+        creator.translate = None
+
+        # Mock PDF reader with short text (< 200 words)
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "Short PDF text content."
+        creator.reader = mock_reader
+
+        with patch.object(creator, 'generate_podcast_script',
+                         return_value="Generated script"), \
+             patch.object(creator, 'synthesize_episode',
+                         return_value=Path('/fake/episode_001.mp3')), \
+             patch('pathlib.Path.exists', return_value=True):
+
+            result = creator.create_podcast_series()
+
+            assert len(result) == 1
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_with_translation(self, mock_init):
+        """Test PDF podcast series creation with translation."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+        creator.language = 'es'  # Spanish
+        creator.resolved_language = 'es'
+        creator.translate = None
+
+        # Mock PDF reader
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "PDF content in Spanish"
+        creator.reader = mock_reader
+
+        with patch('audify.podcast_creator.translate_sentence',
+                   return_value="Translated prompt"), \
+             patch.object(creator, 'generate_podcast_script',
+                         return_value="Generated script"), \
+             patch.object(creator, 'synthesize_episode',
+                         return_value=Path('/fake/episode_001.mp3')), \
+             patch('pathlib.Path.exists', return_value=True):
+
+            result = creator.create_podcast_series()
+
+            assert len(result) == 1
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_wrong_reader_type(self, mock_init):
+        """Test PDF creator with wrong reader type."""
+        from audify.podcast_creator import PodcastPdfCreator
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+
+        # Mock wrong reader type (not PdfReader)
+        mock_reader = Mock()  # Not spec=PdfReader
+        creator.reader = mock_reader
+
+        with pytest.raises(ValueError, match="requires a PDF reader"):
+            creator.create_podcast_series()
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_episode_not_created(self, mock_init):
+        """Test PDF podcast series when episode file is not created."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+        creator.language = 'en'
+        creator.resolved_language = 'en'
+
+        # Mock PDF reader
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "PDF content"
+        creator.reader = mock_reader
+
+        with patch.object(creator, 'generate_podcast_script',
+                         return_value="Generated script"), \
+             patch.object(creator, 'synthesize_episode',
+                         return_value=Path('/fake/episode_001.mp3')), \
+             patch('pathlib.Path.exists', return_value=False):  # Episode not created
+
+            result = creator.create_podcast_series()
+
+            assert result == []
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_pdf_create_podcast_series_with_exception(self, mock_init):
+        """Test PDF podcast series creation with exception handling."""
+        from audify.podcast_creator import PodcastPdfCreator
+        from audify.readers.pdf import PdfReader
+
+        creator = PodcastPdfCreator.__new__(PodcastPdfCreator)
+        creator.confirm = False
+        creator.language = 'en'
+        creator.resolved_language = 'en'
+
+        # Mock PDF reader
+        mock_reader = Mock(spec=PdfReader)
+        mock_reader.cleaned_text = "PDF content"
+        creator.reader = mock_reader
+
+        with patch.object(creator, 'generate_podcast_script',
+                         side_effect=Exception("Script generation error")):
+
+            result = creator.create_podcast_series()
+
+            assert result == []
+
+
+class TestPodcastCreatorSynthesize:
+    """Test the main synthesize method."""
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_synthesize_success(self, mock_init):
+        """Test successful synthesize method."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.path = Path('/fake/test.epub')
+        creator.podcast_path = Path('/fake/podcast')
+
+        with patch.object(creator, 'create_podcast_series',
+                         return_value=[Path('/fake/ep1.mp3'), Path('/fake/ep2.mp3')]):
+
+            result = creator.synthesize()
+
+            assert result == creator.podcast_path
+
+    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
+    def test_synthesize_no_episodes_created(self, mock_init):
+        """Test synthesize method when no episodes are created."""
+        creator = PodcastCreator.__new__(PodcastCreator)
+        creator.path = Path('/fake/test.epub')
+        creator.podcast_path = Path('/fake/podcast')
+
+        with patch.object(creator, 'create_podcast_series', return_value=[]):
+
+            result = creator.synthesize()
+
+            assert result == creator.podcast_path
