@@ -20,6 +20,7 @@ from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     DEFAULT_MODEL,
     DEFAULT_SPEAKER,
+    KOKORO_API_BASE_URL,
     LANG_CODES,
     OUTPUT_BASE_DIR,
 )
@@ -968,3 +969,305 @@ class PdfSynthesizer(BaseSynthesizer):
                 f"Error during PDF synthesis for {self.path.name}: {e}", exc_info=True
             )
             raise
+
+
+class VoiceSamplesSynthesizer:
+    """Synthesizer for creating voice samples with all available combinations."""
+
+    def __init__(
+        self,
+        language: str = "en",
+        translate: Optional[str] = None,
+        sample_text: Optional[str] = None,
+        max_samples: Optional[int] = None,
+    ):
+        self.language = language
+        self.translate = translate
+        self.max_samples = max_samples
+        self.sample_text = sample_text or (
+            "Bean on bread is a simple yet delightful snack."
+            "Hello, this is a sample of the text-to-speech synthesis. "
+            "This sample demonstrates the quality and characteristics "
+            "of this voice model combination. Each chapter in this audiobook "
+            "represents a different voice and model pairing available."
+        )
+
+        # Set up paths
+        self.output_path = OUTPUT_BASE_DIR / "voice_samples"
+        self.output_path.mkdir(parents=True, exist_ok=True)
+
+        # Set up temporary directory
+        self.tmp_dir = Path(tempfile.mkdtemp())
+
+        # Set up M4B paths
+        self.temp_m4b_path = self.output_path / "voice_samples.tmp.m4b"
+        self.final_m4b_path = self.output_path / "voice_samples.m4b"
+        self.metadata_path = self.output_path / "voice_samples_metadata.txt"
+
+    def _get_available_models_and_voices(self) -> Tuple[List[str], List[str]]:
+        """Get available models and voices from Kokoro API."""
+        try:
+            # Get models
+            models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
+            models_response.raise_for_status()
+            models_data = models_response.json().get("data", [])
+            models = sorted([model.get("id") for model in models_data if "id" in model])
+
+            # Get voices - use the API config to get the correct endpoint
+            from audify.utils.api_config import KokoroAPIConfig
+            api_config = KokoroAPIConfig()
+            voices_response = requests.get(api_config.voices_url, timeout=10)
+            voices_response.raise_for_status()
+            voices_data = voices_response.json().get("voices", [])
+            voices = sorted(voices_data)
+
+            logger.info(f"Found {len(models)} models and {len(voices)} voices")
+            return models, voices
+
+        except requests.RequestException as e:
+            logger.error(f"Error fetching models and voices from Kokoro API: {e}")
+            return [], []
+
+    def _create_sample_for_combination(
+        self, model: str, voice: str, chapter_index: int
+    ) -> Optional[Path]:
+        """Create a sample audio file for a specific model-voice combination."""
+        try:
+            # Create a temporary synthesizer for this combination
+            temp_synthesizer = BaseSynthesizer(
+                path="sample.txt",
+                voice=voice,
+                translate=self.translate,
+                save_text=False,
+                language=self.language,
+                model_name=model,
+            )
+
+            # Create sample text with model and voice info
+            sample_text = (
+                f"{self.sample_text}"
+                f"This is a sample using model {model} with voice {voice}. "
+            )
+            if self.translate:
+                sample_text = translate_sentence(
+                    sentence=sample_text,
+                    src_lang=self.language,
+                    tgt_lang=self.translate,
+                )
+
+            # Generate audio
+            sentences = break_text_into_sentences(sample_text)
+            output_wav_path = (
+                self.tmp_dir / f"sample_{chapter_index:03d}_{model}_{voice}.wav"
+            )
+
+            temp_synthesizer._synthesize_kokoro(sentences, output_wav_path)
+
+            if output_wav_path.exists():
+                # Convert to MP3
+                mp3_path = temp_synthesizer._convert_to_mp3(output_wav_path)
+                logger.info(f"Created sample for {model} + {voice}: {mp3_path}")
+                return mp3_path
+            else:
+                logger.warning(f"Failed to create sample for {model} + {voice}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating sample for {model} + {voice}: {e}")
+            return None
+
+    def _create_metadata_file(
+        self, model_voice_combinations: List[Tuple[str, str]]
+    ) -> None:
+        """Create metadata file for M4B with chapter information."""
+        try:
+            with open(self.metadata_path, "w") as f:
+                f.write(";FFMETADATA1\n")
+                f.write("major_brand=M4A\n")
+                f.write("minor_version=512\n")
+                f.write("compatible_brands=M4A isis2\n")
+                f.write("encoder=Lavf61.7.100\n")
+                f.write("title=Voice Samples Collection\n")
+                f.write("artist=Audify TTS System\n")
+                f.write("album=Voice Model Samples\n")
+                f.write("genre=Speech Synthesis\n")
+                f.write(
+                    "comment=Collection of voice samples for all available "
+                    "model-voice combinations\n"
+                )
+
+            logger.info(f"Created metadata file: {self.metadata_path}")
+        except Exception as e:
+            logger.error(f"Error creating metadata file: {e}")
+            raise
+
+    def _create_m4b_from_samples(self, sample_files: List[Path]) -> None:
+        """Create M4B file from sample MP3 files."""
+        if not sample_files:
+            logger.error("No sample files to create M4B")
+            return
+
+        try:
+            # Combine all samples into a single M4B
+            logger.info(f"Combining {len(sample_files)} samples into M4B...")
+            combined_audio = AudioSegment.empty()
+            current_start_time_ms = 0
+
+            for i, mp3_file in enumerate(sample_files):
+                try:
+                    audio = AudioSegment.from_mp3(mp3_file)
+                    combined_audio += audio
+
+                    # Extract model and voice from filename
+                    filename_parts = mp3_file.stem.split("_")
+                    if len(filename_parts) >= 4:
+                        model = filename_parts[2]
+                        voice = "_".join(filename_parts[3:])
+                        chapter_title = f"Model: {model}, Voice: {voice}"
+                    else:
+                        chapter_title = f"Sample {i + 1}"
+
+                    # Add chapter metadata
+                    duration_s = len(audio) / 1000.0
+                    self._append_chapter_metadata(
+                        current_start_time_ms, duration_s, chapter_title
+                    )
+                    current_start_time_ms += int(len(audio))
+
+                except Exception as e:
+                    logger.error(f"Error processing sample file {mp3_file}: {e}")
+                    continue
+
+            if len(combined_audio) == 0:
+                logger.error("Combined audio is empty. Cannot create M4B.")
+                return
+
+            # Export temporary M4B
+            logger.info(
+                f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}"
+            )
+            combined_audio.export(
+                self.temp_m4b_path, format="mp4", codec="aac", bitrate="64k"
+            )
+
+            # Add metadata using FFmpeg
+            self._finalize_m4b()
+
+        except Exception as e:
+            logger.error(f"Error creating M4B from samples: {e}")
+            raise
+
+    def _append_chapter_metadata(
+        self, start_time_ms: int, duration_s: float, title: str
+    ) -> None:
+        """Append chapter metadata to the metadata file."""
+        try:
+            with open(self.metadata_path, "a") as f:
+                f.write("\n[CHAPTER]\n")
+                f.write("TIMEBASE=1/1000\n")
+                f.write(f"START={start_time_ms}\n")
+                f.write(f"END={start_time_ms + int(duration_s * 1000)}\n")
+                f.write(f"title={title}\n")
+        except Exception as e:
+            logger.error(f"Error appending chapter metadata: {e}")
+
+    def _finalize_m4b(self) -> None:
+        """Finalize M4B with metadata using FFmpeg."""
+        try:
+            logger.info("Adding metadata using FFmpeg...")
+            ffmpeg_command = [
+                "ffmpeg",
+                "-i", str(self.temp_m4b_path),
+                "-i", str(self.metadata_path),
+                "-map", "0:a",
+                "-map_metadata", "1",
+                "-c:a", "copy",
+                "-f", "mp4",
+                "-y", str(self.final_m4b_path),
+            ]
+
+            result = subprocess.run(
+                ffmpeg_command, check=True, capture_output=True, text=True
+            )
+            logger.info("FFmpeg process completed successfully.")
+            logger.debug(f"FFmpeg stdout: {result.stdout}")
+            logger.debug(f"FFmpeg stderr: {result.stderr}")
+
+            # Clean up temporary file
+            self.temp_m4b_path.unlink(missing_ok=True)
+            logger.info(f"Voice samples M4B created: {self.final_m4b_path}")
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg command failed: {e}")
+            logger.error(f"FFmpeg stdout: {e.stdout}")
+            logger.error(f"FFmpeg stderr: {e.stderr}")
+            raise
+        except FileNotFoundError:
+            logger.error("FFmpeg not found. Please ensure FFmpeg is installed.")
+            raise
+
+    def synthesize(self) -> Path:
+        """Create voice samples M4B with all available model-voice combinations."""
+        logger.info("Starting voice samples synthesis...")
+
+        # Get available models and voices
+        models, voices = self._get_available_models_and_voices()
+
+        if not models or not voices:
+            logger.error("No models or voices available. Cannot create samples.")
+            return self.final_m4b_path
+
+        # Create all combinations
+        model_voice_combinations = [
+            (model, voice) for model in models for voice in voices
+        ]
+
+        # Limit samples if max_samples is specified
+        if self.max_samples and len(model_voice_combinations) > self.max_samples:
+            model_voice_combinations = model_voice_combinations[:self.max_samples]
+            logger.info(f"Limited to first {self.max_samples} combinations for testing")
+
+        logger.info(
+            f"Creating {len(model_voice_combinations)} model-voice combinations"
+        )
+
+        # Create metadata file
+        self._create_metadata_file(model_voice_combinations)
+
+        # Generate samples for each combination
+        sample_files = []
+        for i, (model, voice) in enumerate(model_voice_combinations):
+            logger.info(
+                f"Processing combination {i + 1}/{len(model_voice_combinations)}: "
+                f"{model} + {voice}"
+            )
+            sample_file = self._create_sample_for_combination(model, voice, i + 1)
+            if sample_file:
+                sample_files.append(sample_file)
+
+        if not sample_files:
+            logger.error("No samples were created successfully.")
+            return self.final_m4b_path
+
+        # Create M4B from samples
+        self._create_m4b_from_samples(sample_files)
+
+        # Clean up temporary files
+        try:
+            for sample_file in sample_files:
+                sample_file.unlink(missing_ok=True)
+            if self.tmp_dir.exists():
+                shutil.rmtree(self.tmp_dir)
+        except Exception as e:
+            logger.warning(f"Error cleaning up temporary files: {e}")
+
+        logger.info(f"Voice samples synthesis complete: {self.final_m4b_path}")
+        return self.final_m4b_path
+
+    def __del__(self):
+        """Clean up temporary directory."""
+        try:
+            if hasattr(self, 'tmp_dir') and self.tmp_dir.exists():
+                shutil.rmtree(self.tmp_dir)
+        except Exception:
+            pass

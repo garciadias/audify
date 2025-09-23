@@ -5,7 +5,11 @@ from pathlib import Path
 import click
 import requests
 
-from audify.text_to_speech import EpubSynthesizer, PdfSynthesizer
+from audify.text_to_speech import (
+    EpubSynthesizer,
+    PdfSynthesizer,
+    VoiceSamplesSynthesizer,
+)
 from audify.utils.constants import (
     AVAILABLE_LANGUAGES,
     DEFAULT_LANGUAGE_LIST,
@@ -17,6 +21,29 @@ from audify.utils.text import get_file_extension
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
+
+
+def get_available_models_and_voices():
+    """Get available models and voices from Kokoro API."""
+    try:
+        # Get models
+        models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
+        models_response.raise_for_status()
+        models_data = models_response.json().get("data", [])
+        models = sorted([model.get("id") for model in models_data if "id" in model])
+
+        # Get voices
+        voices_response = requests.get(
+            f"{KOKORO_API_BASE_URL}/audio/voices", timeout=10
+        )
+        voices_response.raise_for_status()
+        voices_data = voices_response.json().get("voices", [])
+        voices = sorted(voices_data)
+
+        return models, voices
+    except requests.RequestException as e:
+        print(f"Error fetching models and voices from Kokoro API: {e}")
+        return [], []
 
 
 @click.command()
@@ -66,6 +93,12 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     help="List available TTS models.",
 )
 @click.option(
+    "--list-voices",
+    "-lv",
+    is_flag=True,
+    help="List available TTS voices.",
+)
+@click.option(
     "--save-text",
     "-st",
     is_flag=True,
@@ -77,6 +110,12 @@ MODULE_PATH = Path(__file__).resolve().parents[1]
     is_flag=True,
     help="Skip confirmation for Epub synthesis.",
 )
+@click.option(
+    "--create-voice-samples",
+    "-cvs",
+    is_flag=True,
+    help="Create a sample M4B audiobook with all available model-voice combinations.",
+)
 def main(
     file_path: str,
     language: str,
@@ -85,12 +124,23 @@ def main(
     voice: str,
     list_languages: bool,
     list_models: bool,
+    list_voices: bool,
     save_text: bool,
+    create_voice_samples: bool,
     engine: str = "kokoro",
     y: bool = False,
 ):
     terminal_width = os.get_terminal_size()[0]
-    if list_languages:
+    if create_voice_samples:
+        print("=" * terminal_width)
+        print("Creating Voice Samples M4B".center(terminal_width))
+        print("=" * terminal_width)
+        synthesizer = VoiceSamplesSynthesizer(
+            language=language,
+            translate=translate,
+        )
+        synthesizer.synthesize()
+    elif list_languages:
         print("=" * terminal_width)
         print("Available languages:".center(terminal_width))
         print("=" * terminal_width)
@@ -111,6 +161,29 @@ def main(
             print("\n".join(model_names))
         except requests.RequestException as e:
             print(f"Error fetching models from Kokoro API: {e}")
+    elif list_voices:
+        print("=" * terminal_width)
+        print("Available voices:".center(terminal_width))
+        print("=" * terminal_width)
+        try:
+            models, voices = get_available_models_and_voices()
+            if voices:
+                # Group voices by prefix for better organization
+                voice_groups: dict[str, list[str]] = {}
+                for voice in voices:
+                    prefix = voice.split('_')[0] if '_' in voice else 'other'
+                    if prefix not in voice_groups:
+                        voice_groups[prefix] = []
+                    voice_groups[prefix].append(voice)
+
+                for prefix in sorted(voice_groups.keys()):
+                    print(f"\n{prefix.upper()} voices:")
+                    for voice in sorted(voice_groups[prefix]):
+                        print(f"  {voice}")
+            else:
+                print("No voices found.")
+        except Exception as e:
+            print(f"Error fetching voices from Kokoro API: {e}")
     else:
         if get_file_extension(file_path) == ".epub":
             print("=" * terminal_width)
