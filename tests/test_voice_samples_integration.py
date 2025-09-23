@@ -114,8 +114,7 @@ class TestVoiceSamplesIntegration:
             patch("tempfile.mkdtemp", return_value="/tmp/test_voice_samples"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.exists", return_value=True),
-            patch.object(
-                VoiceSamplesSynthesizer, "_get_available_models_and_voices"
+            patch.object(VoiceSamplesSynthesizer, "_get_available_models_and_voices"
             ) as mock_get_models_voices,
         ):
             # Simulate API failure

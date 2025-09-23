@@ -1,7 +1,7 @@
 """Tests for VoiceSamplesSynthesizer class."""
 
 from pathlib import Path
-from unittest.mock import Mock, mock_open, patch
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 import requests
@@ -224,7 +224,7 @@ class TestVoiceSamplesSynthesizer:
         ]
 
         # Mock AudioSegment
-        from unittest.mock import MagicMock
+
         mock_audio_instance = MagicMock()
         mock_audio_instance.__len__ = MagicMock(return_value=5000)  # 5 seconds in ms
         mock_audio_segment.empty.return_value = MagicMock()
