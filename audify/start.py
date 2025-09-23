@@ -116,6 +116,13 @@ def get_available_models_and_voices():
     is_flag=True,
     help="Create a sample M4B audiobook with all available model-voice combinations.",
 )
+@click.option(
+    "--max-samples",
+    "-ms",
+    type=int,
+    default=5,
+    help="Maximum number of voice samples to create when using --create-voice-samples.",
+)
 def main(
     file_path: str,
     language: str,
@@ -127,7 +134,7 @@ def main(
     list_voices: bool,
     save_text: bool,
     create_voice_samples: bool,
-    engine: str = "kokoro",
+    max_samples: int | None = None,
     y: bool = False,
 ):
     terminal_width = os.get_terminal_size()[0]
@@ -138,6 +145,7 @@ def main(
         synthesizer = VoiceSamplesSynthesizer(
             language=language,
             translate=translate,
+            max_samples=max_samples,
         )
         synthesizer.synthesize()
     elif list_languages:
