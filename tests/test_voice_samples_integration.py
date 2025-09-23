@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -49,45 +49,20 @@ class TestVoiceSamplesIntegration:
         with (
             patch("requests.get", side_effect=mock_api_responses),
             patch("os.get_terminal_size", return_value=(80, 24)),
-            patch("tempfile.mkdtemp", return_value="/tmp/test_voice_samples"),
-            patch("pathlib.Path.mkdir"),
-            patch("pathlib.Path.exists", return_value=True),
-            patch("audify.text_to_speech.BaseSynthesizer") as mock_base_synth,
-            patch("audify.text_to_speech.break_text_into_sentences") as mock_break,
-            patch("audify.text_to_speech.AudioSegment") as mock_audio,
-            patch("subprocess.run") as mock_subprocess,
-            patch("shutil.rmtree"),
-            patch("pathlib.Path.unlink"),
+            patch("audify.start.VoiceSamplesSynthesizer") as mock_synthesizer_class,
         ):
-            # Setup mocks
-            mock_break.return_value = ["Test sentence."]
-
-            # Mock synthesizer
-            mock_synth_instance = Mock()
-            mock_base_synth.return_value = mock_synth_instance
-            mock_synth_instance._convert_to_mp3.return_value = Path("/tmp/test.mp3")
-
-            # Mock audio processing
-            mock_audio_instance = MagicMock()
-            mock_audio_instance.__len__.return_value = 5000  # 5 seconds
-            mock_audio.empty.return_value = mock_audio_instance
-            mock_audio.from_mp3.return_value = mock_audio_instance
-            mock_audio_instance.__iadd__.return_value = mock_audio_instance
-
-            # Mock FFmpeg
-            mock_ffmpeg_result = Mock()
-            mock_ffmpeg_result.stdout = "Success"
-            mock_ffmpeg_result.stderr = ""
-            mock_subprocess.return_value = mock_ffmpeg_result
+            # Setup synthesizer mock
+            mock_synthesizer = Mock()
+            mock_synthesizer_class.return_value = mock_synthesizer
 
             result = runner.invoke(start.main, ["--create-voice-samples"])
 
             assert result.exit_code == 0
             assert "Creating Voice Samples M4B" in result.output
 
-            # Verify that samples were created (2 models × 2 voices = 4 combinations)
-            # But limited by max_samples in current config
-            assert mock_base_synth.call_count > 0
+            # Verify synthesizer was called
+            mock_synthesizer_class.assert_called_once()
+            mock_synthesizer.synthesize.assert_called_once()
 
     def test_voice_samples_with_translation_integration(
         self, runner, mock_api_responses
@@ -96,33 +71,11 @@ class TestVoiceSamplesIntegration:
         with (
             patch("requests.get", side_effect=mock_api_responses),
             patch("os.get_terminal_size", return_value=(80, 24)),
-            patch("tempfile.mkdtemp", return_value="/tmp/test_voice_samples"),
-            patch("pathlib.Path.mkdir"),
-            patch("pathlib.Path.exists", return_value=True),
-            patch("audify.text_to_speech.translate_sentence") as mock_translate,
-            patch("audify.text_to_speech.BaseSynthesizer") as mock_base_synth,
-            patch("audify.text_to_speech.break_text_into_sentences") as mock_break,
-            patch("audify.text_to_speech.AudioSegment") as mock_audio,
-            patch("subprocess.run") as mock_subprocess,
-            patch("shutil.rmtree"),
-            patch("pathlib.Path.unlink"),
+            patch("audify.start.VoiceSamplesSynthesizer") as mock_synthesizer_class,
         ):
-            # Setup translation mock
-            mock_translate.return_value = "Texto traducido al español"
-
-            # Setup other mocks
-            mock_break.return_value = ["Translated sentence."]
-            mock_synth_instance = Mock()
-            mock_base_synth.return_value = mock_synth_instance
-            mock_synth_instance._convert_to_mp3.return_value = Path("/tmp/test.mp3")
-
-            mock_audio_instance = MagicMock()
-            mock_audio_instance.__len__.return_value = 5000
-            mock_audio.empty.return_value = mock_audio_instance
-            mock_audio.from_mp3.return_value = mock_audio_instance
-            mock_audio_instance.__iadd__.return_value = mock_audio_instance
-
-            mock_subprocess.return_value = Mock(stdout="", stderr="")
+            # Setup synthesizer mock
+            mock_synthesizer = Mock()
+            mock_synthesizer_class.return_value = mock_synthesizer
 
             result = runner.invoke(start.main, [
                 "--create-voice-samples",
@@ -132,8 +85,13 @@ class TestVoiceSamplesIntegration:
             assert result.exit_code == 0
             assert "Creating Voice Samples M4B" in result.output
 
-            # Verify translation was called
-            mock_translate.assert_called()
+            # Verify synthesizer was called with translation
+            mock_synthesizer_class.assert_called_once_with(
+                language="en",
+                translate="es",
+                max_samples=5
+            )
+            mock_synthesizer.synthesize.assert_called_once()
 
     def test_list_voices_integration(self, runner, mock_api_responses):
         """Test voice listing integration."""
@@ -156,8 +114,7 @@ class TestVoiceSamplesIntegration:
             patch("tempfile.mkdtemp", return_value="/tmp/test_voice_samples"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.exists", return_value=True),
-            patch.object(
-                VoiceSamplesSynthesizer, "_get_available_models_and_voices"
+            patch.object(VoiceSamplesSynthesizer, "_get_available_models_and_voices"
             ) as mock_get_models_voices,
         ):
             # Simulate API failure
