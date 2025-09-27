@@ -51,7 +51,30 @@ def suppress_stdout():
 
 
 class BaseSynthesizer:
-    """Base class for text-to-speech synthesis."""
+    """Base class for text-to-speech synthesis.
+
+    This class provides common functionality for synthesizing text into speech.
+    Subclasses should implement the `synthesize` method for specific input types.
+
+    Attributes:
+    -----------
+    path: str | Path
+        Path to the audio file
+    voice: str
+        Voice model to use for synthesis, default is "af_bella",
+        to see available voices, run: `audify --list-voices`
+    translate: Optional[str]
+        Target language for translation before synthesis.
+        If None, no translation is done.
+    save_text: bool
+        Whether to save the original text. Defaults to False.
+    language: str
+        Language code for synthesis. Defaults to "en".
+        To see available languages, run: `audify --list-languages`
+    model_name: str
+        Model name for synthesis. To see available models, run: `audify --list-models`
+
+    """
 
     def __init__(
         self,

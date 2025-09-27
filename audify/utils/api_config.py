@@ -11,8 +11,8 @@ from typing import Optional
 from langchain_ollama import OllamaLLM
 
 from audify.utils.constants import (
+    DEFAULT_SPEAKER,
     KOKORO_API_BASE_URL,
-    KOKORO_DEFAULT_VOICE,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OLLAMA_DEFAULT_TRANSLATION_MODEL,
@@ -41,7 +41,7 @@ class KokoroAPIConfig(APIConfig):
     def __init__(self, base_url: Optional[str] = None, voice: Optional[str] = None):
         base_url = base_url or f"{KOKORO_API_BASE_URL}/audio"
         super().__init__(base_url)
-        self.default_voice = voice or KOKORO_DEFAULT_VOICE
+        self.default_voice = voice or DEFAULT_SPEAKER
 
     @property
     def voices_url(self) -> str:

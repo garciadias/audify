@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-MODULE_PATH = Path(__file__).parents[1].resolve()
+MODULE_PATH = Path(__file__).parents[2].resolve()
 OUTPUT_BASE_DIR = MODULE_PATH / "data" / "output"
 
 # Kokoro API configuration
@@ -77,7 +77,6 @@ DEFAULT_LANGUAGE_LIST = [
     "ja",
     "hi",
 ]
-KOKORO_DEFAULT_VOICE = "af_bella"
-DEFAULT_SPEAKER = KOKORO_DEFAULT_VOICE
+DEFAULT_SPEAKER = "ef_dora"
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 DEFAULT_ENGINE = "kokoro"

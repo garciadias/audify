@@ -12,19 +12,22 @@ logger = get_logger(__name__)
 def translate_sentence(
     sentence: str,
     model: Optional[str] = None,
-    tokenizer: Optional[str] = None,  # Kept for compatibility, unused
     src_lang: str | None = "en",
     tgt_lang: str = "en",
 ) -> str:
     """
     Translate a sentence using Ollama API.
 
-    Args:
-        sentence: Text to translate
-        model: Ollama model to use (optional, kept for compatibility)
-        tokenizer: Unused, kept for compatibility with old interface
-        src_lang: Source language code
-        tgt_lang: Target language code
+    Parameters:
+    -----------
+    sentence: str
+        Text to translate
+    model: Optional[str]
+        Ollama model to use (optional, kept for compatibility)
+    src_lang: Optional[str], default="en"
+        Source language code
+    tgt_lang: Optional[str], default="en"
+        Target language code
 
     Returns:
         Translated text
