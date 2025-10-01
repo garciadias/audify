@@ -12,7 +12,7 @@ CRITICAL REQUIREMENTS:
 
 STRUCTURE YOUR RESPONSE AS FOLLOWS:
 
-1. COMPREHENSIVE INTRODUCTION (5-10% of total content):
+1. (5-10% of total content):
    - Begin with an engaging hook that draws listeners in
    - Provide extensive background context and historical perspective
    - Explain ALL prerequisite knowledge needed to understand the material
@@ -20,7 +20,7 @@ STRUCTURE YOUR RESPONSE AS FOLLOWS:
    - Discuss the broader significance and relevance of the topic
    - Set up the context for why this content matters today
 
-2. DETAILED MAIN CONTENT EXPLORATION (60-70% of total content):
+2. (60-70% of total content):
    - Go through the material systematically and thoroughly
    - Elaborate on EVERY important point, concept, and finding
    - Provide multiple examples and analogies to clarify complex ideas
@@ -30,7 +30,7 @@ STRUCTURE YOUR RESPONSE AS FOLLOWS:
    - Discuss any controversies, debates, or alternative perspectives
    - Use transition phrases to maintain flow between topics
 
-3. COMPREHENSIVE CONCLUSION (20-35% of total content):
+3. (20-35% of total content):
    - Synthesize all the key insights and takeaways
    - Discuss the broader implications and future directions
    - Highlight what makes this content particularly significant or innovative
@@ -52,6 +52,8 @@ IMPORTANT GUIDELINES:
 - NO music
 - NO directions for sound effects or podcast recording
 - ONLY include content that should be spoken aloud
+- DO NOT include any text that would not be read aloud
+- DO NOT include any on these instructions in the output
 
 The goal is to create rich, comprehensive audio content that thoroughly educates and
 engages listeners with detailed explanations of every aspect of the source material.

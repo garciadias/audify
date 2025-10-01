@@ -1594,38 +1594,6 @@ class TestEpubSynthesizerAdvancedCoverage:
             mock_create_single.assert_called_once()
 
 
-class TestTextSynthesizerClass:
-    """Tests for TextSynthesizer class if it exists."""
-
-    def test_text_synthesizer_import_and_functionality(self):
-        """Test TextSynthesizer class functionality if available."""
-        try:
-            from audify.text_to_speech import TextSynthesizer
-
-            with (
-                patch(
-                    "audify.text_to_speech.tempfile.TemporaryDirectory"
-                ) as mock_temp_dir,
-                patch("pathlib.Path.exists", return_value=True),
-                patch("pathlib.Path.mkdir"),
-            ):
-                mock_temp_dir.return_value.name = "/tmp/test_dir"
-
-                synthesizer = TextSynthesizer(
-                    text_path="test.txt",
-                    language="en",
-                    speaker="test_voice"
-                )
-
-                assert synthesizer.path.name == "test.txt"
-                assert synthesizer.language == "en"
-                assert synthesizer.speaker == "test_voice"
-
-        except ImportError:
-            # Class doesn't exist, skip test
-            pytest.skip("TextSynthesizer class not available")
-
-
 class TestComprehensiveCoverage:
     """Comprehensive tests to achieve 100% coverage of all remaining lines."""
 
@@ -1984,40 +1952,6 @@ class TestComprehensiveCoverage:
             result = synthesizer.synthesize()
 
             assert result == Path("/tmp/output.mp3")
-
-    def test_text_synthesizer_comprehensive_coverage(self):
-        """Test TextSynthesizer if it exists in the codebase."""
-        try:
-            from audify.text_to_speech import TextSynthesizer
-
-            with (
-                patch(
-                    "audify.text_to_speech.tempfile.TemporaryDirectory"
-                ) as mock_temp_dir,
-                patch("pathlib.Path.exists", return_value=True),
-                patch("pathlib.Path.mkdir"),
-                patch("builtins.open", mock_open()),
-                patch("audify.text_to_speech.break_text_into_sentences",
-                      return_value=["Test sentence."]),
-                patch.object(TextSynthesizer, "_synthesize_sentences"),
-                patch.object(TextSynthesizer, "_convert_to_mp3",
-                            return_value=Path("/tmp/output.mp3")),
-            ):
-                mock_temp_dir.return_value.name = "/tmp/test_dir"
-
-                synthesizer = TextSynthesizer(
-                    text_path="test.txt",
-                    language="en",
-                    speaker="test_voice"
-                )
-
-                # Test synthesize method
-                result = synthesizer.synthesize()
-                assert result == Path("/tmp/output.mp3")
-
-        except (ImportError, AttributeError):
-            # Class doesn't exist or method not implemented, skip
-            pytest.skip("TextSynthesizer not fully implemented")
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_base_synthesizer_complete_error_scenarios(self, mock_temp_dir):
