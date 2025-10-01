@@ -259,20 +259,20 @@ class EpubSynthesizer(BaseSynthesizer):
     ):
         self.reader = EpubReader(path)
         detected_language = self.reader.get_language()
-        resolved_language = language or detected_language
+        language = language or detected_language
         self.output_base_dir = Path(OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
-        if not resolved_language:
+        if not language:
             raise ValueError(
                 "Language must be provided or detectable from the EPUB metadata."
             )
 
         self.title = self.reader.title
         if translate:
-            logger.info(f"Translating title from {resolved_language} to {translate}")
+            logger.info(f"Translating title from {language} to {translate}")
             self.title = translate_sentence(
-                sentence=self.title, src_lang=resolved_language, tgt_lang=translate
+                sentence=self.title, src_lang=language, tgt_lang=translate
             )
 
         self.file_name = get_file_name_title(self.title)
@@ -282,7 +282,7 @@ class EpubSynthesizer(BaseSynthesizer):
 
         super().__init__(
             path=path,
-            language=resolved_language,
+            language=language,
             voice=speaker,
             model_name=model_name,
             translate=translate,
