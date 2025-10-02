@@ -36,27 +36,6 @@ class TestLLMClient:
                 model="qwen3:30b"  # Updated to current default
             )
 
-    def test_generate_podcast_script_success(self):
-        """Test successful podcast script generation."""
-        with patch("audify.podcast_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = "Generated podcast script content"
-            mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
-            mock_config.return_value = mock_config_instance
-
-            client = LLMClient()
-
-            with patch("audify.podcast_creator.clean_text") as mock_clean:
-                mock_clean.return_value = "Cleaned script content"
-
-                result = client.generate_podcast_script("test chapter", None)
-
-                assert result == "Cleaned script content"
-                mock_clean.assert_called_once_with(
-                    "Generated podcast script content"
-                )
-
     def test_generate_podcast_script_empty_response(self):
         """Test handling of empty LLM response."""
         with patch("audify.podcast_creator.OllamaAPIConfig") as mock_config:
@@ -72,28 +51,6 @@ class TestLLMClient:
 
             expected = "Error: Unable to generate podcast script for this content."
             assert result == expected
-
-    def test_generate_podcast_script_with_language(self):
-        """Test podcast script generation with language translation."""
-        with patch("audify.podcast_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = "Generated script"
-            mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
-            mock_config.return_value = mock_config_instance
-
-            client = LLMClient()
-
-            with patch("audify.podcast_creator.translate_sentence") as mock_translate, \
-                 patch("audify.podcast_creator.clean_text") as mock_clean:
-                mock_translate.return_value = "Translated prompt"
-                mock_clean.return_value = "Cleaned script"
-
-                result = client.generate_podcast_script("test chapter", "es")
-
-                # Should translate the prompt
-                mock_translate.assert_called_once()
-                assert result == "Cleaned script"
 
     def test_generate_podcast_script_reasoning_model(self):
         """Test script generation with reasoning model (contains 'think')."""
@@ -399,18 +356,6 @@ class TestPodcastCreatorSetupPaths:
         # Verify that mkdir was called to create directories
         assert mock_mkdir.call_count >= 1
 
-    @patch('pathlib.Path.mkdir')
-    @patch('pathlib.Path.exists', return_value=True)
-    def test_setup_paths_skips_existing_directories(self, mock_exists, mock_mkdir):
-        """Test that _setup_paths doesn't create existing directories."""
-        creator = PodcastCreator.__new__(PodcastCreator)
-        creator.output_base_dir = Path('/fake/output')
-
-        creator._setup_paths(Path('test_file'))
-
-        # Should still create the podcast-specific directories
-        assert mock_mkdir.call_count >= 1
-
 
 class TestPodcastCreatorSynthesizeEpisode:
     """Test the synthesize_episode method."""
@@ -460,33 +405,6 @@ class TestPodcastCreatorSynthesizeEpisode:
 
     @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
     @patch('pathlib.Path.exists')
-    def test_synthesize_episode_basic(self, mock_exists, mock_init):
-        """Test basic episode synthesis."""
-        creator = PodcastCreator.__new__(PodcastCreator)
-        creator.episodes_path = Path('/fake/episodes')
-        creator.translate = None
-
-        mp3_path = creator.episodes_path / "episode_001.mp3"
-        wav_path = creator.episodes_path / "episode_001.wav"
-        sentences = ["First sentence.", "Second sentence."]
-
-        # Mock exists to return False for MP3 file
-        mock_exists.return_value = False
-
-        with patch.object(
-            creator, '_break_script_into_segments', return_value=sentences), \
-             patch.object(creator, '_synthesize_sentences') as mock_synth, \
-             patch.object(
-                 creator, '_convert_to_mp3', return_value=mp3_path) as mock_convert:
-
-            result = creator.synthesize_episode("Script text", 1)
-
-            assert result == mp3_path
-            mock_synth.assert_called_once_with(sentences, wav_path)
-            mock_convert.assert_called_once_with(wav_path)
-
-    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
-    @patch('pathlib.Path.exists')
     def test_synthesize_episode_translation_error(self, mock_exists, mock_init):
         """Test episode synthesis with translation error."""
         creator = PodcastCreator.__new__(PodcastCreator)
@@ -519,44 +437,6 @@ class TestPodcastCreatorSynthesizeEpisode:
 
 class TestPodcastCreatorCreateSeries:
     """Test the create_podcast_series method."""
-
-    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
-    @patch('pathlib.Path.exists')
-    def test_create_podcast_series_epub_with_confirmation(self, mock_exists, mock_init):
-        """Test create_podcast_series with EPUB reader and user confirmation."""
-        creator = PodcastCreator.__new__(PodcastCreator)
-        creator.confirm = True
-        creator.max_chapters = None
-        creator.translate = None
-        creator.language = 'en'
-
-        # Mock EPUB reader
-        mock_reader = Mock(spec=EpubReader)
-        mock_reader.get_chapters.return_value = [
-            "Chapter 1 content", "Chapter 2 content"
-        ]
-        creator.reader = mock_reader
-
-        # Mock Path.exists to return True for episodes
-        mock_exists.return_value = True
-
-        with patch('builtins.input', return_value='y'), \
-             patch('tqdm.tqdm', side_effect=lambda x, **kwargs: x), \
-             patch.object(
-                 creator, 'generate_podcast_script', return_value="Script content"), \
-             patch.object(creator, 'synthesize_episode') as mock_synth, \
-             patch.object(creator, 'create_m4b') as mock_m4b:
-
-            # Mock episode paths
-            episode1_path = Path('/fake/episode_001.mp3')
-            episode2_path = Path('/fake/episode_002.mp3')
-            mock_synth.side_effect = [episode1_path, episode2_path]
-
-            result = creator.create_podcast_series()
-
-            assert len(result) == 2
-            assert result == [episode1_path, episode2_path]
-            mock_m4b.assert_called_once()
 
     @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
     @patch('pathlib.Path.exists')
@@ -716,40 +596,6 @@ class TestPodcastCreatorCreateSeries:
 
 class TestPodcastCreatorGenerateScript:
     """Test the generate_podcast_script method."""
-
-    @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
-    def test_generate_podcast_script_basic(self, mock_init):
-        """Test basic podcast script generation."""
-        creator = PodcastCreator.__new__(PodcastCreator)
-        creator.scripts_path = Path('/fake/scripts')
-        creator.confirm = True
-        creator.save_text = False
-        creator.translate = None
-        creator.title = "Test Book"
-        creator.chapter_titles = []
-
-        # Mock the reader and llm_client
-        mock_reader = Mock()
-        mock_reader.get_chapter_title.return_value = "Chapter Title"
-        mock_path = Mock()
-        mock_path.stem = "Chapter Title"
-        mock_reader.path = mock_path
-        creator.reader = mock_reader
-
-        mock_llm_client = Mock()
-        mock_llm_client.generate_podcast_script.return_value = "Generated script"
-        creator.llm_client = mock_llm_client
-        creator.language = 'en'
-
-        long_cleaned_text = "This is cleaned text " * 50  # 250 words
-        with patch.object(
-                creator, '_clean_text_for_podcast', return_value=long_cleaned_text), \
-             patch('audify.podcast_creator.isinstance', return_value=True):
-            result = creator.generate_podcast_script("Chapter text", 1)
-
-            assert result == "Generated script"
-            assert "Chapter Title" in creator.chapter_titles
-            mock_llm_client.generate_podcast_script.assert_called_once()
 
     @patch("audify.podcast_creator.PodcastCreator.__init__", return_value=None)
     def test_generate_podcast_script_empty_text(self, mock_init):

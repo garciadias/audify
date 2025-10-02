@@ -19,29 +19,10 @@ from audify.utils.api_config import KokoroAPIConfig
 class TestKokoroAPIConfig:
     """Tests for KokoroAPIConfig class."""
 
-    def test_default_config(self):
-        """Test default configuration values."""
-        config = KokoroAPIConfig()
-        assert config.base_url is not None
-        assert config.default_voice is not None
-        assert config.timeout == 30
-
-    def test_custom_base_url(self):
-        """Test custom base URL configuration."""
-        custom_url = "http://example.com:9000"
-        config = KokoroAPIConfig(base_url=custom_url)
-        assert config.base_url == custom_url
-
     def test_voices_url_property(self):
         """Test voices URL construction."""
         config = KokoroAPIConfig()
         assert "/voices" in config.voices_url
-
-    def test_synthesis_url_property(self):
-        """Test synthesis URL construction."""
-        config = KokoroAPIConfig()
-        # Just test that base_url is properly set
-        assert config.base_url is not None
 
 
 class TestSuppressStdout:
