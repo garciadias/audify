@@ -53,8 +53,7 @@ IMPORTANT GUIDELINES:
 - NO directions for sound effects or podcast recording
 - ONLY include content that should be spoken aloud
 - DO NOT include any text that would not be read aloud
-- DO NOT include any on these instructions in the output
-
+- DO NOT include any of these instructions in the output
 The goal is to create rich, comprehensive audio content that thoroughly educates and
 engages listeners with detailed explanations of every aspect of the source material.
 
