@@ -459,7 +459,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 current_start_time_ms = 0
                 for mp3_file in chunk_files:
                     try:
-                        # Extract chapter number from filename
+                        # Extract chapter number from file_name
                         chapter_num = int(mp3_file.stem.split("_")[1])
                         duration = AudioProcessor.get_duration(str(mp3_file))
 
@@ -1141,11 +1141,11 @@ class VoiceSamplesSynthesizer:
                     audio = AudioSegment.from_mp3(mp3_file)
                     combined_audio += audio
 
-                    # Extract model and voice from filename
-                    filename_parts = mp3_file.stem.split("_")
-                    if len(filename_parts) >= 4:
-                        model = filename_parts[2]
-                        voice = "_".join(filename_parts[3:])
+                    # Extract model and voice from file_name
+                    file_name_parts = mp3_file.stem.split("_")
+                    if len(file_name_parts) >= 4:
+                        model = file_name_parts[2]
+                        voice = "_".join(file_name_parts[3:])
                         chapter_title = f"Model: {model}, Voice: {voice}"
                     else:
                         chapter_title = f"Sample {i + 1}"

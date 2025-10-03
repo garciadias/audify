@@ -308,7 +308,7 @@ class TestPodcastCreatorInitialization:
 
             # Verify initialization
             assert creator.language == 'en'  # Default for PDF
-            assert creator.title == "test"  # filename without extension
+            assert creator.title == "test"  # file_name without extension
 
     @patch('audify.readers.ebook.EpubReader')
     @patch('pathlib.Path.exists', return_value=True)
@@ -366,6 +366,7 @@ class TestPodcastCreatorSynthesizeEpisode:
         """Test synthesize_episode when MP3 already exists."""
         creator = PodcastCreator.__new__(PodcastCreator)
         creator.episodes_path = Path('/fake/episodes')
+        creator.file_name = 'episode'
 
         # Mock exists to return True for MP3 file
         mock_exists.return_value = True
@@ -380,6 +381,7 @@ class TestPodcastCreatorSynthesizeEpisode:
         """Test synthesize_episode with empty script."""
         creator = PodcastCreator.__new__(PodcastCreator)
         creator.episodes_path = Path('/fake/episodes')
+        creator.file_name = 'episode'
 
         # Mock exists to return False for MP3 file
         mock_exists.return_value = False
@@ -394,6 +396,7 @@ class TestPodcastCreatorSynthesizeEpisode:
         """Test synthesize_episode when no sentences are extracted."""
         creator = PodcastCreator.__new__(PodcastCreator)
         creator.episodes_path = Path('/fake/episodes')
+        creator.file_name = 'episode'
 
         # Mock exists to return False for MP3 file
         mock_exists.return_value = False
@@ -411,6 +414,7 @@ class TestPodcastCreatorSynthesizeEpisode:
         creator.episodes_path = Path('/fake/episodes')
         creator.translate = 'es'
         creator.language = 'en'
+        creator.file_name = 'episode'
 
         mp3_path = creator.episodes_path / "episode_001.mp3"
         wav_path = creator.episodes_path / "episode_001.wav"

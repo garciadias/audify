@@ -28,11 +28,11 @@ class PdfReader(Reader):
                 text += page.extract_text()
         return text
 
-    def save_cleaned_text(self, filename: str | Path):
+    def save_cleaned_text(self, file_name: str | Path):
         """Save the cleaned text to a file.
 
         Args:
-            filename: Name of the file to save.
+            file_name: Name of the file to save.
         """
-        with open(filename, "w", encoding="utf-8") as f:
+        with open(file_name, "w", encoding="utf-8") as f:
             f.write(self.cleaned_text)

@@ -141,67 +141,67 @@ class TestPathManager:
         assert audiobook_path.exists()
         assert audiobook_path == base_dir / title
 
-    def test_clean_filename_basic_cleaning(self):
-        """Test basic filename cleaning operations."""
-        filename = "Test Book Title"
+    def test_clean_file_name_basic_cleaning(self):
+        """Test basic file_name cleaning operations."""
+        file_name = "Test Book Title"
 
-        result = PathManager.clean_filename(filename)
-
-        assert result == "test_book_title"
-
-    def test_clean_filename_multiple_spaces(self):
-        """Test cleaning filename with multiple spaces."""
-        filename = "Test   Book    Title"
-
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
 
         assert result == "test_book_title"
 
-    def test_clean_filename_special_characters(self):
-        """Test cleaning filename with special characters."""
-        filename = "Test-Book@Title#2023!"
+    def test_clean_file_name_multiple_spaces(self):
+        """Test cleaning file_name with multiple spaces."""
+        file_name = "Test   Book    Title"
 
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
+
+        assert result == "test_book_title"
+
+    def test_clean_file_name_special_characters(self):
+        """Test cleaning file_name with special characters."""
+        file_name = "Test-Book@Title#2023!"
+
+        result = PathManager.clean_file_name(file_name)
 
         assert result == "testbooktitle2023"
 
-    def test_clean_filename_accented_characters(self):
-        """Test cleaning filename with accented characters."""
-        filename = "Café Español Naïve"
+    def test_clean_file_name_accented_characters(self):
+        """Test cleaning file_name with accented characters."""
+        file_name = "Café Español Naïve"
 
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
 
         assert result == "cafe_espanol_naive"
 
-    def test_clean_filename_leading_trailing_underscores(self):
-        """Test cleaning filename with leading/trailing underscores."""
-        filename = "__Test Book__"
+    def test_clean_file_name_leading_trailing_underscores(self):
+        """Test cleaning file_name with leading/trailing underscores."""
+        file_name = "__Test Book__"
 
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
 
         assert result == "test_book"
 
-    def test_clean_filename_only_special_characters(self):
-        """Test cleaning filename with only special characters."""
-        filename = "!@#$%^&*()"
+    def test_clean_file_name_only_special_characters(self):
+        """Test cleaning file_name with only special characters."""
+        file_name = "!@#$%^&*()"
 
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
 
         assert result == ""
 
-    def test_clean_filename_numbers_and_letters(self):
-        """Test cleaning filename with numbers and letters."""
-        filename = "Book 123 Chapter 456"
+    def test_clean_file_name_numbers_and_letters(self):
+        """Test cleaning file_name with numbers and letters."""
+        file_name = "Book 123 Chapter 456"
 
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
 
         assert result == "book_123_chapter_456"
 
-    def test_clean_filename_all_accented_types(self):
-        """Test cleaning filename with all types of accented characters."""
-        filename = "àáâãäåèéêëìíîïòóôõöùúûüñç"
+    def test_clean_file_name_all_accented_types(self):
+        """Test cleaning file_name with all types of accented characters."""
+        file_name = "àáâãäåèéêëìíîïòóôõöùúûüñç"
 
-        result = PathManager.clean_filename(filename)
+        result = PathManager.clean_file_name(file_name)
 
         assert result == "aaaaaaeeeeiiiiooooouuuunc"
 
@@ -244,44 +244,44 @@ class TestPathManager:
             assert result is False
 
 
-class TestPathManagerGetAvailableFilename:
-    """Test cases for PathManager.get_available_filename method."""
+class TestPathManagerGetAvailablefile_name:
+    """Test cases for PathManager.get_available_file_name method."""
 
-    def test_get_available_filename_no_existing_file(self, tmp_path):
-        """Test get_available_filename when no file exists."""
+    def test_get_available_file_name_no_existing_file(self, tmp_path):
+        """Test get_available_file_name when no file exists."""
         directory = tmp_path
         base_name = "test_file"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file.txt"
         assert result == expected
 
-    def test_get_available_filename_extension_without_dot(self, tmp_path):
-        """Test get_available_filename with extension without leading dot."""
+    def test_get_available_file_name_extension_without_dot(self, tmp_path):
+        """Test get_available_file_name with extension without leading dot."""
         directory = tmp_path
         base_name = "test_file"
         extension = "txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file.txt"
         assert result == expected
 
-    def test_get_available_filename_extension_with_dot(self, tmp_path):
-        """Test get_available_filename with extension with leading dot."""
+    def test_get_available_file_name_extension_with_dot(self, tmp_path):
+        """Test get_available_file_name with extension with leading dot."""
         directory = tmp_path
         base_name = "test_file"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file.txt"
         assert result == expected
 
-    def test_get_available_filename_file_exists_increment_counter(self, tmp_path):
-        """Test get_available_filename when original file exists."""
+    def test_get_available_file_name_file_exists_increment_counter(self, tmp_path):
+        """Test get_available_file_name when original file exists."""
         directory = tmp_path
         base_name = "test_file"
         extension = ".txt"
@@ -290,13 +290,13 @@ class TestPathManagerGetAvailableFilename:
         original_file = directory / "test_file.txt"
         original_file.touch()
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file_1.txt"
         assert result == expected
 
-    def test_get_available_filename_multiple_files_exist(self, tmp_path):
-        """Test get_available_filename when multiple numbered files exist."""
+    def test_get_available_file_name_multiple_files_exist(self, tmp_path):
+        """Test get_available_file_name when multiple numbered files exist."""
         directory = tmp_path
         base_name = "test_file"
         extension = ".txt"
@@ -306,58 +306,58 @@ class TestPathManagerGetAvailableFilename:
         (directory / "test_file_1.txt").touch()
         (directory / "test_file_2.txt").touch()
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file_3.txt"
         assert result == expected
 
-    def test_get_available_filename_empty_base_name(self, tmp_path):
-        """Test get_available_filename with empty base name."""
+    def test_get_available_file_name_empty_base_name(self, tmp_path):
+        """Test get_available_file_name with empty base name."""
         directory = tmp_path
         base_name = ""
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / ".txt"
         assert result == expected
 
-    def test_get_available_filename_empty_extension(self, tmp_path):
-        """Test get_available_filename with empty extension."""
+    def test_get_available_file_name_empty_extension(self, tmp_path):
+        """Test get_available_file_name with empty extension."""
         directory = tmp_path
         base_name = "test_file"
         extension = ""
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file"
         assert result == expected
 
-    def test_get_available_filename_special_characters_in_base_name(self, tmp_path):
-        """Test get_available_filename with special characters in base name."""
+    def test_get_available_file_name_special_characters_in_base_name(self, tmp_path):
+        """Test get_available_file_name with special characters in base name."""
         directory = tmp_path
         base_name = "test-file with spaces"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test-file with spaces.txt"
         assert result == expected
 
-    def test_get_available_filename_complex_extension(self, tmp_path):
-        """Test get_available_filename with complex extension."""
+    def test_get_available_file_name_complex_extension(self, tmp_path):
+        """Test get_available_file_name with complex extension."""
         directory = tmp_path
         base_name = "archive"
         extension = ".tar.gz"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "archive.tar.gz"
         assert result == expected
 
     @patch("pathlib.Path.exists")
-    def test_get_available_filename_safety_limit_reached(self, mock_exists, tmp_path):
-        """Test get_available_filename raises ValueError when safety limit is reached.
+    def test_get_available_file_name_safety_limit_reached(self, mock_exists, tmp_path):
+        """Test get_available_file_name raises ValueError when safety limit is reached.
         """
         directory = tmp_path
         base_name = "test_file"
@@ -366,11 +366,11 @@ class TestPathManagerGetAvailableFilename:
         # Mock exists to always return True (file always exists)
         mock_exists.return_value = True
 
-        with pytest.raises(ValueError, match="Could not find available filename"):
-            PathManager.get_available_filename(directory, base_name, extension)
+        with pytest.raises(ValueError, match="Could not find available file_name"):
+            PathManager.get_available_file_name(directory, base_name, extension)
 
-    def test_get_available_filename_counter_at_limit_minus_one(self, tmp_path):
-        """Test get_available_filename works at counter 1000."""
+    def test_get_available_file_name_counter_at_limit_minus_one(self, tmp_path):
+        """Test get_available_file_name works at counter 1000."""
         directory = tmp_path
         base_name = "test_file"
         extension = ".txt"
@@ -381,35 +381,35 @@ class TestPathManagerGetAvailableFilename:
         for i in range(1, 1000):
             (directory / f"test_file_{i}.txt").touch()
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file_1000.txt"
         assert result == expected
 
-    def test_get_available_filename_directory_path_object(self, tmp_path):
-        """Test get_available_filename with Path object as directory."""
+    def test_get_available_file_name_directory_path_object(self, tmp_path):
+        """Test get_available_file_name with Path object as directory."""
         directory = Path(tmp_path)
         base_name = "test_file"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_file.txt"
         assert result == expected
         assert isinstance(result, Path)
 
-    def test_get_available_filename_preserves_path_type(self, tmp_path):
-        """Test that get_available_filename returns Path object."""
+    def test_get_available_file_name_preserves_path_type(self, tmp_path):
+        """Test that get_available_file_name returns Path object."""
         directory = tmp_path
         base_name = "test_file"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         assert isinstance(result, Path)
 
-    def test_get_available_filename_counter_formatting(self, tmp_path):
-        """Test that counter is properly formatted in filename."""
+    def test_get_available_file_name_counter_formatting(self, tmp_path):
+        """Test that counter is properly formatted in file_name."""
         directory = tmp_path
         base_name = "test"
         extension = ".txt"
@@ -426,29 +426,29 @@ class TestPathManagerGetAvailableFilename:
         (directory / "test_8.txt").touch()
         (directory / "test_9.txt").touch()
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "test_10.txt"
         assert result == expected
 
-    def test_get_available_filename_with_numeric_base_name(self, tmp_path):
-        """Test get_available_filename with numeric base name."""
+    def test_get_available_file_name_with_numeric_base_name(self, tmp_path):
+        """Test get_available_file_name with numeric base name."""
         directory = tmp_path
         base_name = "123"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "123.txt"
         assert result == expected
 
-    def test_get_available_filename_unicode_characters(self, tmp_path):
-        """Test get_available_filename with unicode characters in base name."""
+    def test_get_available_file_name_unicode_characters(self, tmp_path):
+        """Test get_available_file_name with unicode characters in base name."""
         directory = tmp_path
         base_name = "tëst_fïlé"
         extension = ".txt"
 
-        result = PathManager.get_available_filename(directory, base_name, extension)
+        result = PathManager.get_available_file_name(directory, base_name, extension)
 
         expected = directory / "tëst_fïlé.txt"
         assert result == expected

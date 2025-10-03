@@ -23,7 +23,7 @@ from audify.utils.constants import (
 )
 from audify.utils.logging_utils import setup_logging
 from audify.utils.prompts import PODCAST_PROMPT
-from audify.utils.text import break_text_into_sentences, clean_text
+from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -133,9 +133,9 @@ class PodcastCreator(BaseSynthesizer):
 
         # Create podcast-specific title
         self.podcast_title = f"Podcast - {self.title}"
-        # Use filename as the podcast filename
+        # Use file_name as the podcast file_name
         # Clean file name to remove invalid characters
-        self.file_name = Path(re.sub(r'[<>:"/\\|?* ]', '_', file_path.stem).lower())
+        self.file_name = Path(get_file_name_title(file_path.stem))
         self._setup_paths(self.file_name)
 
         # Initialize LLM client
@@ -318,7 +318,9 @@ class PodcastCreator(BaseSynthesizer):
     def synthesize_episode(self, podcast_script: str, episode_number: int) -> Path:
         """Synthesizes a single podcast episode from script."""
         logger.info(f"Synthesizing Podcast Episode {episode_number}...")
-        episode_wav_path = self.episodes_path / f"episode_{episode_number:03d}.wav"
+        episode_wav_path = Path(
+            f"{self.episodes_path}/{self.file_name}_{episode_number:03d}.wav"
+        )
         episode_mp3_path = episode_wav_path.with_suffix(".mp3")
 
         if episode_mp3_path.exists():
