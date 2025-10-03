@@ -287,9 +287,9 @@ class PodcastCreator(BaseSynthesizer):
                     cleaned_text = translate_sentence(
                         cleaned_text, src_lang=self.language, tgt_lang=self.translate
                     )
-                prompt = translated_prompt + "\n\n" + cleaned_text
+                prompt = f"{translated_prompt}\n\n{cleaned_text}"
             else:
-                prompt = PODCAST_PROMPT + "\n\n" + cleaned_text
+                prompt = f"{PODCAST_PROMPT}\n\n{cleaned_text}"
             logger.debug(f"LLM Prompt for Episode {chapter_number}:\n{prompt[:500]}...")
             logger.debug(f"Using language: {self.language}")
             logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
