@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import tqdm
+from bs4 import BeautifulSoup
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
@@ -22,7 +23,7 @@ from audify.utils.constants import (
 )
 from audify.utils.logging_utils import setup_logging
 from audify.utils.prompts import PODCAST_PROMPT
-from audify.utils.text import break_text_into_sentences, clean_text
+from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -42,7 +43,7 @@ class LLMClient:
         self, chapter_text: str, language: Optional[str]
     ) -> str:
         """Generate podcast script from chapter text using LangChain."""
-        if language:
+        if language != "en":
             translated_prompt = translate_sentence(
                 PODCAST_PROMPT, src_lang="en", tgt_lang=language
             )
@@ -114,13 +115,13 @@ class PodcastCreator(BaseSynthesizer):
             detected_language = self.reader.get_language()
             self.title = self.reader.title
         elif isinstance(self.reader, PdfReader):
-            detected_language = "en"  # PDF reader might not detect language
+            detected_language = "en"  # PDF reader will not detect language on metadata
             self.title = file_path.stem
         else:
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
-        self.resolved_language = language or detected_language
-        if not self.resolved_language:
+        self.language = language if language else detected_language
+        if not self.language:
             raise ValueError(
                 "Language must be provided or detectable from the file metadata."
             )
@@ -132,8 +133,9 @@ class PodcastCreator(BaseSynthesizer):
 
         # Create podcast-specific title
         self.podcast_title = f"Podcast - {self.title}"
-        # Use pdf filename as the podcast filename
-        self.file_name = Path(file_path.stem)
+        # Use file_name as the podcast file_name
+        # Clean file name to remove invalid characters
+        self.file_name = Path(get_file_name_title(file_path.stem))
         self._setup_paths(self.file_name)
 
         # Initialize LLM client
@@ -144,7 +146,7 @@ class PodcastCreator(BaseSynthesizer):
         # Initialize parent class
         super().__init__(
             path=path,
-            language=self.resolved_language,
+            language=self.language,
             voice=voice,
             model_name=model_name,
             translate=translate,
@@ -166,7 +168,9 @@ class PodcastCreator(BaseSynthesizer):
             logger.info(f"Creating output base directory: {self.output_base_dir}")
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
 
-        self.podcast_path = self.output_base_dir / file_name_base
+        # normalize file name to create valid directory output_base_dir
+        file_name_base_clean = re.sub(r'[<>:"/\\|?*]', '_', file_name_base.as_posix())
+        self.podcast_path = self.output_base_dir / file_name_base_clean
         self.podcast_path.mkdir(parents=True, exist_ok=True)
         self.scripts_path = self.podcast_path / "scripts"
         self.scripts_path.mkdir(parents=True, exist_ok=True)
@@ -180,9 +184,9 @@ class PodcastCreator(BaseSynthesizer):
         Clean text by removing references, citations, and other non-content elements.
         """
         text = str(text)  # Ensure text is a string
-        print("Cleaning text to remove references and citations...")
-        print("Original text length:", len(text))
-        print("Original text snippet:", text[:500])
+        # If there are html tags, use bs4 to extract text
+        if re.search(r"<[^>]+>", text):
+            text = BeautifulSoup(text, "html.parser").get_text()
         # Remove common reference patterns
         # Remove numbered references like [1], [2], etc.
         text = re.sub(r"\[\d+\]", "", text)
@@ -226,7 +230,7 @@ class PodcastCreator(BaseSynthesizer):
         return text.strip()
 
     def generate_podcast_script(
-        self, chapter_text: str, chapter_number: int, language: Optional[str]
+        self, chapter_text: str, chapter_number: int
     ) -> str:
         """Generate podcast script for a single chapter."""
 
@@ -270,36 +274,41 @@ class PodcastCreator(BaseSynthesizer):
                 f"Chapter {chapter_number} has very little text after cleaning. "
                 "The generated podcast may be very short."
             )
-            podcast_script = chapter_text
+            podcast_script = cleaned_text
         else:
-            if self.translate and language:
+            if self.language != "en" and (self.translate != "en"):
                 translated_prompt = translate_sentence(
-                    PODCAST_PROMPT, src_lang="en", tgt_lang=language
+                    PODCAST_PROMPT,
+                    src_lang="en",
+                    tgt_lang=self.language if not self.translate else self.translate
                 )
-                prompt = translated_prompt + "\n\n" + cleaned_text
+                # Translate if needed
+                if self.translate:
+                    cleaned_text = translate_sentence(
+                        cleaned_text, src_lang=self.language, tgt_lang=self.translate
+                    )
+                prompt = f"{translated_prompt}\n\n{cleaned_text}"
             else:
-                prompt = PODCAST_PROMPT + "\n\n" + cleaned_text
+                prompt = f"{PODCAST_PROMPT}\n\n{cleaned_text}"
             logger.debug(f"LLM Prompt for Episode {chapter_number}:\n{prompt[:500]}...")
-            logger.debug(f"Using language: {language}")
+            logger.debug(f"Using language: {self.language}")
             logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
             podcast_script = self.llm_client.generate_podcast_script(
                 prompt,
-                language=self.resolved_language if self.translate else self.translate,
+                language=self.language if not self.translate else self.translate,
             )
 
         # Save the script if requested
         if self.save_text:
             try:
                 with open(script_path, "w", encoding="utf-8") as f:
-                    f.write(f"# Podcast Episode {chapter_number}\n")
-                    f.write(f"# Generated from: {self.title}\n\n")
                     f.write(podcast_script)
                 with open(
                     self.scripts_path / f"original_text_{chapter_number:03d}.txt",
                     "w",
                     encoding="utf-8",
                 ) as f:
-                    f.write(chapter_text)
+                    f.write(cleaned_text)
                 logger.info(f"Saved podcast script to: {script_path}")
             except IOError as e:
                 logger.error(f"Failed to save script for Episode {chapter_number}: {e}")
@@ -309,7 +318,9 @@ class PodcastCreator(BaseSynthesizer):
     def synthesize_episode(self, podcast_script: str, episode_number: int) -> Path:
         """Synthesizes a single podcast episode from script."""
         logger.info(f"Synthesizing Podcast Episode {episode_number}...")
-        episode_wav_path = self.episodes_path / f"episode_{episode_number:03d}.wav"
+        episode_wav_path = Path(
+            f"{self.episodes_path}/{self.file_name}_{episode_number:03d}.wav"
+        )
         episode_mp3_path = episode_wav_path.with_suffix(".mp3")
 
         if episode_mp3_path.exists():
@@ -330,29 +341,6 @@ class PodcastCreator(BaseSynthesizer):
                 f"No sentences extracted from Episode {episode_number} script."
             )
             return episode_mp3_path
-
-        # Translate if needed
-        if self.translate and self.language:
-            logger.info(
-                f"Translating {len(sentences)} segments for Episode {episode_number}..."
-            )
-            try:
-                sentences = [
-                    translate_sentence(
-                        sentence, src_lang=self.language, tgt_lang=self.translate
-                    )
-                    for sentence in tqdm.tqdm(
-                        sentences,
-                        desc=f"Translating Ep. {episode_number}",
-                        unit="segment",
-                    )
-                ]
-            except Exception as e:
-                logger.error(
-                    f"Error translating episode {episode_number}: {e}",
-                    exc_info=True,
-                )
-                logger.warning("Proceeding with original text for synthesis.")
 
         # Synthesize audio
         self._synthesize_sentences(sentences, episode_wav_path)
@@ -423,9 +411,6 @@ class PodcastCreator(BaseSynthesizer):
                 podcast_script = self.generate_podcast_script(
                     chapter_content,
                     episode_number,
-                    language=self.resolved_language
-                    if self.translate
-                    else self.translate,
                 )
                 logger.debug(
                     f"Podcast Script for Episode {episode_number}:"
@@ -763,7 +748,6 @@ class PodcastPdfCreator(PodcastCreator):
             podcast_script = self.generate_podcast_script(
                 prompt,
                 1,
-                self.resolved_language if self.translate else self.translate,
             )
 
             # Synthesize episode

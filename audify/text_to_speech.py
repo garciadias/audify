@@ -259,20 +259,20 @@ class EpubSynthesizer(BaseSynthesizer):
     ):
         self.reader = EpubReader(path)
         detected_language = self.reader.get_language()
-        resolved_language = language or detected_language
+        language = language or detected_language
         self.output_base_dir = Path(OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
-        if not resolved_language:
+        if not language:
             raise ValueError(
                 "Language must be provided or detectable from the EPUB metadata."
             )
 
         self.title = self.reader.title
         if translate:
-            logger.info(f"Translating title from {resolved_language} to {translate}")
+            logger.info(f"Translating title from {language} to {translate}")
             self.title = translate_sentence(
-                sentence=self.title, src_lang=resolved_language, tgt_lang=translate
+                sentence=self.title, src_lang=language, tgt_lang=translate
             )
 
         self.file_name = get_file_name_title(self.title)
@@ -282,7 +282,7 @@ class EpubSynthesizer(BaseSynthesizer):
 
         super().__init__(
             path=path,
-            language=resolved_language,
+            language=language,
             voice=speaker,
             model_name=model_name,
             translate=translate,
@@ -459,7 +459,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 current_start_time_ms = 0
                 for mp3_file in chunk_files:
                     try:
-                        # Extract chapter number from filename
+                        # Extract chapter number from file_name
                         chapter_num = int(mp3_file.stem.split("_")[1])
                         duration = AudioProcessor.get_duration(str(mp3_file))
 
@@ -1141,11 +1141,11 @@ class VoiceSamplesSynthesizer:
                     audio = AudioSegment.from_mp3(mp3_file)
                     combined_audio += audio
 
-                    # Extract model and voice from filename
-                    filename_parts = mp3_file.stem.split("_")
-                    if len(filename_parts) >= 4:
-                        model = filename_parts[2]
-                        voice = "_".join(filename_parts[3:])
+                    # Extract model and voice from file_name
+                    file_name_parts = mp3_file.stem.split("_")
+                    if len(file_name_parts) >= 4:
+                        model = file_name_parts[2]
+                        voice = "_".join(file_name_parts[3:])
                         chapter_title = f"Model: {model}, Voice: {voice}"
                     else:
                         chapter_title = f"Sample {i + 1}"

@@ -25,9 +25,10 @@
             "args": [
                 "~/Downloads/mao_jones.pdf",
                 "-l",
-                "en",
+                "pt",
                 "--llm-model",
                 "qwen3:30b",
+                "-st",
                 "--confirm"
             ],
         }

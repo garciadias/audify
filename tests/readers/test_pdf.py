@@ -206,7 +206,7 @@ class TestPdfReader:
 
     @patch("builtins.open", new_callable=mock_open)
     def test_save_cleaned_text_with_string(self, mock_file_open, temp_pdf_path):
-        """Test saving cleaned text to file using string filename."""
+        """Test saving cleaned text to file using string file_name."""
         with patch("pathlib.Path.exists", return_value=True):
             with patch("audify.readers.pdf.PyPDF2.PdfReader") as mock_pdf_reader:
                 with patch(
@@ -220,11 +220,11 @@ class TestPdfReader:
                     mock_pdf_reader.return_value = mock_pdf_reader_instance
 
                     reader = PdfReader(temp_pdf_path)
-                    output_filename = "output.txt"
+                    output_file_name = "output.txt"
 
-                    reader.save_cleaned_text(output_filename)
+                    reader.save_cleaned_text(output_file_name)
 
-        mock_file_open.assert_called_with(output_filename, "w", encoding="utf-8")
+        mock_file_open.assert_called_with(output_file_name, "w", encoding="utf-8")
         mock_file_open().write.assert_called_with("Cleaned test content")
 
     @patch("audify.readers.pdf.PyPDF2.PdfReader")

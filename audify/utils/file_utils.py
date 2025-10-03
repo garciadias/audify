@@ -99,18 +99,18 @@ class PathManager:
         return audiobook_path, metadata_path, final_path, temp_path
 
     @staticmethod
-    def clean_filename(filename: str) -> str:
+    def clean_file_name(file_name: str) -> str:
         """
-        Clean a filename by removing or replacing invalid characters.
+        Clean a file_name by removing or replacing invalid characters.
 
         Args:
-            filename: Original filename
+            file_name: Original file_name
 
         Returns:
-            Cleaned filename safe for filesystem use
+            Cleaned file_name safe for filesystem use
         """
         # Replace spaces with underscores
-        cleaned = filename.lower().replace(" ", "_")
+        cleaned = file_name.lower().replace(" ", "_")
 
         # Replace multiple underscores with single underscore
         cleaned = re.sub(r"_+", "_", cleaned)
@@ -162,9 +162,11 @@ class PathManager:
             return False
 
     @staticmethod
-    def get_available_filename(directory: Path, base_name: str, extension: str) -> Path:
+    def get_available_file_name(
+            directory: Path, base_name: str, extension: str
+        ) -> Path:
         """
-        Get an available filename by adding a counter if the file exists.
+        Get an available file_name by adding a counter if the file exists.
 
         Args:
             directory: Directory where the file will be created
@@ -172,7 +174,7 @@ class PathManager:
             extension: File extension (with or without leading dot)
 
         Returns:
-            Path to an available filename
+            Path to an available file_name
         """
         if extension and not extension.startswith("."):
             extension = f".{extension}"
@@ -180,14 +182,14 @@ class PathManager:
         counter = 0
         while True:
             if counter == 0:
-                filename = f"{base_name}{extension}"
+                file_name = f"{base_name}{extension}"
             else:
-                filename = f"{base_name}_{counter}{extension}"
+                file_name = f"{base_name}_{counter}{extension}"
 
-            file_path = directory / filename
+            file_path = directory / file_name
             if not file_path.exists():
                 return file_path
 
             counter += 1
             if counter > 1000:  # Safety limit
-                raise ValueError("Could not find available filename")
+                raise ValueError("Could not find available file_name")

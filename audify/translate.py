@@ -13,7 +13,7 @@ def translate_sentence(
     sentence: str,
     model: Optional[str] = None,
     src_lang: str | None = "en",
-    tgt_lang: str = "en",
+    tgt_lang: str | None = "en",
 ) -> str:
     """
     Translate a sentence using Ollama API.
@@ -33,6 +33,7 @@ def translate_sentence(
         Translated text
     """
     src_lang = src_lang or "en"
+    tgt_lang = tgt_lang or "en"
 
     # If source and target are the same, return original
     if src_lang == tgt_lang:
