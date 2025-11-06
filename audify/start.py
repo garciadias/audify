@@ -1,20 +1,23 @@
 import os
 import warnings
-from pathlib import Path
 
 import click
 import requests
 
-from audify.text_to_speech import (EpubSynthesizer, PdfSynthesizer,
-                                   VoiceSamplesSynthesizer)
-from audify.utils.constants import (AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE_LIST,
-                                    KOKORO_API_BASE_URL)
+from audify.text_to_speech import (
+    EpubSynthesizer,
+    PdfSynthesizer,
+    VoiceSamplesSynthesizer,
+)
+from audify.utils.constants import (
+    AVAILABLE_LANGUAGES,
+    DEFAULT_LANGUAGE_LIST,
+    KOKORO_API_BASE_URL,
+)
 from audify.utils.text import get_file_extension
 
 # Ignore UserWarning from pkg_resources about package metadata
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-
-MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
 def get_available_models_and_voices():

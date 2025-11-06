@@ -9,7 +9,6 @@ This script creates podcast episodes from ebook chapters or PDF content by:
 """
 
 import os
-from pathlib import Path
 
 import click
 
@@ -24,8 +23,6 @@ from audify.utils.constants import (
     OLLAMA_DEFAULT_MODEL,
 )
 from audify.utils.text import get_file_extension
-
-MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
 def get_creator(

@@ -16,17 +16,17 @@ from audify.text_to_speech import BaseSynthesizer
 from audify.translate import translate_sentence
 from audify.utils.api_config import OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
-from audify.utils.constants import (OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL,
-                                    OUTPUT_BASE_DIR)
+from audify.utils.constants import (
+    OLLAMA_API_BASE_URL,
+    OLLAMA_DEFAULT_MODEL,
+    OUTPUT_BASE_DIR,
+)
 from audify.utils.logging_utils import setup_logging
 from audify.utils.prompts import AUDIOBOOK_PROMPT
-from audify.utils.text import (break_text_into_sentences, clean_text,
-                               get_file_name_title)
+from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
-
-MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
 class LLMClient:

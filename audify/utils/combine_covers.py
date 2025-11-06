@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-MODULE_PATH = Path(__file__).parents[1]
+MODULE_PATH = Path(__file__).parents[2]
 
 
 def combine_covers(image_paths, output_path):

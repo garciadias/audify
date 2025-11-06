@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,8 +12,6 @@ from audify.utils.text import (
     get_file_extension,
     get_file_name_title,
 )
-
-MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
