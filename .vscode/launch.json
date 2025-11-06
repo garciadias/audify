@@ -17,10 +17,10 @@
             ],
         },
         {
-            "name": "Debug podcast",
+            "name": "Debug audiobook",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/audify/create_podcast.py",
+            "program": "${workspaceFolder}/audify/create_audiobook.py",
             "console": "integratedTerminal",
             "args": [
                 "~/Downloads/mao_jones.pdf",

@@ -37,10 +37,10 @@ class LLMClient:
     ):
         self.config = OllamaAPIConfig(base_url=base_url, model=model)
 
-    def generate_podcast_script(
+    def generate_audiobook_script(
         self, chapter_text: str, language: Optional[str]
     ) -> str:
-        """Generate podcast script from chapter text using LangChain."""
+        """Generate audiobook script from chapter text using LangChain."""
         if language != "en":
             translated_prompt = translate_sentence(
                 AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
@@ -52,7 +52,7 @@ class LLMClient:
         try:
             logger.info(f"Sending request to LLM at {self.config.base_url}")
 
-            # Create LLM with podcast-specific parameters
+            # Create LLM with audiobook-specific parameters
             llm = self.config.create_llm(
                 num_ctx=8 * 4096,  # Increased context window
                 temperature=0.8,  # Added creativity
@@ -73,7 +73,7 @@ class LLMClient:
                 return clean_text(response.strip())
             else:
                 logger.error("Empty response from LLM")
-                return "Error: Unable to generate podcast script for this content."
+                return "Error: Unable to generate audiobook script for this content."
 
         except Exception as e:
             logger.error(f"Error communicating with LLM: {e}")
@@ -85,11 +85,11 @@ class LLMClient:
             elif "timeout" in str(e).lower():
                 return "Error: Request to LLM timed out. Content might be too long."
             else:
-                return f"Error: Failed to generate podcast script due to: {str(e)}"
+                return f"Error: Failed to generate audiobook script due to: {str(e)}"
 
 
-class PodcastCreator(BaseSynthesizer):
-    """Creates podcasts from ebook content using LLM and TTS."""
+class AudiobookCreator(BaseSynthesizer):
+    """Creates audiobooks from ebook content using LLM and TTS."""
 
     def __init__(
         self,
@@ -98,7 +98,7 @@ class PodcastCreator(BaseSynthesizer):
         voice: str = "af_bella",
         model_name: str = OLLAMA_DEFAULT_MODEL,
         translate: Optional[str] = None,
-        save_text: bool = True,  # Default to True for podcast scripts
+        save_text: bool = True,  # Default to True for audiobook scripts
         llm_base_url: str = OLLAMA_API_BASE_URL,
         llm_model: str = OLLAMA_DEFAULT_MODEL,
         max_chapters: Optional[int] = None,
@@ -131,9 +131,9 @@ class PodcastCreator(BaseSynthesizer):
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create podcast-specific title
-        self.podcast_title = f"Podcast - {self.title}"
-        # Use file_name as the podcast file_name
+        # Create audiobook-specific title
+        self.audiobook_title = f"Audiobook - {self.title}"
+        # Use file_name as the audiobook file_name
         # Clean file name to remove invalid characters
         self.file_name = Path(get_file_name_title(file_path.stem))
         self._setup_paths(self.file_name)
@@ -156,29 +156,29 @@ class PodcastCreator(BaseSynthesizer):
         # Setup cover image if available
         if isinstance(self.reader, EpubReader):
             self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
-                self.podcast_path
+                self.audiobook_path
             )
         else:
             self.cover_image_path = None
         self.chapter_titles: List[str] = []
 
     def _setup_paths(self, file_name_base: Path) -> None:
-        """Sets up the necessary output paths for podcast creation."""
+        """Sets up the necessary output paths for audiobook creation."""
         if not self.output_base_dir.exists():
             logger.info(f"Creating output base directory: {self.output_base_dir}")
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
 
         folder_safe_name = re.sub(r"[^\w\s-]", "", file_name_base.stem).strip()
-        self.podcast_path = self.output_base_dir / folder_safe_name
-        self.podcast_path.mkdir(parents=True, exist_ok=True)
-        self.scripts_path = self.podcast_path / "scripts"
+        self.audiobook_path = self.output_base_dir / folder_safe_name
+        self.audiobook_path.mkdir(parents=True, exist_ok=True)
+        self.scripts_path = self.audiobook_path / "scripts"
         self.scripts_path.mkdir(parents=True, exist_ok=True)
-        self.episodes_path = self.podcast_path / "episodes"
+        self.episodes_path = self.audiobook_path / "episodes"
         self.episodes_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Podcast output directory set to: {self.podcast_path}")
+        logger.info(f"Audiobook output directory set to: {self.audiobook_path}")
 
-    def _clean_text_for_podcast(self, text: str) -> str:
+    def _clean_text_for_audiobook(self, text: str) -> str:
         """
         Clean text by removing references, citations, and other non-content elements.
         """
@@ -228,12 +228,12 @@ class PodcastCreator(BaseSynthesizer):
 
         return text.strip()
 
-    def generate_podcast_script(
+    def generate_audiobook_script(
         self, chapter_text: str, chapter_number: int, language: Optional[str] = None
     ) -> str:
-        """Generate podcast script for a single chapter."""
+        """Generate audiobook script for a single chapter."""
 
-        logger.info(f"Generating podcast script for Chapter {chapter_number}...")
+        logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
         # Save script path
         script_path = self.scripts_path / f"episode_{chapter_number:03d}_script.txt"
@@ -250,7 +250,7 @@ class PodcastCreator(BaseSynthesizer):
             return "This chapter contains no readable text content."
 
         # Clean text to remove references and citations
-        cleaned_text = self._clean_text_for_podcast(chapter_text)
+        cleaned_text = self._clean_text_for_audiobook(chapter_text)
         logger.info(
             f"Cleaned text for Episode {chapter_number}:"
             " removed references and citations"
@@ -267,13 +267,13 @@ class PodcastCreator(BaseSynthesizer):
         logger.info(f"Chapter {chapter_number} title: {chapter_title}")
         self.chapter_titles.append(chapter_title)
 
-        # Generate podcast script using LLM
+        # Generate audiobook script using LLM
         if len(cleaned_text.split()) < 200:
             logger.warning(
                 f"Chapter {chapter_number} has very little text after cleaning. "
-                "The generated podcast may be very short."
+                "The generated audiobook may be very short."
             )
-            podcast_script = cleaned_text
+            audiobook_script = cleaned_text
         else:
             # Determine effective language.
             # Prefer explicit param, then translate, then file language
@@ -306,7 +306,7 @@ class PodcastCreator(BaseSynthesizer):
             logger.debug(f"Using language: {effective_language}")
             logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
 
-            podcast_script = self.llm_client.generate_podcast_script(
+            audiobook_script = self.llm_client.generate_audiobook_script(
                 prompt, language=effective_language
             )
 
@@ -314,22 +314,22 @@ class PodcastCreator(BaseSynthesizer):
         if self.save_text:
             try:
                 with open(script_path, "w", encoding="utf-8") as f:
-                    f.write(podcast_script)
+                    f.write(audiobook_script)
                 with open(
                     self.scripts_path / f"original_text_{chapter_number:03d}.txt",
                     "w",
                     encoding="utf-8",
                 ) as f:
                     f.write(cleaned_text)
-                logger.info(f"Saved podcast script to: {script_path}")
+                logger.info(f"Saved audiobook script to: {script_path}")
             except IOError as e:
                 logger.error(f"Failed to save script for Episode {chapter_number}: {e}")
 
-        return podcast_script
+        return audiobook_script
 
-    def synthesize_episode(self, podcast_script: str, episode_number: int) -> Path:
-        """Synthesizes a single podcast episode from script."""
-        logger.info(f"Synthesizing Podcast Episode {episode_number}...")
+    def synthesize_episode(self, audiobook_script: str, episode_number: int) -> Path:
+        """Synthesizes a single audiobook episode from script."""
+        logger.info(f"Synthesizing Audiobook Episode {episode_number}...")
         # Use standardized episode file naming (tests expect episode_###.wav)
         episode_wav_path = self.episodes_path / f"episode_{episode_number:03d}.wav"
         episode_mp3_path = episode_wav_path.with_suffix(".mp3")
@@ -340,12 +340,12 @@ class PodcastCreator(BaseSynthesizer):
             )
             return episode_mp3_path
 
-        if not podcast_script.strip():
+        if not audiobook_script.strip():
             logger.warning(f"Episode {episode_number} contains no text to synthesize.")
             return episode_mp3_path
 
         # Break script into sentences for better TTS processing
-        sentences = self._break_script_into_segments(podcast_script)
+        sentences = self._break_script_into_segments(audiobook_script)
 
         # If translation is enabled, translate each sentence before synthesis
         if getattr(self, "translate", None):
@@ -377,12 +377,12 @@ class PodcastCreator(BaseSynthesizer):
         return self._convert_to_mp3(episode_wav_path)
 
     def _break_script_into_segments(self, script: str) -> List[str]:
-        """Break podcast script into segments suitable for TTS."""
+        """Break audiobook script into segments suitable for TTS."""
 
         # First break into sentences
         sentences = break_text_into_sentences(script)
 
-        # For podcast content, we might want longer segments
+        # For audiobook content, we might want longer segments
         # Combine short sentences into longer segments
         segments = []
         current_segment = ""
@@ -405,9 +405,9 @@ class PodcastCreator(BaseSynthesizer):
 
         return [seg for seg in segments if seg.strip()]
 
-    def create_podcast_series(self) -> List[Path]:
-        """Create podcast series from all chapters."""
-        logger.info("Starting podcast series creation...")
+    def create_audiobook_series(self) -> List[Path]:
+        """Create audiobook series from all chapters."""
+        logger.info("Starting audiobook series creation...")
 
         # Get chapters based on file type
         if isinstance(self.reader, EpubReader):
@@ -421,34 +421,34 @@ class PodcastCreator(BaseSynthesizer):
             num_chapters = min(num_chapters, self.max_chapters)
             chapters = chapters[:num_chapters]
 
-        logger.info(f"Creating podcast series with {num_chapters} episodes...")
+        logger.info(f"Creating audiobook series with {num_chapters} episodes...")
 
         if self.confirm:
-            response = input(f"Create {num_chapters} podcast episodes? (y/N): ")
+            response = input(f"Create {num_chapters} audiobook episodes? (y/N): ")
             if response.lower() not in ["y", "yes"]:
-                logger.info("Podcast creation cancelled by user.")
+                logger.info("Audiobook creation cancelled by user.")
                 return []
 
         episode_paths = []
 
         for i, chapter_content in enumerate(
-            tqdm.tqdm(chapters, desc="Creating Podcast Episodes", unit="episode")
+            tqdm.tqdm(chapters, desc="Creating Audiobook Episodes", unit="episode")
         ):
             episode_number = i + 1
 
             try:
-                # Generate podcast script
-                podcast_script = self.generate_podcast_script(
+                # Generate audiobook script
+                audiobook_script = self.generate_audiobook_script(
                     chapter_content,
                     episode_number,
                 )
                 logger.debug(
-                    f"Podcast Script for Episode {episode_number}:"
-                    f"\n{podcast_script[:500]}..."
+                    f"Audiobook Script for Episode {episode_number}:"
+                    f"\n{audiobook_script[:500]}..."
                 )
 
                 # Synthesize episode
-                episode_path = self.synthesize_episode(podcast_script, episode_number)
+                episode_path = self.synthesize_episode(audiobook_script, episode_number)
 
                 if episode_path.exists():
                     episode_paths.append(episode_path)
@@ -466,7 +466,8 @@ class PodcastCreator(BaseSynthesizer):
                 continue
 
         logger.info(
-            f"Podcast series creation complete. Created {len(episode_paths)} episodes."
+            "Audiobook series creation complete. "
+            f"Created {len(episode_paths)} episodes."
         )
 
         # Create M4B audiobook from episodes if we have episodes
@@ -477,7 +478,7 @@ class PodcastCreator(BaseSynthesizer):
 
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
-        self.metadata_path = self.podcast_path / "chapters.txt"
+        self.metadata_path = self.audiobook_path / "chapters.txt"
         logger.info(f"Initializing metadata file: {self.metadata_path}")
         try:
             with open(self.metadata_path, "w") as f:
@@ -583,8 +584,8 @@ class PodcastCreator(BaseSynthesizer):
         return command, cover_temp_file
 
     def create_m4b(self) -> None:
-        """Combines podcast episodes into M4B audiobook file."""
-        logger.info("Starting M4B creation process for podcast...")
+        """Combines audiobook episodes into M4B audiobook file."""
+        logger.info("Starting M4B creation process for audiobook...")
 
         # Get all episode MP3 files
         episode_mp3_files = sorted(self.episodes_path.glob("episode_*.mp3"))
@@ -594,22 +595,22 @@ class PodcastCreator(BaseSynthesizer):
             return
 
         # Set up paths for M4B creation
-        self.temp_m4b_path = self.podcast_path / f"{self.file_name}.tmp.m4b"
-        self.final_m4b_path = self.podcast_path / f"{self.file_name}.m4b"
+        self.temp_m4b_path = self.audiobook_path / f"{self.file_name}.tmp.m4b"
+        self.final_m4b_path = self.audiobook_path / f"{self.file_name}.m4b"
 
         # Initialize metadata file
         self._initialize_metadata_file()
 
         # Calculate total duration
         total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
-        logger.info(f"Total podcast duration: {total_duration_hours:.2f} hours")
+        logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        # Create single M4B (podcasts are typically shorter than 15 hours)
-        logger.info("Creating M4B audiobook from podcast episodes...")
+        # Create single M4B (audiobooks are typically shorter than 15 hours)
+        logger.info("Creating M4B audiobook from audiobook episodes...")
         self._create_single_m4b(episode_mp3_files)
 
     def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
-        """Create a single M4B file from all podcast episodes."""
+        """Create a single M4B file from all audiobook episodes."""
         if not self.temp_m4b_path.exists():
             logger.info(f"Combining {len(episode_mp3_files)} episode MP3s...")
             combined_audio = AudioSegment.empty()
@@ -712,58 +713,59 @@ class PodcastCreator(BaseSynthesizer):
                     )
 
     def synthesize(self) -> Path:
-        """Main synthesis method - creates the podcast series."""
-        logger.info(f"Starting podcast creation for: {self.path.name}")
-        episode_paths = self.create_podcast_series()
+        """Main synthesis method - creates the audiobook series."""
+        logger.info(f"Starting audiobook creation for: {self.path.name}")
+        episode_paths = self.create_audiobook_series()
 
         if episode_paths:
-            logger.info(f"Podcast series complete with {len(episode_paths)} episodes")
-            return self.podcast_path
+            logger.info(f"Audiobook series complete with {len(episode_paths)} episodes")
+            return self.audiobook_path
         else:
-            logger.error("No podcast episodes were created successfully")
-            return self.podcast_path
+            logger.error("No audiobook episodes were created successfully")
+            return self.audiobook_path
 
 
-class PodcastEpubCreator(PodcastCreator):
-    """Specialized podcast creator for EPUB files."""
+class AudiobookEpubCreator(AudiobookCreator):
+    """Specialized audiobook creator for EPUB files."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if not hasattr(self.reader, "get_chapters"):
-            raise ValueError("PodcastEpubCreator requires an EPUB reader")
+            raise ValueError("AudiobookEpubCreator requires an EPUB reader")
 
 
-class PodcastPdfCreator(PodcastCreator):
-    """Specialized podcast creator for PDF files."""
+class AudiobookPdfCreator(AudiobookCreator):
+    """Specialized audiobook creator for PDF files."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def create_podcast_series(self) -> List[Path]:
-        """Create a single podcast episode from the PDF content."""
-        logger.info("Creating podcast episode from PDF...")
+    def create_audiobook_series(self) -> List[Path]:
+        """Create a single audiobook episode from the PDF content."""
+        logger.info("Creating audiobook episode from PDF...")
 
         # Get the full PDF content
         if isinstance(self.reader, PdfReader):
             pdf_text = self.reader.cleaned_text
         else:
-            raise ValueError("PodcastPdfCreator requires a PDF reader")
+            raise ValueError("AudiobookPdfCreator requires a PDF reader")
         logger.info(f"Extracted PDF text length: {len(pdf_text.split())} words")
         if not pdf_text.strip():
             logger.error("No text found in PDF")
             return []
 
         if self.confirm:
-            response = input("Create podcast episode from PDF? (y/N): ")
+            response = input("Create audiobook episode from PDF? (y/N): ")
             if response.lower() not in ["y", "yes"]:
-                logger.info("Podcast creation cancelled by user.")
+                logger.info("Audiobook creation cancelled by user.")
                 return []
 
         try:
             logger.info(f"Using language: {self.language}")
             if len(pdf_text.split()) < 200:
                 logger.warning(
-                    "PDF has very little text. The generated podcast may be very short."
+                    "PDF has very little text. "
+                    "The generated audiobook may be very short."
                 )
 
             if not self.language == "en":
@@ -774,23 +776,23 @@ class PodcastPdfCreator(PodcastCreator):
             else:
                 prompt = AUDIOBOOK_PROMPT + "\n\n" + pdf_text
 
-            # Generate podcast script
-            podcast_script = self.generate_podcast_script(
+            # Generate audiobook script
+            audiobook_script = self.generate_audiobook_script(
                 prompt,
                 1,
             )
 
             # Synthesize episode
-            episode_path = self.synthesize_episode(podcast_script, 1)
+            episode_path = self.synthesize_episode(audiobook_script, 1)
 
             if episode_path.exists():
-                logger.info(f"Successfully created podcast episode: {episode_path}")
+                logger.info(f"Successfully created audiobook episode: {episode_path}")
                 episode_paths = [episode_path]
                 return episode_paths
             else:
-                logger.warning("Failed to create podcast episode")
+                logger.warning("Failed to create audiobook episode")
                 return []
 
         except Exception as e:
-            logger.error(f"Error creating podcast episode: {e}", exc_info=True)
+            logger.error(f"Error creating audiobook episode: {e}", exc_info=True)
             return []

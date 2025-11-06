@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Podcast Creator CLI - Generate podcasts from ebooks and PDFs using LLM and TTS.
+Audiobook Creator CLI - Generate audiobooks from ebooks and PDFs using LLM and TTS.
 
-This script creates podcast episodes from ebook chapters or PDF content by:
+This script creates audiobook episodes from ebook chapters or PDF content by:
 1. Extracting text from the source file
-2. Using a local LLM to generate podcast scripts
+2. Using a local LLM to generate audiobook scripts
 3. Converting scripts to speech using TTS
 """
 
@@ -13,9 +13,9 @@ import os
 import click
 
 from audify.audiobook_creator import (
-    PodcastCreator,
-    PodcastEpubCreator,
-    PodcastPdfCreator,
+    AudiobookCreator,
+    AudiobookEpubCreator,
+    AudiobookPdfCreator,
 )
 from audify.utils.constants import (
     DEFAULT_LANGUAGE_LIST,
@@ -37,20 +37,20 @@ def get_creator(
     llm_model: str,
     max_chapters: int | None,
     confirm: bool,
-) -> PodcastCreator:
-    """Get the appropriate PodcastCreator subclass based on file extension.
+) -> AudiobookCreator:
+    """Get the appropriate AudiobookCreator subclass based on file extension.
 
     Args:
         file_extension: The file extension (e.g., '.epub', '.pdf').
 
     Returns:
-        The corresponding PodcastCreator subclass.
+        The corresponding AudiobookCreator subclass.
 
     Raises:
         TypeError: If the file extension is unsupported.
     """
     if file_extension == ".epub":
-        return PodcastEpubCreator(
+        return AudiobookEpubCreator(
             path=path,
             language=language,
             voice=voice,
@@ -64,7 +64,7 @@ def get_creator(
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
-        return PodcastPdfCreator(
+        return AudiobookPdfCreator(
             path=path,
             language=language,
             voice=voice,
@@ -86,7 +86,7 @@ def get_creator(
     "-l",
     type=click.Choice(DEFAULT_LANGUAGE_LIST, case_sensitive=False),
     default="en",
-    help="Language of the synthesized podcast.",
+    help="Language of the synthesized audiobook.",
 )
 @click.option(
     "--model-name",
@@ -153,7 +153,7 @@ def main(
     max_chapters: int | None,
     confirm: bool,
 ):
-    """Create podcast episodes from ebooks or PDFs using LLM and TTS."""
+    """Create audiobook episodes from ebooks or PDFs using LLM and TTS."""
 
     terminal_width = os.get_terminal_size()[0]
     file_extension = get_file_extension(path)
@@ -185,16 +185,16 @@ def main(
             max_chapters=max_chapters,
             confirm=not confirm,
         )
-        # Generate the podcast
+        # Generate the audiobook
         output_path = creator.synthesize()
 
         print("\n" + "=" * terminal_width)
-        print("Podcast creation complete!")
+        print("Audiobook creation complete!")
         print(f"Output directory: {output_path}")
         print("=" * terminal_width)
 
     except KeyboardInterrupt:
-        print("\n\nPodcast creation cancelled by user.")
+        print("\n\nAudiobook creation cancelled by user.")
     except Exception as e:
         print(f"\nError: {e}")
         print("Please check your configuration and try again.")

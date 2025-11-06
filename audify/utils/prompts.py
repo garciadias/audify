@@ -46,11 +46,11 @@ IMPORTANT GUIDELINES:
 - Use concrete examples and analogies whenever possible
 - Maintain an enthusiastic but informative tone throughout
 - NO references, citations, bibliographies, or URL mentions
-- NO stage directions or meta-commentary about the podcast format
+- NO stage directions or meta-commentary about the audiobook format
 - NO descriptions like "music fading" or anything unrelated to spoken content
-- DO NOT mention the podcast
+- DO NOT mention the audiobook
 - NO music
-- NO directions for sound effects or podcast recording
+- NO directions for sound effects or audiobook recording
 - ONLY include content that should be spoken aloud
 - DO NOT include any text that would not be read aloud
 - DO NOT include any of these instructions in the output

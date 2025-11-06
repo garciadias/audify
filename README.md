@@ -3,18 +3,18 @@
 [![codecov](https://codecov.io/github/garciadias/audify/branch/master/graph/badge.svg)](https://codecov.io/github/garciadias/audify)
 [![Tests](https://github.com/garciadias/audify/workflows/Run%20Tests/badge.svg)](https://github.com/garciadias/audify/actions)
 
-Convert ebooks and PDFs to audiobooks and podcasts using AI text-to-speech and translation services.
+Convert ebooks and PDFs to audiobooks and audiobooks using AI text-to-speech and translation services.
 
 Audify is a API-based system that transforms written content into high-quality audio using:
 
 - **Kokoro TTS API** for natural speech synthesis
 - **Ollama + LangChain** for intelligent translation
-- **LLM-powered podcast generation** for engaging audio content
+- **LLM-powered audiobook generation** for engaging audio content
 
 ## 🚀 Features
 
 - **📚 Multiple Formats**: Convert EPUB ebooks and PDF documents
-- **🎙️ Podcast Creation**: Generate podcast-style content from books using LLM
+- **🎙️ Audiobook Creation**: Generate audiobook-style content from books using LLM
 - **🌍 Multi-language Support**: Translate content
 - **🎵 High-Quality TTS**: Natural-sounding speech via Kokoro API
 - **⚙️ Flexible Configuration**: Environment-based settings
@@ -57,9 +57,9 @@ uv sync
 ### 4. Setup Ollama Models
 
 ```bash
-# Pull required models for translation and podcast generation
+# Pull required models for translation and audiobook generation
 docker compose exec ollama ollama pull mistral-nemo:12b  # Translation
-docker compose exec ollama ollama pull qwen3:30b         # Podcast generation
+docker compose exec ollama ollama pull qwen3:30b         # Audiobook generation
 
 # Or use lighter models for testing:
 # docker compose exec ollama ollama pull llama3.2:3b
@@ -74,8 +74,8 @@ task run path/to/your/book.epub
 # Convert PDF to audiobook
 task run path/to/your/document.pdf
 
-# Create podcast from EPUB
-task podcast path/to/your/book.epub
+# Create audiobook from EPUB
+task audiobook path/to/your/book.epub
 ```
 
 ## 📖 Usage Examples
@@ -93,20 +93,20 @@ task run "document.pdf" --language pt
 task run "book.epub" --language en --translate es
 ```
 
-### Podcast Generation
+### Audiobook Generation
 
 ```bash
-# Create podcast from EPUB
-task podcast "book.epub"
+# Create audiobook from EPUB
+task audiobook "book.epub"
 
 # Limit to first 5 chapters
-task podcast "book.epub" --max-chapters 5
+task audiobook "book.epub" --max-chapters 5
 
 # Custom voice and language
-task podcast "book.epub" --voice af_bella --language en
+task audiobook "book.epub" --voice af_bella --language en
 
 # With translation
-task podcast "book.epub" --translate pt
+task audiobook "book.epub" --translate pt
 ```
 
 ### Advanced Options
@@ -144,7 +144,7 @@ export OLLAMA_MODEL="qwen3:30b"
 The `docker-compose.yml` configures:
 
 - **Kokoro TTS**: Port 8887 (GPU-accelerated speech synthesis)
-- **Ollama**: Port 11434 (LLM for translation and podcast generation)
+- **Ollama**: Port 11434 (LLM for translation and audiobook generation)
 
 ## 📁 Output Structure
 
@@ -159,9 +159,9 @@ data/output/
 │   ├── ...                    # More chapters
 │   └── book_name.m4b          # Final audiobook
 │
-└── podcasts/
+└── audiobooks/
     └── [book_name]/
-        ├── episode_01.mp3     # Podcast episodes
+        ├── episode_01.mp3     # Audiobook episodes
         ├── episode_02.mp3
         └── scripts/           # Generated scripts
 ```
@@ -174,7 +174,7 @@ data/output/
 task test      # Run tests with coverage
 task format    # Format code with ruff
 task run       # Convert ebook to audiobook
-task podcast   # Create podcast from content
+task audiobook   # Create audiobook from content
 task up        # Start Docker services
 ```
 
@@ -204,7 +204,7 @@ Audify uses a modern microservices architecture:
                          TTS API             LLM API   
                                                        
  • EPUB/PDF Read         • Speech           • Translation
- • Text Process            Synthesis        • Podcast scripts
+ • Text Process            Synthesis        • Audiobook scripts
  • Audio Combine         • Multi-voice      
 └─────────────────┘    └──────────────┘    └──────────────────┘
 ```
@@ -214,7 +214,7 @@ Audify uses a modern microservices architecture:
 - **Text Extraction**: EPUB/PDF parsing with chapter detection
 - **Translation**: LangChain + Ollama for high-quality translation
 - **TTS**: Kokoro API for natural speech synthesis
-- **Podcast Generation**: LLM-powered script creation
+- **Audiobook Generation**: LLM-powered script creation
 - **Audio Processing**: Pydub for format conversion and combining
 
 ## 🌍 Supported Languages
