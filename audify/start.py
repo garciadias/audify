@@ -5,16 +5,10 @@ from pathlib import Path
 import click
 import requests
 
-from audify.text_to_speech import (
-    EpubSynthesizer,
-    PdfSynthesizer,
-    VoiceSamplesSynthesizer,
-)
-from audify.utils.constants import (
-    AVAILABLE_LANGUAGES,
-    DEFAULT_LANGUAGE_LIST,
-    KOKORO_API_BASE_URL,
-)
+from audify.text_to_speech import (EpubSynthesizer, PdfSynthesizer,
+                                   VoiceSamplesSynthesizer)
+from audify.utils.constants import (AVAILABLE_LANGUAGES, DEFAULT_LANGUAGE_LIST,
+                                    KOKORO_API_BASE_URL)
 from audify.utils.text import get_file_extension
 
 # Ignore UserWarning from pkg_resources about package metadata
@@ -211,19 +205,6 @@ def main(
             print("==========")
             print("PDF to mp3")
             print("==========")
-            synthesizer = PdfSynthesizer(
-                file_path,
-                language=language,
-                speaker=voice,
-                model_name=model,
-                translate=translate,
-                save_text=save_text,
-            )  # type: ignore
-            synthesizer.synthesize()
-        elif get_file_extension(file_path) in [".txt", ".md"]:
-            print("============")
-            print("Text to mp3")
-            print("============")
             synthesizer = PdfSynthesizer(
                 file_path,
                 language=language,

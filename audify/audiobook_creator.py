@@ -16,14 +16,12 @@ from audify.text_to_speech import BaseSynthesizer
 from audify.translate import translate_sentence
 from audify.utils.api_config import OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
-from audify.utils.constants import (
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_MODEL,
-    OUTPUT_BASE_DIR,
-)
+from audify.utils.constants import (OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL,
+                                    OUTPUT_BASE_DIR)
 from audify.utils.logging_utils import setup_logging
 from audify.utils.prompts import AUDIOBOOK_PROMPT
-from audify.utils.text import break_text_into_sentences, clean_text
+from audify.utils.text import (break_text_into_sentences, clean_text,
+                               get_file_name_title)
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -121,6 +119,8 @@ class PodcastCreator(BaseSynthesizer):
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
         self.language = language if language else detected_language
+        # Keep resolved_language for callers/tests that expect this attribute
+        self.resolved_language = self.language
         if not self.language:
             raise ValueError(
                 "Language must be provided or detectable from the file metadata."
@@ -229,7 +229,7 @@ class PodcastCreator(BaseSynthesizer):
         return text.strip()
 
     def generate_podcast_script(
-        self, chapter_text: str, chapter_number: int
+        self, chapter_text: str, chapter_number: int, language: Optional[str] = None
     ) -> str:
         """Generate podcast script for a single chapter."""
 
@@ -275,24 +275,39 @@ class PodcastCreator(BaseSynthesizer):
             )
             podcast_script = cleaned_text
         else:
-            if self.language != "en" and (self.translate != "en"):
+            # Determine effective language.
+            # Prefer explicit param, then translate, then file language
+            effective_language = (
+                language
+                if language
+                else (self.translate if self.translate else self.language)
+            )
+
+            if effective_language and effective_language != "en":
                 translated_prompt = translate_sentence(
-                    AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
+                    AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=effective_language
                 )
-                # Translate if needed
+                # If an explicit translate target was requested,
+                # translate the cleaned text
                 if self.translate:
+                    # prefer explicit language attrs; fall back to resolved_language
+                    src_lang = (
+                        getattr(self, "language", None)
+                        or getattr(self, "resolved_language", None)
+                    )
                     cleaned_text = translate_sentence(
-                        cleaned_text, src_lang=self.language, tgt_lang=self.translate
+                        cleaned_text, src_lang=src_lang, tgt_lang=self.translate
                     )
                 prompt = f"{translated_prompt}\n\n{cleaned_text}"
             else:
                 prompt = AUDIOBOOK_PROMPT + "\n\n" + cleaned_text
+
             logger.debug(f"LLM Prompt for Episode {chapter_number}:\n{prompt[:500]}...")
-            logger.debug(f"Using language: {self.language}")
+            logger.debug(f"Using language: {effective_language}")
             logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
+
             podcast_script = self.llm_client.generate_podcast_script(
-                prompt,
-                language=self.language if not self.translate else self.translate,
+                prompt, language=effective_language
             )
 
         # Save the script if requested
@@ -315,9 +330,8 @@ class PodcastCreator(BaseSynthesizer):
     def synthesize_episode(self, podcast_script: str, episode_number: int) -> Path:
         """Synthesizes a single podcast episode from script."""
         logger.info(f"Synthesizing Podcast Episode {episode_number}...")
-        episode_wav_path = Path(
-            f"{self.episodes_path}/{self.file_name}_{episode_number:03d}.wav"
-        )
+        # Use standardized episode file naming (tests expect episode_###.wav)
+        episode_wav_path = self.episodes_path / f"episode_{episode_number:03d}.wav"
         episode_mp3_path = episode_wav_path.with_suffix(".mp3")
 
         if episode_mp3_path.exists():
@@ -332,6 +346,25 @@ class PodcastCreator(BaseSynthesizer):
 
         # Break script into sentences for better TTS processing
         sentences = self._break_script_into_segments(podcast_script)
+
+        # If translation is enabled, translate each sentence before synthesis
+        if getattr(self, "translate", None):
+            translated_sentences = []
+            src_lang = (
+                getattr(self, "language", None)
+                or getattr(self, "resolved_language", None)
+            )
+            for s in sentences:
+                try:
+                    translated_sentences.append(
+                        translate_sentence(
+                            s, src_lang=src_lang, tgt_lang=self.translate
+                        )
+                    )
+                except Exception:
+                    # On translation failure, fall back to original sentence
+                    translated_sentences.append(s)
+            sentences = translated_sentences
 
         if not sentences:
             logger.warning(
