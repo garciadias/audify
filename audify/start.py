@@ -220,6 +220,19 @@ def main(
                 save_text=save_text,
             )  # type: ignore
             synthesizer.synthesize()
+        elif get_file_extension(file_path) in [".txt", ".md"]:
+            print("============")
+            print("Text to mp3")
+            print("============")
+            synthesizer = PdfSynthesizer(
+                file_path,
+                language=language,
+                speaker=voice,
+                model_name=model,
+                translate=translate,
+                save_text=save_text,
+            )  # type: ignore
+            synthesizer.synthesize()
         else:
             raise ValueError("Unsupported file format")
 

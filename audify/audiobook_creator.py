@@ -22,8 +22,8 @@ from audify.utils.constants import (
     OUTPUT_BASE_DIR,
 )
 from audify.utils.logging_utils import setup_logging
-from audify.utils.prompts import PODCAST_PROMPT
-from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
+from audify.utils.prompts import AUDIOBOOK_PROMPT
+from audify.utils.text import break_text_into_sentences, clean_text
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -45,11 +45,11 @@ class LLMClient:
         """Generate podcast script from chapter text using LangChain."""
         if language != "en":
             translated_prompt = translate_sentence(
-                PODCAST_PROMPT, src_lang="en", tgt_lang=language
+                AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
             )
             prompt = translated_prompt + "\n\n" + chapter_text
         else:
-            prompt = PODCAST_PROMPT + "\n\n" + chapter_text
+            prompt = AUDIOBOOK_PROMPT + "\n\n" + chapter_text
 
         try:
             logger.info(f"Sending request to LLM at {self.config.base_url}")
@@ -168,9 +168,8 @@ class PodcastCreator(BaseSynthesizer):
             logger.info(f"Creating output base directory: {self.output_base_dir}")
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
 
-        # normalize file name to create valid directory output_base_dir
-        file_name_base_clean = re.sub(r'[<>:"/\\|?*]', '_', file_name_base.as_posix())
-        self.podcast_path = self.output_base_dir / file_name_base_clean
+        folder_safe_name = re.sub(r"[^\w\s-]", "", file_name_base.stem).strip()
+        self.podcast_path = self.output_base_dir / folder_safe_name
         self.podcast_path.mkdir(parents=True, exist_ok=True)
         self.scripts_path = self.podcast_path / "scripts"
         self.scripts_path.mkdir(parents=True, exist_ok=True)
@@ -278,9 +277,7 @@ class PodcastCreator(BaseSynthesizer):
         else:
             if self.language != "en" and (self.translate != "en"):
                 translated_prompt = translate_sentence(
-                    PODCAST_PROMPT,
-                    src_lang="en",
-                    tgt_lang=self.language if not self.translate else self.translate
+                    AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
                 )
                 # Translate if needed
                 if self.translate:
@@ -289,7 +286,7 @@ class PodcastCreator(BaseSynthesizer):
                     )
                 prompt = f"{translated_prompt}\n\n{cleaned_text}"
             else:
-                prompt = f"{PODCAST_PROMPT}\n\n{cleaned_text}"
+                prompt = AUDIOBOOK_PROMPT + "\n\n" + cleaned_text
             logger.debug(f"LLM Prompt for Episode {chapter_number}:\n{prompt[:500]}...")
             logger.debug(f"Using language: {self.language}")
             logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
@@ -738,11 +735,11 @@ class PodcastPdfCreator(PodcastCreator):
 
             if not self.language == "en":
                 translated_prompt = translate_sentence(
-                    PODCAST_PROMPT, src_lang="en", tgt_lang=self.language
+                    AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=self.language
                 )
                 prompt = translated_prompt + "\n\n" + pdf_text
             else:
-                prompt = PODCAST_PROMPT + "\n\n" + pdf_text
+                prompt = AUDIOBOOK_PROMPT + "\n\n" + pdf_text
 
             # Generate podcast script
             podcast_script = self.generate_podcast_script(
