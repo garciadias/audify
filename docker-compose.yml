@@ -1,16 +1,21 @@
 services:
-  audify:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: audify
+  ollama:
+    image: ollama/ollama:latest
     volumes:
-      - ./data:/app/data
-      - $HOME/Documents/books/:/app/input
-      - $HOME/.cache/huggingface:/root/.cache/huggingface
-      - ./audify:/app/audify
-      - $HOME/.config:/root/.config
-      - /home/linuxbrew/.linuxbrew:/home/linuxbrew/.linuxbrew
+      - $HOME/.ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
+    ports:
+      - "8887:8880"
     deploy:
       resources:
         reservations:

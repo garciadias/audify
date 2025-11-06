@@ -20,4 +20,4 @@ def synthesizer(MockTTS, MockEpubReader):
     mock_tts = MockTTS.return_value
     mock_tts.tts_to_file = MagicMock()
 
-    return EpubSynthesizer(path="test.epub")
+    return EpubSynthesizer(path="test.epub", engine="tts_models")

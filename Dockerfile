@@ -1,5 +1,5 @@
 # Use CUDA-enabled base image compatible with PyTorch 2.5.1
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+FROM nvcr.io/nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -15,23 +15,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     build-essential \
     libsndfile1 \
+    espeak-ng \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install --no-cache-dir uv
-
 # Create and set working directory
 WORKDIR /app
 
+RUN mkdir -p /app/src/audify
 # Copy project files
-COPY . /app/
+COPY ./audify/ /app/src/audify/
 
-# Create data directories
-RUN mkdir -p /app/data/output
+# Add uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install Python dependencies
-RUN uv venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
+
+# Sync the project into a new environment, using the frozen lockfile
+COPY pyproject.toml README.md uv.lock ./
+
+# Install Python dependencies using uv
 RUN uv sync
+
+# Expose the port for the application
+EXPOSE 8501
+
+# Set the entrypoint for the container
+CMD ["uv", "run", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

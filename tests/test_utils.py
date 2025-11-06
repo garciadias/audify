@@ -2,8 +2,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydub.exceptions import CouldntDecodeError
 
-from audify.utils import (
+from audify.utils.text import (
     break_text_into_sentences,
     break_too_long_sentences,
     clean_text,
@@ -11,7 +12,6 @@ from audify.utils import (
     get_audio_duration,
     get_file_extension,
     get_file_name_title,
-    sentence_to_speech,
 )
 
 MODULE_PATH = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def pdf_file_create(tmp_path):
 
 def test_text_is_cleaned(readers):
     for reader in readers:
-        cleaned_text = clean_text(reader.get_cleaned_text())
+        cleaned_text = clean_text(reader.read())
         assert cleaned_text
         assert ".." not in cleaned_text
         assert "  " not in cleaned_text
@@ -63,7 +63,7 @@ def test_break_text_into_sentences():
     assert break_text_into_sentences(text, max_length=50, min_length=10) == expected
 
 
-@patch("audify.utils.AudioSegment.from_file")
+@patch("audify.utils.text.AudioSegment.from_file")
 def test_get_audio_duration(mock_from_file):
     mock_audio = MagicMock()
     mock_audio.__len__.return_value = 10000  # 10 seconds
@@ -71,13 +71,11 @@ def test_get_audio_duration(mock_from_file):
     assert get_audio_duration("test.wav") == 10.0
 
 
-@patch("audify.utils.TTS")
-@patch("audify.utils.Path")
-def test_sentence_to_speech(mock_path, mock_tts):
-    mock_model = MagicMock()
-    mock_path.return_value = Path("/tmp/speech.wav")
-    sentence_to_speech("This is a test sentence.", mock_model)
-    mock_model.tts_to_file.assert_called()
+def test_get_audio_duration_culdnt_decode_error():
+    with patch(
+        "audify.utils.text.AudioSegment.from_file", side_effect=CouldntDecodeError
+    ):
+        assert get_audio_duration("test.wav") == 0.0
 
 
 def test_get_file_extension():
