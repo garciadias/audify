@@ -8,7 +8,7 @@ across different modules that interact with external APIs.
 import logging
 from typing import Optional
 
-from langchain_ollama import OllamaLLM
+from litellm import completion
 
 from audify.utils.constants import (
     DEFAULT_SPEAKER,
@@ -67,8 +67,9 @@ class OllamaAPIConfig(APIConfig):
         super().__init__(base_url, timeout)
         self.model = model or OLLAMA_DEFAULT_MODEL
 
-    def create_llm(
+    def generate(
         self,
+        prompt: str,
         temperature: float = 0.8,
         top_p: float = 0.9,
         num_ctx: int = 8 * 4096,
@@ -76,23 +77,28 @@ class OllamaAPIConfig(APIConfig):
         seed: Optional[int] = None,
         top_k: int = 60,
         num_predict: int = 4096,
-    ) -> OllamaLLM:
-        """Create and configure OllamaLLM instance."""
-        return OllamaLLM(
-            model=self.model,
-            base_url=self.base_url,
-            num_ctx=num_ctx,
+    ) -> str:
+        """Generate text using LiteLLM with Ollama."""
+
+        response = completion(
+            model=f"ollama/{self.model}",
+            messages=[{"role": "user", "content": prompt}],
+            api_base=self.base_url,
             temperature=temperature,
             top_p=top_p,
-            repeat_penalty=repeat_penalty,
             seed=seed,
+            num_ctx=num_ctx,
             top_k=top_k,
-            num_predict=num_predict,
+            max_tokens=num_predict,
+            repeat_penalty=repeat_penalty,
+            request_timeout=self.timeout,
+            # reasoning_effort="high",
         )
+        return response.choices[0].message.content
 
 
 class OllamaTranslationConfig(OllamaAPIConfig):
-    """Configuration for Ollama translation API using LangChain."""
+    """Configuration for Ollama translation API using LiteLLM."""
 
     def __init__(
         self,
@@ -104,9 +110,10 @@ class OllamaTranslationConfig(OllamaAPIConfig):
         model = model or OLLAMA_DEFAULT_TRANSLATION_MODEL
         super().__init__(base_url, model, timeout)
 
-    def create_translation_llm(self) -> OllamaLLM:
-        """Create OllamaLLM instance specifically configured for translation."""
-        return self.create_llm(
+    def translate(self, prompt: str) -> str:
+        """Generate translation using LiteLLM with optimized parameters."""
+        return self.generate(
+            prompt=prompt,
             temperature=0.1,  # Low temperature for consistent translation
             top_p=0.9,
             num_ctx=4096,  # Smaller context for translation

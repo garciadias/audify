@@ -39,10 +39,10 @@ class TestLLMClient:
     def test_generate_audiobook_script_success(self):
         """Test successful audiobook script generation."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = "Generated audiobook script content"
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.return_value = (
+                "Generated audiobook script content"
+            )
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
@@ -58,10 +58,8 @@ class TestLLMClient:
     def test_generate_audiobook_script_empty_response(self):
         """Test handling of empty LLM response."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = ""
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.return_value = ""
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
@@ -74,10 +72,8 @@ class TestLLMClient:
     def test_generate_audiobook_script_with_language(self):
         """Test audiobook script generation with language translation."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = "Generated script"
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.return_value = "Generated script"
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
@@ -98,10 +94,10 @@ class TestLLMClient:
     def test_generate_audiobook_script_reasoning_model(self):
         """Test script generation with reasoning model (contains 'think')."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = "<think>reasoning steps</think>Final output"
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.return_value = (
+                "<think>reasoning steps</think>Final output"
+            )
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
@@ -117,11 +113,9 @@ class TestLLMClient:
     def test_generate_audiobook_script_connection_error(self):
         """Test handling of connection errors."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.side_effect = Exception("Connection refused")
             mock_config_instance = Mock()
             mock_config_instance.base_url = "http://localhost:11434"
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.side_effect = Exception("Connection refused")
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
@@ -134,10 +128,8 @@ class TestLLMClient:
     def test_generate_audiobook_script_timeout_error(self):
         """Test handling of timeout errors."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.side_effect = Exception("timeout exceeded")
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.side_effect = Exception("timeout exceeded")
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
@@ -149,10 +141,8 @@ class TestLLMClient:
     def test_generate_audiobook_script_generic_error(self):
         """Test handling of generic errors."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.side_effect = Exception("Some other error")
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.side_effect = Exception("Some other error")
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()

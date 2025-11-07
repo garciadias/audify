@@ -8,7 +8,7 @@ CRITICAL REQUIREMENTS:
 - Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
 - Aim for at least the same amount of text as the original content
 - Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
-- Use a engaging lecture style as if explaining to an intelligent but curious audience
+- Use an engaging lecture style as if explaining to an intelligent but curious audience
 
 STRUCTURE YOUR RESPONSE AS FOLLOWS:
 

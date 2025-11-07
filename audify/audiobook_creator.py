@@ -30,7 +30,7 @@ logger = setup_logging(module_name=__name__)
 
 
 class LLMClient:
-    """Client for interacting with local LLM using LangChain."""
+    """Client for interacting with local LLM using LiteLLM."""
 
     def __init__(
         self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
@@ -40,7 +40,7 @@ class LLMClient:
     def generate_audiobook_script(
         self, chapter_text: str, language: Optional[str]
     ) -> str:
-        """Generate audiobook script from chapter text using LangChain."""
+        """Generate audiobook script from chapter text using LiteLLM."""
         if language != "en":
             translated_prompt = translate_sentence(
                 AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
@@ -52,8 +52,9 @@ class LLMClient:
         try:
             logger.info(f"Sending request to LLM at {self.config.base_url}")
 
-            # Create LLM with audiobook-specific parameters
-            llm = self.config.create_llm(
+            # Generate response using LiteLLM with audiobook-specific parameters
+            response = self.config.generate(
+                prompt=prompt,
                 num_ctx=8 * 4096,  # Increased context window
                 temperature=0.8,  # Added creativity
                 top_p=0.9,  # Broader token selection
@@ -62,8 +63,6 @@ class LLMClient:
                 top_k=60,  # Wider token selection
                 num_predict=4096,  # Encourage longer responses
             )
-
-            response = llm.invoke(prompt)
 
             # Clean the response
             if response:

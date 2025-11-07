@@ -8,7 +8,7 @@ Convert ebooks and PDFs to audiobooks and audiobooks using AI text-to-speech and
 Audify is a API-based system that transforms written content into high-quality audio using:
 
 - **Kokoro TTS API** for natural speech synthesis
-- **Ollama + LangChain** for intelligent translation
+- **Ollama + LiteLLM** for intelligent translation
 - **LLM-powered audiobook generation** for engaging audio content
 
 ## 🚀 Features
@@ -212,7 +212,7 @@ Audify uses a modern microservices architecture:
 ### Key Components
 
 - **Text Extraction**: EPUB/PDF parsing with chapter detection
-- **Translation**: LangChain + Ollama for high-quality translation
+- **Translation**: LiteLLM + Ollama for high-quality translation
 - **TTS**: Kokoro API for natural speech synthesis
 - **Audiobook Generation**: LLM-powered script creation
 - **Audio Processing**: Pydub for format conversion and combining
@@ -292,4 +292,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Kokoro TTS](https://github.com/hexgrad/kokoro) for high-quality speech synthesis
 - [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) accessible kokoro via FastAPI
 - [Ollama](https://ollama.ai/) for local LLM inference
-- [LangChain](https://langchain.com/) for LLM orchestration
+- [LiteLLM](https://www.litellm.ai/) for unified LLM API interface
