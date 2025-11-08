@@ -58,7 +58,7 @@ uv sync
 
 ```bash
 # Pull required models for translation and audiobook generation
-docker compose exec ollama ollama pull mistral-nemo:12b  # Translation
+docker compose exec ollama ollama pull qwen3:30b  # Translation
 docker compose exec ollama ollama pull qwen3:30b         # Audiobook generation
 
 # Or use lighter models for testing:
@@ -135,7 +135,7 @@ export KOKORO_API_URL="http://localhost:8887/v1/audio"
 
 # Ollama Configuration
 export OLLAMA_API_BASE_URL="http://localhost:11434"
-export OLLAMA_TRANSLATION_MODEL="mistral-nemo:12b"
+export OLLAMA_TRANSLATION_MODEL="qwen3:30b"
 export OLLAMA_MODEL="qwen3:30b"
 ```
 
@@ -248,7 +248,7 @@ docker compose logs ollama
 docker compose exec ollama ollama list
 
 # Pull required model
-docker compose exec ollama ollama pull mistral-nemo:12b
+docker compose exec ollama ollama pull qwen3:30b
 ```
 
 **GPU issues:**

@@ -14,7 +14,7 @@ def test_ollama_config_defaults():
     """Test OllamaTranslationConfig with default values."""
     config = OllamaTranslationConfig()
     assert config.base_url == "http://localhost:11434"  # Default from constants
-    assert config.model == "mistral-nemo:12b"  # Default from constants
+    assert config.model == "qwen3:30b"  # Default from constants
 
 
 def test_ollama_config_custom():
