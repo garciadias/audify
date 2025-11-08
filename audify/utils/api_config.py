@@ -10,13 +10,9 @@ from typing import Optional
 
 from litellm import completion
 
-from audify.utils.constants import (
-    DEFAULT_SPEAKER,
-    KOKORO_API_BASE_URL,
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_MODEL,
-    OLLAMA_DEFAULT_TRANSLATION_MODEL,
-)
+from audify.utils.constants import (DEFAULT_SPEAKER, KOKORO_API_BASE_URL,
+                                    OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL,
+                                    OLLAMA_DEFAULT_TRANSLATION_MODEL)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +57,7 @@ class OllamaAPIConfig(APIConfig):
         self,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int = 600,
     ):
         base_url = base_url or OLLAMA_API_BASE_URL
         super().__init__(base_url, timeout)
@@ -69,7 +65,9 @@ class OllamaAPIConfig(APIConfig):
 
     def generate(
         self,
-        prompt: str,
+        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
         temperature: float = 0.8,
         top_p: float = 0.9,
         num_ctx: int = 8 * 4096,
@@ -78,11 +76,41 @@ class OllamaAPIConfig(APIConfig):
         top_k: int = 60,
         num_predict: int = 4096,
     ) -> str:
-        """Generate text using LiteLLM with Ollama."""
+        """Generate text using LiteLLM with Ollama.
+
+        Args:
+            prompt: Legacy parameter for single user message (deprecated)
+            system_prompt: System role message (instructions/context)
+            user_prompt: User role message (actual content to process)
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            num_ctx: Context window size
+            repeat_penalty: Penalty for repeating tokens
+            seed: Random seed for reproducibility
+            top_k: Top-k sampling parameter
+            num_predict: Maximum tokens to generate
+
+        Returns:
+            Generated text content
+        """
+        # Build messages array
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+        elif prompt:
+            # Legacy support: single prompt goes to user role
+            messages.append({"role": "user", "content": prompt})
+
+        if not messages:
+            raise ValueError("Must provide either prompt or user_prompt")
 
         response = completion(
             model=f"ollama/{self.model}",
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             api_base=self.base_url,
             temperature=temperature,
             top_p=top_p,
@@ -104,7 +132,7 @@ class OllamaTranslationConfig(OllamaAPIConfig):
         self,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int = 600,
     ):
         base_url = base_url or OLLAMA_API_BASE_URL
         model = model or OLLAMA_DEFAULT_TRANSLATION_MODEL

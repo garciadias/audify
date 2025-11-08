@@ -264,7 +264,7 @@ docker compose exec kokoro nvidia-smi
 
 - Use SSD storage for model caching
 - Ensure adequate GPU memory (8GB+ recommended)
-- Use lighter models for testing: `llama3.2:3b` instead of `qwen3:30b`
+- Use lighter models for testing: `llama3.2:3b` instead of `magistral:24b`
 - Consider running services on separate machines for large workloads
 
 ## 📚 Examples

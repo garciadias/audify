@@ -33,7 +33,7 @@ class TestLLMClient:
             LLMClient()
             mock_config.assert_called_once_with(
                 base_url="http://localhost:11434",
-                model="qwen3:30b",  # Updated to current default
+                model="magistral:24b",  # Updated to current default
             )
 
     def test_generate_audiobook_script_success(self):

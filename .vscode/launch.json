@@ -27,7 +27,7 @@
                 "-l",
                 "pt",
                 "--llm-model",
-                "qwen3:30b",
+                "magistral:24b",
                 "-st",
                 "--confirm"
             ],

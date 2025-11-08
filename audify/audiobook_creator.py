@@ -41,20 +41,22 @@ class LLMClient:
         self, chapter_text: str, language: Optional[str]
     ) -> str:
         """Generate audiobook script from chapter text using LiteLLM."""
+        # Prepare system prompt (instructions)
         if language != "en":
-            translated_prompt = translate_sentence(
+            system_prompt = translate_sentence(
                 AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
             )
-            prompt = translated_prompt + "\n\n" + chapter_text
         else:
-            prompt = AUDIOBOOK_PROMPT + "\n\n" + chapter_text
+            system_prompt = AUDIOBOOK_PROMPT
 
         try:
             logger.info(f"Sending request to LLM at {self.config.base_url}")
 
             # Generate response using LiteLLM with audiobook-specific parameters
+            # System role: instructions, User role: content to process
             response = self.config.generate(
-                prompt=prompt,
+                system_prompt=system_prompt,
+                user_prompt=chapter_text,
                 num_ctx=8 * 4096,  # Increased context window
                 temperature=0.8,  # Added creativity
                 top_p=0.9,  # Broader token selection
@@ -282,31 +284,23 @@ class AudiobookCreator(BaseSynthesizer):
                 else (self.translate if self.translate else self.language)
             )
 
-            if effective_language and effective_language != "en":
-                translated_prompt = translate_sentence(
-                    AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=effective_language
+            # If an explicit translate target was requested,
+            # translate the cleaned text
+            if self.translate:
+                # prefer explicit language attrs; fall back to resolved_language
+                src_lang = (
+                    getattr(self, "language", None)
+                    or getattr(self, "resolved_language", None)
                 )
-                # If an explicit translate target was requested,
-                # translate the cleaned text
-                if self.translate:
-                    # prefer explicit language attrs; fall back to resolved_language
-                    src_lang = (
-                        getattr(self, "language", None)
-                        or getattr(self, "resolved_language", None)
-                    )
-                    cleaned_text = translate_sentence(
-                        cleaned_text, src_lang=src_lang, tgt_lang=self.translate
-                    )
-                prompt = f"{translated_prompt}\n\n{cleaned_text}"
-            else:
-                prompt = AUDIOBOOK_PROMPT + "\n\n" + cleaned_text
+                cleaned_text = translate_sentence(
+                    cleaned_text, src_lang=src_lang, tgt_lang=self.translate
+                )
 
-            logger.debug(f"LLM Prompt for Episode {chapter_number}:\n{prompt[:500]}...")
             logger.debug(f"Using language: {effective_language}")
-            logger.debug(f"Sample of cleaned prompt text:\n{cleaned_text[:500]}...")
+            logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
 
             audiobook_script = self.llm_client.generate_audiobook_script(
-                prompt, language=effective_language
+                cleaned_text, language=effective_language
             )
 
         # Save the script if requested
@@ -767,17 +761,9 @@ class AudiobookPdfCreator(AudiobookCreator):
                     "The generated audiobook may be very short."
                 )
 
-            if not self.language == "en":
-                translated_prompt = translate_sentence(
-                    AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=self.language
-                )
-                prompt = translated_prompt + "\n\n" + pdf_text
-            else:
-                prompt = AUDIOBOOK_PROMPT + "\n\n" + pdf_text
-
-            # Generate audiobook script
+            # Generate audiobook script (now uses system/user role pattern)
             audiobook_script = self.generate_audiobook_script(
-                prompt,
+                pdf_text,
                 1,
             )
 
