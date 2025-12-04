@@ -3,7 +3,7 @@
 [![codecov](https://codecov.io/github/garciadias/audify/branch/master/graph/badge.svg)](https://codecov.io/github/garciadias/audify)
 [![Tests](https://github.com/garciadias/audify/workflows/Run%20Tests/badge.svg)](https://github.com/garciadias/audify/actions)
 
-Convert ebooks and PDFs to audiobooks and audiobooks using AI text-to-speech and translation services.
+Convert ebooks and PDFs to audiobooks using AI text-to-speech and translation services.
 
 Audify is a API-based system that transforms written content into high-quality audio using:
 
@@ -58,8 +58,7 @@ uv sync
 
 ```bash
 # Pull required models for translation and audiobook generation
-docker compose exec ollama ollama pull qwen3:30b  # Translation
-docker compose exec ollama ollama pull qwen3:30b         # Audiobook generation
+docker compose exec ollama ollama pull qwen3:30b
 
 # Or use lighter models for testing:
 # docker compose exec ollama ollama pull llama3.2:3b
