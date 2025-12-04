@@ -89,8 +89,8 @@ def get_creator(
     help="Language of the synthesized audiobook.",
 )
 @click.option(
-    "--model-name",
-    "-m",
+    "--voice-model",
+    "-vm",
     type=str,
     default="kokoro",
     help="Path to the TTS model or 'kokoro' to use Kokoro TTS API.",
@@ -123,6 +123,7 @@ def get_creator(
 )
 @click.option(
     "--llm-model",
+    "-m",
     type=str,
     default=OLLAMA_DEFAULT_MODEL,
     help=f"The LLM model to use (default: {OLLAMA_DEFAULT_MODEL}).",
@@ -145,7 +146,7 @@ def main(
     path: str,
     language: str,
     voice: str,
-    model_name: str,
+    voice_model: str,
     translate: str | None,
     save_scripts: bool,
     llm_base_url: str,
@@ -177,7 +178,7 @@ def main(
             path=path,
             language=language,
             voice=voice,
-            model_name=model_name,
+            model_name=voice_model,
             translate=translate,
             save_text=save_scripts,
             llm_base_url=llm_base_url,

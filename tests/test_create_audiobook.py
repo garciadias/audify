@@ -133,7 +133,7 @@ class TestMain:
                     "en",
                     "--voice",
                     "af_bella",
-                    "--model-name",
+                    "--voice-model",
                     "kokoro",
                     "--translate",
                     "es",
@@ -173,7 +173,7 @@ class TestMain:
                     "fr",
                     "--voice",
                     "custom_voice",
-                    "--model-name",
+                    "--voice-model",
                     "custom_model",
                 ],
             )
@@ -292,3 +292,36 @@ class TestMain:
         assert "LLM Model: custom-model" in result.output
         assert "Translation: fr -> en" in result.output
         assert "Max episodes: 10" in result.output
+
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
+    @patch("os.get_terminal_size")
+    def test_main_short_flags_model_mapping(
+        self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+    ):
+        """Test that -m maps to llm_model and -vm maps to model_name."""
+        # Setup mocks
+        mock_terminal_size.return_value = (80, 24)
+        mock_get_extension.return_value = ".epub"
+        mock_creator = Mock()
+        mock_creator.synthesize.return_value = "/path/to/output"
+        mock_get_creator.return_value = mock_creator
+
+        with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
+            result = runner.invoke(
+                main,
+                [
+                    temp_file.name,
+                    "-m",
+                    "my-llm-model",
+                    "-vm",
+                    "my-tts-model",
+                ],
+            )
+
+        assert result.exit_code == 0
+
+        # Verify get_creator was called with correct arguments
+        call_args = mock_get_creator.call_args
+        assert call_args.kwargs["llm_model"] == "my-llm-model"
+        assert call_args.kwargs["model_name"] == "my-tts-model"
