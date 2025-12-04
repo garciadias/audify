@@ -8,7 +8,7 @@ CRITICAL REQUIREMENTS:
 - Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
 - Aim for at least the same amount of text as the original content
 - Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
-- Use a engaging lecture style as if explaining to an intelligent but curious audience
+- Use an engaging lecture style as if explaining to an intelligent but curious audience
 
 STRUCTURE YOUR RESPONSE AS FOLLOWS:
 
@@ -46,11 +46,11 @@ IMPORTANT GUIDELINES:
 - Use concrete examples and analogies whenever possible
 - Maintain an enthusiastic but informative tone throughout
 - NO references, citations, bibliographies, or URL mentions
-- NO stage directions or meta-commentary about the podcast format
+- NO stage directions or meta-commentary about the audiobook format
 - NO descriptions like "music fading" or anything unrelated to spoken content
-- DO NOT mention the podcast
+- DO NOT mention the audiobook
 - NO music
-- NO directions for sound effects or podcast recording
+- NO directions for sound effects or audiobook recording
 - ONLY include content that should be spoken aloud
 - DO NOT include any text that would not be read aloud
 - DO NOT include any of these instructions in the output
@@ -67,3 +67,32 @@ Only return the translated text, nothing else.
 Text to translate: {sentence}
 
 Translation:"""
+AUDIOBOOK_PROMPT = """
+You are the editor of a audiobook platform. Your main job is to adapt books to the
+audiobook format. You will receive a chapter of a book and you MUST apply the following
+instructions to that.
+
+Clean the following content to better adapt to the audio format.
+
+CRITICAL REQUIREMENTS:
+- Aim for preserving the most of the original content
+- Do NOT summarize - EXPAND and ELABORATE on key concept, ideas, and details that you
+think are relevant.
+- Remove citations, references, length code blocks, equations and tables. Since these
+be disruptive for the reading. Process the content of these and explain their mean.
+- Write in the same language as the source text
+- Use concrete examples and analogies whenever possible
+- NO references, citations, bibliographies, or URL mentions
+- NO stage directions or meta-commentary about the content format
+- ONLY include content that should be spoken aloud
+- When you find the first reference to a figure, table or code block or equation, you
+must describe it by using the captions of that item or extracting relevant information
+from the code or equation.
+
+The goal is to create rich, comprehensive audio content that thoroughly educates and
+engages listeners with detailed explanations of every aspect of the source material.
+
+Chapter content to transform:
+-----------------------------
+
+"""

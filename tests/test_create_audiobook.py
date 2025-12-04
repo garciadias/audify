@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for audify.create_podcast module.
+Tests for audify.create_audiobook module.
 """
 
 import tempfile
@@ -9,15 +9,15 @@ from unittest.mock import Mock, patch
 import pytest
 from click.testing import CliRunner
 
-from audify.create_podcast import get_creator, main
+from audify.create_audiobook import get_creator, main
 
 
 class TestGetCreator:
     """Tests for get_creator function."""
 
     def test_get_creator_epub(self):
-        """Test get_creator returns PodcastEpubCreator for .epub files."""
-        with patch("audify.create_podcast.PodcastEpubCreator") as mock_epub_creator:
+        """Test get_creator returns AudiobookEpubCreator for .epub files."""
+        with patch("audify.create_audiobook.AudiobookEpubCreator") as mock_epub_creator:
             mock_instance = Mock()
             mock_epub_creator.return_value = mock_instance
 
@@ -50,8 +50,8 @@ class TestGetCreator:
             )
 
     def test_get_creator_pdf(self):
-        """Test get_creator returns PodcastPdfCreator for .pdf files."""
-        with patch("audify.create_podcast.PodcastPdfCreator") as mock_pdf_creator:
+        """Test get_creator returns AudiobookPdfCreator for .pdf files."""
+        with patch("audify.create_audiobook.AudiobookPdfCreator") as mock_pdf_creator:
             mock_instance = Mock()
             mock_pdf_creator.return_value = mock_instance
 
@@ -109,8 +109,8 @@ class TestMain:
         """Fixture to provide a CliRunner instance."""
         return CliRunner()
 
-    @patch("audify.create_podcast.get_creator")
-    @patch("audify.create_podcast.get_file_extension")
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_epub_success(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
@@ -133,7 +133,7 @@ class TestMain:
                     "en",
                     "--voice",
                     "af_bella",
-                    "--model-name",
+                    "--voice-model",
                     "kokoro",
                     "--translate",
                     "es",
@@ -145,12 +145,12 @@ class TestMain:
             )
 
         assert result.exit_code == 0
-        assert "Podcast creation complete!" in result.output
+        assert "Audiobook creation complete!" in result.output
         assert "/path/to/output" in result.output
         mock_creator.synthesize.assert_called_once()
 
-    @patch("audify.create_podcast.get_creator")
-    @patch("audify.create_podcast.get_file_extension")
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_pdf_success(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
@@ -173,17 +173,17 @@ class TestMain:
                     "fr",
                     "--voice",
                     "custom_voice",
-                    "--model-name",
+                    "--voice-model",
                     "custom_model",
                 ],
             )
 
         assert result.exit_code == 0
-        assert "Podcast creation complete!" in result.output
+        assert "Audiobook creation complete!" in result.output
         mock_creator.synthesize.assert_called_once()
 
-    @patch("audify.create_podcast.get_creator")
-    @patch("audify.create_podcast.get_file_extension")
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_keyboard_interrupt(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
@@ -201,10 +201,10 @@ class TestMain:
             result = runner.invoke(main, [temp_file.name])
 
         assert result.exit_code == 0
-        assert "Podcast creation cancelled by user." in result.output
+        assert "Audiobook creation cancelled by user." in result.output
 
-    @patch("audify.create_podcast.get_creator")
-    @patch("audify.create_podcast.get_file_extension")
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_generic_exception(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
@@ -225,8 +225,8 @@ class TestMain:
         assert "Error: Generic error" in result.output
         assert "Please check your configuration and try again." in result.output
 
-    @patch("audify.create_podcast.get_creator")
-    @patch("audify.create_podcast.get_file_extension")
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_llm_connection_error(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
@@ -253,7 +253,7 @@ class TestMain:
         assert "ollama serve" in result.output
         assert "ollama pull custom-model" in result.output
 
-    @patch("audify.create_podcast.get_file_extension")
+    @patch("audify.create_audiobook.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_configuration_display(
         self, mock_terminal_size, mock_get_extension, runner
@@ -264,7 +264,7 @@ class TestMain:
         mock_get_extension.return_value = ".epub"
 
         with (
-            patch("audify.create_podcast.get_creator") as mock_get_creator,
+            patch("audify.create_audiobook.get_creator") as mock_get_creator,
             tempfile.NamedTemporaryFile(suffix=".epub") as temp_file,
         ):
             mock_creator = Mock()
@@ -292,3 +292,36 @@ class TestMain:
         assert "LLM Model: custom-model" in result.output
         assert "Translation: fr -> en" in result.output
         assert "Max episodes: 10" in result.output
+
+    @patch("audify.create_audiobook.get_creator")
+    @patch("audify.create_audiobook.get_file_extension")
+    @patch("os.get_terminal_size")
+    def test_main_short_flags_model_mapping(
+        self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+    ):
+        """Test that -m maps to llm_model and -vm maps to model_name."""
+        # Setup mocks
+        mock_terminal_size.return_value = (80, 24)
+        mock_get_extension.return_value = ".epub"
+        mock_creator = Mock()
+        mock_creator.synthesize.return_value = "/path/to/output"
+        mock_get_creator.return_value = mock_creator
+
+        with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
+            result = runner.invoke(
+                main,
+                [
+                    temp_file.name,
+                    "-m",
+                    "my-llm-model",
+                    "-vm",
+                    "my-tts-model",
+                ],
+            )
+
+        assert result.exit_code == 0
+
+        # Verify get_creator was called with correct arguments
+        call_args = mock_get_creator.call_args
+        assert call_args.kwargs["llm_model"] == "my-llm-model"
+        assert call_args.kwargs["model_name"] == "my-tts-model"

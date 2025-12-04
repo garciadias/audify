@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
 """
-Podcast Creator CLI - Generate podcasts from ebooks and PDFs using LLM and TTS.
+Audiobook Creator CLI - Generate audiobooks from ebooks and PDFs using LLM and TTS.
 
-This script creates podcast episodes from ebook chapters or PDF content by:
+This script creates audiobook episodes from ebook chapters or PDF content by:
 1. Extracting text from the source file
-2. Using a local LLM to generate podcast scripts
+2. Using a local LLM to generate audiobook scripts
 3. Converting scripts to speech using TTS
 """
 
 import os
-from pathlib import Path
 
 import click
 
-from audify.podcast_creator import PodcastCreator, PodcastEpubCreator, PodcastPdfCreator
+from audify.audiobook_creator import (
+    AudiobookCreator,
+    AudiobookEpubCreator,
+    AudiobookPdfCreator,
+)
 from audify.utils.constants import (
     DEFAULT_LANGUAGE_LIST,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
 )
 from audify.utils.text import get_file_extension
-
-MODULE_PATH = Path(__file__).resolve().parents[1]
 
 
 def get_creator(
@@ -36,20 +37,20 @@ def get_creator(
     llm_model: str,
     max_chapters: int | None,
     confirm: bool,
-) -> PodcastCreator:
-    """Get the appropriate PodcastCreator subclass based on file extension.
+) -> AudiobookCreator:
+    """Get the appropriate AudiobookCreator subclass based on file extension.
 
     Args:
         file_extension: The file extension (e.g., '.epub', '.pdf').
 
     Returns:
-        The corresponding PodcastCreator subclass.
+        The corresponding AudiobookCreator subclass.
 
     Raises:
         TypeError: If the file extension is unsupported.
     """
     if file_extension == ".epub":
-        return PodcastEpubCreator(
+        return AudiobookEpubCreator(
             path=path,
             language=language,
             voice=voice,
@@ -63,7 +64,7 @@ def get_creator(
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
-        return PodcastPdfCreator(
+        return AudiobookPdfCreator(
             path=path,
             language=language,
             voice=voice,
@@ -85,11 +86,11 @@ def get_creator(
     "-l",
     type=click.Choice(DEFAULT_LANGUAGE_LIST, case_sensitive=False),
     default="en",
-    help="Language of the synthesized podcast.",
+    help="Language of the synthesized audiobook.",
 )
 @click.option(
-    "--model-name",
-    "-m",
+    "--voice-model",
+    "-vm",
     type=str,
     default="kokoro",
     help="Path to the TTS model or 'kokoro' to use Kokoro TTS API.",
@@ -122,6 +123,7 @@ def get_creator(
 )
 @click.option(
     "--llm-model",
+    "-m",
     type=str,
     default=OLLAMA_DEFAULT_MODEL,
     help=f"The LLM model to use (default: {OLLAMA_DEFAULT_MODEL}).",
@@ -144,7 +146,7 @@ def main(
     path: str,
     language: str,
     voice: str,
-    model_name: str,
+    voice_model: str,
     translate: str | None,
     save_scripts: bool,
     llm_base_url: str,
@@ -152,7 +154,7 @@ def main(
     max_chapters: int | None,
     confirm: bool,
 ):
-    """Create podcast episodes from ebooks or PDFs using LLM and TTS."""
+    """Create audiobook episodes from ebooks or PDFs using LLM and TTS."""
 
     terminal_width = os.get_terminal_size()[0]
     file_extension = get_file_extension(path)
@@ -176,7 +178,7 @@ def main(
             path=path,
             language=language,
             voice=voice,
-            model_name=model_name,
+            model_name=voice_model,
             translate=translate,
             save_text=save_scripts,
             llm_base_url=llm_base_url,
@@ -184,16 +186,16 @@ def main(
             max_chapters=max_chapters,
             confirm=not confirm,
         )
-        # Generate the podcast
+        # Generate the audiobook
         output_path = creator.synthesize()
 
         print("\n" + "=" * terminal_width)
-        print("Podcast creation complete!")
+        print("Audiobook creation complete!")
         print(f"Output directory: {output_path}")
         print("=" * terminal_width)
 
     except KeyboardInterrupt:
-        print("\n\nPodcast creation cancelled by user.")
+        print("\n\nAudiobook creation cancelled by user.")
     except Exception as e:
         print(f"\nError: {e}")
         print("Please check your configuration and try again.")

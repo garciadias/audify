@@ -30,8 +30,6 @@ from audify.utils.text import break_text_into_sentences, get_file_name_title
 # Configure logging
 logger = setup_logging(module_name=__name__)
 
-MODULE_PATH = Path(__file__).resolve().parents[1]
-
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)

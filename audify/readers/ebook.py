@@ -4,8 +4,6 @@ import bs4
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
 from typing_extensions import Reader
 
-MODULE_PATH = Path(__file__).resolve().parents[1]
-
 
 class EpubReader(Reader):
     def __init__(self, path: str | Path):

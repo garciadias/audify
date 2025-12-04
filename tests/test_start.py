@@ -181,8 +181,8 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             patch("audify.text_to_speech.requests.get") as mock_get_voices,
             patch("audify.text_to_speech.requests.post") as mock_post_synthesis,
             patch(
-                "audify.translate.OllamaTranslationConfig.create_translation_llm"
-            ) as mock_llm,
+                "audify.translate.OllamaTranslationConfig.translate"
+            ) as mock_translate,
             patch("audify.text_to_speech.subprocess.run") as mock_subprocess,
             patch("audify.text_to_speech.AudioSegment") as mock_audio_segment,
             patch("pathlib.Path.unlink") as mock_unlink,
@@ -206,10 +206,8 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             mock_synthesis_response.raise_for_status.return_value = None
             mock_post_synthesis.return_value = mock_synthesis_response
 
-            # Mock the translation LLM
-            mock_translation_llm = MagicMock()
-            mock_translation_llm.invoke.return_value = "This is test PDF content."
-            mock_llm.return_value = mock_translation_llm
+            # Mock the translation method
+            mock_translate.return_value = "This is test PDF content."
 
             # Mock subprocess.run for ffmpeg calls
             mock_ffmpeg_result = MagicMock()

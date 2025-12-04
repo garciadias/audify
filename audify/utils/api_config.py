@@ -8,7 +8,7 @@ across different modules that interact with external APIs.
 import logging
 from typing import Optional
 
-from langchain_ollama import OllamaLLM
+from litellm import completion
 
 from audify.utils.constants import (
     DEFAULT_SPEAKER,
@@ -61,14 +61,17 @@ class OllamaAPIConfig(APIConfig):
         self,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int = 600,
     ):
         base_url = base_url or OLLAMA_API_BASE_URL
         super().__init__(base_url, timeout)
         self.model = model or OLLAMA_DEFAULT_MODEL
 
-    def create_llm(
+    def generate(
         self,
+        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
         temperature: float = 0.8,
         top_p: float = 0.9,
         num_ctx: int = 8 * 4096,
@@ -76,37 +79,73 @@ class OllamaAPIConfig(APIConfig):
         seed: Optional[int] = None,
         top_k: int = 60,
         num_predict: int = 4096,
-    ) -> OllamaLLM:
-        """Create and configure OllamaLLM instance."""
-        return OllamaLLM(
-            model=self.model,
-            base_url=self.base_url,
-            num_ctx=num_ctx,
+    ) -> str:
+        """Generate text using LiteLLM with Ollama.
+
+        Args:
+            prompt: Legacy parameter for single user message (deprecated)
+            system_prompt: System role message (instructions/context)
+            user_prompt: User role message (actual content to process)
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            num_ctx: Context window size
+            repeat_penalty: Penalty for repeating tokens
+            seed: Random seed for reproducibility
+            top_k: Top-k sampling parameter
+            num_predict: Maximum tokens to generate
+
+        Returns:
+            Generated text content
+        """
+        # Build messages array
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+        elif prompt:
+            # Legacy support: single prompt goes to user role
+            messages.append({"role": "user", "content": prompt})
+
+        if not messages:
+            raise ValueError("Must provide either prompt or user_prompt")
+
+        response = completion(
+            model=f"ollama/{self.model}",
+            messages=messages,
+            api_base=self.base_url,
             temperature=temperature,
             top_p=top_p,
-            repeat_penalty=repeat_penalty,
             seed=seed,
+            num_ctx=num_ctx,
             top_k=top_k,
-            num_predict=num_predict,
+            max_tokens=num_predict,
+            repeat_penalty=repeat_penalty,
+            request_timeout=self.timeout,
+            # reasoning_effort="high",
         )
+        return response.choices[0].message.content
 
 
 class OllamaTranslationConfig(OllamaAPIConfig):
-    """Configuration for Ollama translation API using LangChain."""
+    """Configuration for Ollama translation API using LiteLLM."""
 
     def __init__(
         self,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int = 600,
     ):
         base_url = base_url or OLLAMA_API_BASE_URL
         model = model or OLLAMA_DEFAULT_TRANSLATION_MODEL
         super().__init__(base_url, model, timeout)
 
-    def create_translation_llm(self) -> OllamaLLM:
-        """Create OllamaLLM instance specifically configured for translation."""
-        return self.create_llm(
+    def translate(self, prompt: str) -> str:
+        """Generate translation using LiteLLM with optimized parameters."""
+        return self.generate(
+            prompt=prompt,
             temperature=0.1,  # Low temperature for consistent translation
             top_p=0.9,
             num_ctx=4096,  # Smaller context for translation

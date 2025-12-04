@@ -10,9 +10,9 @@ OLLAMA_API_BASE_URL = "http://localhost:11434"
 # Allow override via environment variable
 KOKORO_API_BASE_URL = os.getenv("KOKORO_API_URL", KOKORO_API_BASE_URL)
 OLLAMA_DEFAULT_TRANSLATION_MODEL = os.getenv(
-    "OLLAMA_TRANSLATION_MODEL", "mistral-nemo:12b"
+    "OLLAMA_TRANSLATION_MODEL", "qwen3:30b"
 )
-OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:30b")
+OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "magistral:24b")
 
 AVAILABLE_LANGUAGES = {
     "Spanish": "es",

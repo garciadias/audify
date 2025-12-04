@@ -14,7 +14,7 @@ def test_ollama_config_defaults():
     """Test OllamaTranslationConfig with default values."""
     config = OllamaTranslationConfig()
     assert config.base_url == "http://localhost:11434"  # Default from constants
-    assert config.model == "mistral-nemo:12b"  # Default from constants
+    assert config.model == "qwen3:30b"  # Default from constants
 
 
 def test_ollama_config_custom():
@@ -26,23 +26,19 @@ def test_ollama_config_custom():
     assert config.model == "custom-model"
 
 
-def test_create_llm():
-    """Test LLM creation with proper configuration."""
+def test_translate_method():
+    """Test translation method with proper configuration."""
     config = OllamaTranslationConfig(base_url="http://test:11434", model="test-model")
 
-    with patch("audify.utils.api_config.OllamaLLM") as mock_llm:
-        config.create_translation_llm()
-        mock_llm.assert_called_once_with(
-            model="test-model",
-            base_url="http://test:11434",
-            num_ctx=4096,
-            temperature=0.1,
-            top_p=0.9,
-            repeat_penalty=1.0,
-            seed=None,
-            top_k=60,
-            num_predict=2048,
-        )
+    with patch("audify.utils.api_config.completion") as mock_completion:
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = "Translated text"
+        mock_completion.return_value = mock_response
+
+        result = config.translate("Test prompt")
+        assert result == "Translated text"
+        mock_completion.assert_called_once()
 
 
 def test_translate_sentence_same_language():
@@ -62,11 +58,9 @@ def test_translate_sentence_none_src_lang():
 @patch("audify.translate.OllamaTranslationConfig")
 def test_translate_sentence_successful(mock_config_class):
     """Test successful translation."""
-    # Mock the config and LLM
+    # Mock the config
     mock_config = Mock()
-    mock_llm = Mock()
-    mock_llm.invoke.return_value = "Hola mundo"
-    mock_config.create_translation_llm.return_value = mock_llm
+    mock_config.translate.return_value = "Hola mundo"
     mock_config_class.return_value = mock_config
 
     result = translate_sentence("Hello world", src_lang="en", tgt_lang="es")
@@ -76,11 +70,9 @@ def test_translate_sentence_successful(mock_config_class):
 @patch("audify.translate.OllamaTranslationConfig")
 def test_translate_sentence_with_thinking_model(mock_config_class):
     """Test translation with thinking model response."""
-    # Mock the config and LLM
+    # Mock the config
     mock_config = Mock()
-    mock_llm = Mock()
-    mock_llm.invoke.return_value = "<think>This is thinking</think>Hola mundo"
-    mock_config.create_translation_llm.return_value = mock_llm
+    mock_config.translate.return_value = "<think>This is thinking</think>Hola mundo"
     mock_config_class.return_value = mock_config
 
     result = translate_sentence("Hello world", src_lang="en", tgt_lang="es")
@@ -90,11 +82,9 @@ def test_translate_sentence_with_thinking_model(mock_config_class):
 @patch("audify.translate.OllamaTranslationConfig")
 def test_translate_sentence_empty_response(mock_config_class):
     """Test translation with empty response."""
-    # Mock the config and LLM
+    # Mock the config
     mock_config = Mock()
-    mock_llm = Mock()
-    mock_llm.invoke.return_value = ""
-    mock_config.create_translation_llm.return_value = mock_llm
+    mock_config.translate.return_value = ""
     mock_config_class.return_value = mock_config
 
     sentence = "Hello world"
@@ -105,11 +95,9 @@ def test_translate_sentence_empty_response(mock_config_class):
 @patch("audify.translate.OllamaTranslationConfig")
 def test_translate_sentence_exception(mock_config_class):
     """Test translation with exception handling."""
-    # Mock the config and LLM to raise exception
+    # Mock the config to raise exception
     mock_config = Mock()
-    mock_llm = Mock()
-    mock_llm.invoke.side_effect = Exception("Connection failed")
-    mock_config.create_translation_llm.return_value = mock_llm
+    mock_config.translate.side_effect = Exception("Connection failed")
     mock_config_class.return_value = mock_config
     mock_config.base_url = "http://localhost:11434"
 
@@ -118,8 +106,8 @@ def test_translate_sentence_exception(mock_config_class):
     assert result == sentence  # Should return original on exception
 
 
-def test_langchain_config():
-    """Test the OllamaTranslationConfig class with LangChain."""
+def test_litellm_config():
+    """Test the OllamaTranslationConfig class with LiteLLM."""
     # Test default configuration
     config = OllamaTranslationConfig()
     assert config.base_url is not None
@@ -134,7 +122,7 @@ def test_langchain_config():
 
 
 def test_translation_interface():
-    """Test the translation function interface with LangChain."""
+    """Test the translation function interface with LiteLLM."""
     # Test sentences for different languages
     test_cases = [
         ("Hello world!", "en", "es"),

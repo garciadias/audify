@@ -54,11 +54,9 @@ def translate_sentence(
     try:
         logger.info(f"Translating from {src_lang_name} to {tgt_lang_name} using Ollama")
 
-        # Create LangChain Ollama LLM instance
-        llm = config.create_translation_llm()
+        # Get translation using LiteLLM
+        translated_text = config.translate(prompt).strip()
 
-        # Get translation using LangChain
-        translated_text = llm.invoke(prompt).strip()
         # If model is a thinking model, take the text after </think>
         if "</think>" in translated_text:
             translated_text = translated_text.split("</think>", 1)[1].strip()
