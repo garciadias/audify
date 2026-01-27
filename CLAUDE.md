@@ -62,4 +62,4 @@ When modifying code, ensure to:
 2. Add or update tests in `tests/` to cover new functionality
 3. Run `task format` and `task test` to ensure code quality
 4. Update documentation in `README.md` or `docs/` as needed
-5. Commit changes with clear messages referencing related issues or features, NEVER mentioning to claude or AI.
+5. Commit changes with clear messages referencing related issues or features, NEVER co-sign commits or PRs
