@@ -13,7 +13,8 @@ Audify is a API-based system that transforms written content into high-quality a
 
 ## 🚀 Features
 
-- **📚 Multiple Formats**: Convert EPUB ebooks and PDF documents
+- **📚 Multiple Formats**: Convert EPUB ebooks, PDF documents, TXT, and MD files
+- **📁 Directory Processing**: Create audiobooks from multiple files in a directory
 - **🎙️ Audiobook Creation**: Generate audiobook-style content from books using LLM
 - **🌍 Multi-language Support**: Translate content
 - **🎵 High-Quality TTS**: Natural-sounding speech via Kokoro API
@@ -86,10 +87,10 @@ task audiobook path/to/your/book.epub
 task run "book.epub"
 
 # PDF with specific language
-task run "document.pdf" --language pt
+task --language pt run "document.pdf"
 
 # With translation (English to Spanish)
-task run "book.epub" --language en --translate es
+task --language en --translate es run "book.epub"
 ```
 
 ### Audiobook Generation
@@ -108,6 +109,30 @@ task audiobook "book.epub" --voice af_bella --language en
 task audiobook "book.epub" --translate pt
 ```
 
+### Directory Input (Multi-file Processing)
+
+Process multiple files from a directory into a single audiobook:
+
+```bash
+# Create audiobook from directory of files
+task audiobook "path/to/directory/"
+
+# Process directory with translation
+task --translate es audiobook "path/to/articles/" 
+
+# Directory with custom voice
+task --voice af_bella --language en audiobook "path/to/papers/" 
+```
+
+**Supported file types in directory**: EPUB, PDF, TXT, MD
+
+The directory mode will:
+
+- Process each file as a separate episode
+- Use the filename as the episode title
+- Combine all episodes into a single M4B audiobook with chapter markers
+- Synthesize the title audio for each episode
+
 ### Advanced Options
 
 ```bash
@@ -115,13 +140,13 @@ task audiobook "book.epub" --translate pt
 task run --list-languages
 
 # List available TTS models
-task run --list-models
+task --list-models run
 
 # Save extracted text
-task run "book.epub" --save-text
+task --save-text run "book.epub"
 
 # Skip confirmation prompts
-task run "book.epub" -y
+task -y run "book.epub"
 ```
 
 ## ⚙️ Configuration
@@ -160,9 +185,32 @@ data/output/
 │
 └── audiobooks/
     └── [book_name]/
-        ├── episode_01.mp3     # Audiobook episodes
-        ├── episode_02.mp3
-        └── scripts/           # Generated scripts
+        ├── episodes/
+        │   ├── episode_001.mp3     # Audiobook episodes
+        │   ├── episode_002.mp3
+        │   └── ...
+        ├── scripts/                # Generated scripts
+        │   ├── episode_001_script.txt
+        │   ├── original_text_001.txt
+        │   └── ...
+        ├── chapters.txt            # FFmpeg metadata
+        └── [book_name].m4b         # Final M4B audiobook
+```
+
+**Directory audiobook output:**
+
+```text
+data/output/
+└── [directory_name]/
+    ├── episodes/
+    │   ├── episode_001.mp3     # Episode from first file
+    │   ├── episode_002.mp3     # Episode from second file
+    │   └── ...
+    ├── scripts/
+    │   ├── episode_001_script.txt
+    │   └── ...
+    ├── chapters.txt            # Chapter metadata
+    └── [directory_name].m4b    # Combined audiobook
 ```
 
 ## 🛠️ Development
