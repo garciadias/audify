@@ -120,6 +120,13 @@ def get_available_models_and_voices():
     default=5,
     help="Maximum number of voice samples to create when using --create-voice-samples.",
 )
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Output directory or file path for the result.",
+)
 def main(
     file_path: str,
     language: str,
@@ -133,6 +140,7 @@ def main(
     create_voice_samples: bool,
     max_samples: int | None = None,
     y: bool = False,
+    output: str | None = None,
 ):
     terminal_width = os.get_terminal_size()[0]
     if create_voice_samples:
@@ -143,6 +151,7 @@ def main(
             language=language,
             translate=translate,
             max_samples=max_samples,
+            output_dir=output,
         )
         synthesizer.synthesize()
     elif list_languages:
@@ -202,6 +211,7 @@ def main(
                 translate=translate,
                 save_text=save_text,
                 confirm=not y,
+                output_dir=output,
             )  # type: ignore
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
@@ -215,6 +225,7 @@ def main(
                 model_name=model,
                 translate=translate,
                 save_text=save_text,
+                output_dir=output,
             )  # type: ignore
             synthesizer.synthesize()
         else:

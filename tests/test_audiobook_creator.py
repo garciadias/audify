@@ -13,6 +13,7 @@ import pytest
 
 from audify.audiobook_creator import AudiobookCreator, LLMClient
 from audify.readers.ebook import EpubReader
+from audify.utils.prompts import AUDIOBOOK_PROMPT
 
 
 def create_mock_text_file():
@@ -152,6 +153,30 @@ class TestLLMClient:
             assert (
                 "Failed to generate audiobook script due to: Some other error" in result
             )
+
+    def test_generate_audiobook_script_with_translation(self):
+        """Test audiobook script generation with language translation."""
+        with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
+            mock_config_instance = Mock()
+            mock_config_instance.generate.return_value = (
+                "Generated audiobook script content"
+            )
+            mock_config_instance.base_url = "http://localhost:11434"
+            mock_config.return_value = mock_config_instance
+
+            client = LLMClient()
+
+            with patch("audify.audiobook_creator.translate_sentence") as mock_translate:
+                mock_translate.return_value = "Translated prompt"
+                with patch("audify.audiobook_creator.clean_text") as mock_clean:
+                    mock_clean.return_value = "Cleaned script content"
+
+                    result = client.generate_audiobook_script("test chapter", "fr")
+
+                    mock_translate.assert_called_once_with(
+                        AUDIOBOOK_PROMPT, src_lang="en", tgt_lang="fr"
+                    )
+                    assert result == "Cleaned script content"
 
 
 class TestAudiobookCreatorMethods:
@@ -375,6 +400,31 @@ class TestAudiobookCreatorInitialization:
             assert creator.max_chapters == 5
             assert not creator.confirm
 
+    def test_init_with_unsupported_file_raises_error(self):
+        """Test initialization with an unsupported file type raises ValueError."""
+        with pytest.raises(ValueError, match="Unsupported file format: .txt"):
+            AudiobookCreator(path="test.txt", llm_model="test-model")
+
+    @patch("audify.audiobook_creator.EpubReader")
+    @patch("pathlib.Path.exists", return_value=True)
+    @patch("pathlib.Path.mkdir")
+    def test_init_with_no_language_raises_error(
+        self, mock_mkdir, mock_exists, mock_epub_reader
+    ):
+        """Test initialization raises error when no language is detected."""
+        # Setup mocks
+        mock_epub_instance = Mock(spec=EpubReader)
+        mock_epub_instance.get_language.return_value = None
+        mock_epub_instance.title = "Test Book"
+        mock_epub_instance.get_cover_image.return_value = None
+        mock_epub_reader.return_value = mock_epub_instance
+
+        with patch("audify.audiobook_creator.BaseSynthesizer.__init__"):
+            with pytest.raises(
+                ValueError, match="Language must be provided or detectable"
+            ):
+                AudiobookCreator(path="test.epub", llm_model="test-model")
+
 
 class TestAudiobookCreatorSetupPaths:
     """Test the _setup_paths method."""
@@ -563,8 +613,8 @@ class TestAudiobookCreatorCreateSeries:
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     @patch("pathlib.Path.exists")
     def test_create_audiobook_series_epub_with_confirmation(
-            self, mock_exists, mock_init
-        ):
+        self, mock_exists, mock_init
+    ):
         """Test create_audiobook_series with EPUB reader and user confirmation."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.confirm = True
@@ -840,8 +890,8 @@ class TestAudiobookCreatorGenerateScript:
         short_text = "Very short text."
 
         with patch.object(
-                creator, "_clean_text_for_audiobook", return_value=short_text
-            ):
+            creator, "_clean_text_for_audiobook", return_value=short_text
+        ):
             result = creator.generate_audiobook_script(short_text, 1, language="en")
 
             # Should return original text for very short content
@@ -922,7 +972,7 @@ class TestAudiobookCreatorGenerateScript:
         mock_llm_client = Mock()
         mock_llm_client.generate_audiobook_script.return_value = "Generated script"
         creator.llm_client = mock_llm_client
-        creator.language = 'en'
+        creator.language = "en"
 
         long_text = "Long enough text " * 70  # 210 words > 200
         with (

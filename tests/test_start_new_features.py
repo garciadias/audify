@@ -104,7 +104,8 @@ class TestStartCLINewFeatures:
         mock_synthesizer_class.assert_called_once_with(
             language="en",
             translate=None,
-            max_samples=5
+            max_samples=5,
+            output_dir=None,
         )
         mock_synthesizer.synthesize.assert_called_once()
 

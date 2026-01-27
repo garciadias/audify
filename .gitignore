@@ -182,3 +182,5 @@ input
 
 # Codecov setup script (can be removed after setup)
 # setup_codecov.sh
+
+.claude/settings.local.json
