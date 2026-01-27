@@ -73,46 +73,46 @@ To use a commercial API, prefix the model name with `api:` when using the `-m` o
 
 ```bash
 # Using DeepSeek Chat
-python -m audify.create_audiobook mybook.epub -m "api:deepseek-chat"
+python -m audify.create_audiobook mybook.epub -m "api:deepseek/deepseek-chat"
 
 # Using DeepSeek R1 (reasoning model)
-python -m audify.create_audiobook mybook.epub -m "api:deepseek-reasoner"
+python -m audify.create_audiobook mybook.epub -m "api:deepseek/deepseek-reasoner"
 ```
 
 ### Claude Examples
 
 ```bash
 # Using Claude 3 Sonnet
-python -m audify.create_audiobook mybook.epub -m "api:claude-3-sonnet-20240229"
+python -m audify.create_audiobook mybook.epub -m "api:anthropic/claude-3-sonnet-20240229"
 
 # Using Claude 3.5 Sonnet (latest)
-python -m audify.create_audiobook mybook.epub -m "api:claude-3-5-sonnet-20240620"
+python -m audify.create_audiobook mybook.epub -m "api:anthropic/claude-3-5-sonnet-20240620"
 
 # Using Claude 3 Opus (most capable)
-python -m audify.create_audiobook mybook.epub -m "api:claude-3-opus-20240229"
+python -m audify.create_audiobook mybook.epub -m "api:anthropic/claude-3-opus-20240229"
 ```
 
 ### OpenAI Examples
 
 ```bash
 # Using GPT-4
-python -m audify.create_audiobook mybook.epub -m "api:gpt-4"
+python -m audify.create_audiobook mybook.epub -m "api:openai/gpt-4"
 
 # Using GPT-4 Turbo
-python -m audify.create_audiobook mybook.epub -m "api:gpt-4-turbo-preview"
+python -m audify.create_audiobook mybook.epub -m "api:openai/gpt-4-turbo-preview"
 
 # Using GPT-3.5 Turbo (faster, cheaper)
-python -m audify.create_audiobook mybook.epub -m "api:gpt-3.5-turbo"
+python -m audify.create_audiobook mybook.epub -m "api:openai/gpt-3.5-turbo"
 ```
 
 ### Google Gemini Examples
 
 ```bash
 # Using Gemini Pro
-python -m audify.create_audiobook mybook.epub -m "api:gemini-pro"
+python -m audify.create_audiobook mybook.epub -m "api:gemini/gemini-pro"
 
 # Using Gemini 1.5 Pro
-python -m audify.create_audiobook mybook.epub -m "api:gemini-1.5-pro"
+python -m audify.create_audiobook mybook.epub -m "api:gemini/gemini-1.5-pro"
 ```
 
 ## Complete Example
@@ -120,7 +120,7 @@ python -m audify.create_audiobook mybook.epub -m "api:gemini-1.5-pro"
 ```bash
 # Create audiobook using DeepSeek with Spanish translation
 python -m audify.create_audiobook mybook.epub \
-  -m "api:deepseek-chat" \
+  -m "api:deepseek/deepseek-chat" \
   -l en \
   -t es \
   -v af_bella \
@@ -128,13 +128,13 @@ python -m audify.create_audiobook mybook.epub \
 
 # Create audiobook from PDF using Claude
 python -m audify.create_audiobook document.pdf \
-  -m "api:claude-3-sonnet-20240229" \
+  -m "api:anthropic/claude-3-sonnet-20240229" \
   -l en \
   -v af_sarah
 
 # Process directory of books using GPT-4
 python -m audify.create_audiobook ./books/ \
-  -m "api:gpt-4-turbo-preview" \
+  -m "api:openai/gpt-4-turbo-preview" \
   -l en \
   -o ./output
 ```
@@ -222,7 +222,7 @@ export OPENAI_API_KEY="sk-your-key"
 export GOOGLE_API_KEY="your-key"
 
 # Then run normally
-python -m audify.create_audiobook mybook.epub -m "api:deepseek-chat"
+python -m audify.create_audiobook mybook.epub -m "api:deepseek/deepseek-chat"
 ```
 
 ## Cost Considerations

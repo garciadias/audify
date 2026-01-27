@@ -20,27 +20,27 @@ class TestLLMClientCommercialAPI:
         with patch(
                 "audify.audiobook_creator.CommercialAPIConfig"
             ) as mock_commercial_config:
-            LLMClient(model="api:deepseek-chat")
+            LLMClient(model="api:deepseek/deepseek-chat")
             assert mock_commercial_config.called
-            mock_commercial_config.assert_called_once_with(model="deepseek-chat")
+            mock_commercial_config.assert_called_once_with(model="deepseek/deepseek-chat")
 
     def test_init_with_api_prefix_deepseek(self):
-        """Test initialization with api:deepseek-chat model."""
+        """Test initialization with api:deepseek/deepseek-chat model."""
         with patch("audify.audiobook_creator.CommercialAPIConfig") as mock_config:
-            LLMClient(model="api:deepseek-chat")
-            mock_config.assert_called_once_with(model="deepseek-chat")
+            LLMClient(model="api:deepseek/deepseek-chat")
+            mock_config.assert_called_once_with(model="deepseek/deepseek-chat")
 
     def test_init_with_api_prefix_claude(self):
-        """Test initialization with api:claude model."""
+        """Test initialization with api:anthropic/claude model."""
         with patch("audify.audiobook_creator.CommercialAPIConfig") as mock_config:
-            LLMClient(model="api:claude-3-sonnet-20240229")
-            mock_config.assert_called_once_with(model="claude-3-sonnet-20240229")
+            LLMClient(model="api:anthropic/claude-3-sonnet-20240229")
+            mock_config.assert_called_once_with(model="anthropic/claude-3-sonnet-20240229")
 
     def test_init_with_api_prefix_gpt4(self):
-        """Test initialization with api:gpt-4 model."""
+        """Test initialization with api:openai/gpt-4 model."""
         with patch("audify.audiobook_creator.CommercialAPIConfig") as mock_config:
-            LLMClient(model="api:gpt-4")
-            mock_config.assert_called_once_with(model="gpt-4")
+            LLMClient(model="api:openai/gpt-4")
+            mock_config.assert_called_once_with(model="openai/gpt-4")
 
     def test_generate_audiobook_script_commercial_api_success(self):
         """Test successful script generation with commercial API."""
@@ -51,7 +51,7 @@ class TestLLMClientCommercialAPI:
             " commercial API"
             mock_config.return_value = mock_config_instance
 
-            client = LLMClient(model="api:deepseek-chat")
+            client = LLMClient(model="api:deepseek/deepseek-chat")
 
             with patch("audify.audiobook_creator.clean_text") as mock_clean:
                 mock_clean.return_value = "Cleaned commercial script"
@@ -69,7 +69,7 @@ class TestLLMClientCommercialAPI:
             mock_config_instance.generate.return_value = ""
             mock_config.return_value = mock_config_instance
 
-            client = LLMClient(model="api:deepseek-chat")
+            client = LLMClient(model="api:deepseek/deepseek-chat")
 
             result = client.generate_audiobook_script("test chapter", "en")
 
@@ -84,7 +84,7 @@ class TestLLMClientCommercialAPI:
             mock_config_instance.generate.side_effect = Exception("connection refused")
             mock_config.return_value = mock_config_instance
 
-            client = LLMClient(model="api:deepseek-chat")
+            client = LLMClient(model="api:deepseek/deepseek-chat")
 
             result = client.generate_audiobook_script("test chapter", "en")
 
@@ -99,7 +99,7 @@ class TestLLMClientCommercialAPI:
             mock_config_instance.generate.side_effect = Exception("timeout exceeded")
             mock_config.return_value = mock_config_instance
 
-            client = LLMClient(model="api:deepseek-chat")
+            client = LLMClient(model="api:deepseek/deepseek-chat")
 
             result = client.generate_audiobook_script("test chapter", "en")
 
@@ -115,7 +115,7 @@ class TestLLMClientCommercialAPI:
             )
             mock_config.return_value = mock_config_instance
 
-            client = LLMClient(model="api:deepseek-chat")
+            client = LLMClient(model="api:deepseek/deepseek-chat")
 
             result = client.generate_audiobook_script("test chapter", "en")
 
@@ -149,7 +149,7 @@ class TestLLMClientCommercialAPI:
             mock_config_instance.generate.return_value = response_with_thinking
             mock_config.return_value = mock_config_instance
 
-            client = LLMClient(model="api:deepseek-reasoner")
+            client = LLMClient(model="api:deepseek/deepseek-reasoner")
 
             with patch("audify.audiobook_creator.clean_text") as mock_clean:
                 mock_clean.return_value = "This is the actual response"
@@ -171,7 +171,7 @@ class TestLLMClientCommercialAPI:
                 mock_config_instance.model = "deepseek-chat"
                 mock_config.return_value = mock_config_instance
 
-                LLMClient(model="api:deepseek-chat")
+                LLMClient(model="api:deepseek/deepseek-chat")
 
                 # Check that commercial API message was logged
                 log_calls = [str(call) for call in mock_logger.info.call_args_list]

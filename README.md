@@ -116,16 +116,16 @@ Instead of local Ollama models, you can use commercial APIs for better quality o
 
 ```bash
 # Using DeepSeek (cost-effective)
-task audiobook "book.epub" -m "api:deepseek-chat"
+task audiobook "book.epub" -m "api:deepseek/deepseek-chat"
 
 # Using Claude 3.5 Sonnet (high quality)
-task audiobook "book.epub" -m "api:claude-3-5-sonnet-20240620"
+task audiobook "book.epub" -m "api:anthropic/claude-3-5-sonnet-20240620"
 
 # Using GPT-4 (reliable)
-task audiobook "book.epub" -m "api:gpt-4-turbo-preview"
+task audiobook "book.epub" -m "api:openai/gpt-4-turbo-preview"
 
 # Using Gemini Pro
-task audiobook "book.epub" -m "api:gemini-1.5-pro"
+task audiobook "book.epub" -m "api:gemini/gemini-1.5-pro"
 ```
 
 **Setup Required**: Create a `.keys` file with your API keys. See [Commercial APIs Guide](docs/COMMERCIAL_APIS.md) for detailed instructions.

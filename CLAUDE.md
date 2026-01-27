@@ -35,7 +35,7 @@ mypy ./audify ./tests --ignore-missing-imports
 **Pipeline:** CLI → Creator → Synthesizer → Reader
 
 - **Readers** (`audify/readers/`): Extract text from EPUB, PDF, TXT via abstract `Reader` interface in `audify/domain/reader.py`
-- **AudiobookCreator** (`audify/audiobook_creator.py`): Orchestrates LLM script generation. `LLMClient` routes to Ollama or commercial APIs based on `api:` model prefix (e.g., `api:deepseek-chat`). Subclasses: `AudiobookEpubCreator`, `AudiobookPdfCreator`, `DirectoryAudiobookCreator`
+- **AudiobookCreator** (`audify/audiobook_creator.py`): Orchestrates LLM script generation. `LLMClient` routes to Ollama or commercial APIs based on `api:` model prefix (e.g., `api:deepseek/deepseek-chat`). Subclasses: `AudiobookEpubCreator`, `AudiobookPdfCreator`, `DirectoryAudiobookCreator`
 - **Synthesizers** (`audify/text_to_speech.py`): Convert text to speech via Kokoro API. Base class `BaseSynthesizer` with format-specific subclasses
 - **Audio processing** (`audify/utils/audio.py`): Combines episodes, adds chapter markers, embeds covers, produces M4B
 

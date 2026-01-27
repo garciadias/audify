@@ -24,21 +24,21 @@ def test_llm_clients():
 
     # Test DeepSeek
     print("\n2. DeepSeek Configuration:")
-    deepseek_client = LLMClient(model="api:deepseek-chat")
+    deepseek_client = LLMClient(model="api:deepseek/deepseek-chat")
     print(f"   - Is Commercial: {deepseek_client.is_commercial}")
     print(f"   - Config Type: {type(deepseek_client.config).__name__}")
     print(f"   - Model: {deepseek_client.config.model}")
 
     # Test Claude
     print("\n3. Claude Configuration:")
-    claude_client = LLMClient(model="api:claude-3-sonnet-20240229")
+    claude_client = LLMClient(model="api:anthropic/claude-3-sonnet-20240229")
     print(f"   - Is Commercial: {claude_client.is_commercial}")
     print(f"   - Config Type: {type(claude_client.config).__name__}")
     print(f"   - Model: {claude_client.config.model}")
 
     # Test GPT-4
     print("\n4. GPT-4 Configuration:")
-    gpt4_client = LLMClient(model="api:gpt-4")
+    gpt4_client = LLMClient(model="api:openai/gpt-4")
     print(f"   - Is Commercial: {gpt4_client.is_commercial}")
     print(f"   - Config Type: {type(gpt4_client.config).__name__}")
     print(f"   - Model: {gpt4_client.config.model}")
@@ -58,13 +58,13 @@ def show_usage_examples():
     print("=" * 80)
 
     examples = [
-        ("DeepSeek (cost-effective)", "api:deepseek-chat"),
-        ("DeepSeek R1 (reasoning)", "api:deepseek-reasoner"),
-        ("Claude 3.5 Sonnet", "api:claude-3-5-sonnet-20240620"),
-        ("Claude 3 Opus", "api:claude-3-opus-20240229"),
-        ("GPT-4 Turbo", "api:gpt-4-turbo-preview"),
-        ("GPT-3.5 Turbo", "api:gpt-3.5-turbo"),
-        ("Gemini Pro", "api:gemini-1.5-pro"),
+        ("DeepSeek (cost-effective)", "api:deepseek/deepseek-chat"),
+        ("DeepSeek R1 (reasoning)", "api:deepseek/deepseek-reasoner"),
+        ("Claude 3.5 Sonnet", "api:anthropic/claude-3-5-sonnet-20240620"),
+        ("Claude 3 Opus", "api:anthropic/claude-3-opus-20240229"),
+        ("GPT-4 Turbo", "api:openai/gpt-4-turbo-preview"),
+        ("GPT-3.5 Turbo", "api:openai/gpt-3.5-turbo"),
+        ("Gemini Pro", "api:gemini/gemini-1.5-pro"),
     ]
 
     print("\nCommand-line examples:")

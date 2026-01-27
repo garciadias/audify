@@ -431,7 +431,7 @@ class TestLLMClientAPIKeyError:
         mock_config_instance = Mock()
         mock_config.return_value = mock_config_instance
 
-        client = LLMClient(model="api:deepseek-chat")
+        client = LLMClient(model="api:deepseek/deepseek-chat")
 
         # Simulate API key error
         error = Exception("Invalid api key provided")

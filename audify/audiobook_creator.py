@@ -41,7 +41,7 @@ class LLMClient:
         Args:
             base_url: Base URL for Ollama API (ignored for commercial APIs)
             model: Model name. Use 'api:model_name' for commercial APIs
-                (e.g., 'api:deepseek-chat')
+                (e.g., 'api:deepseek/deepseek-chat')
         """
         # Check if using commercial API (format: api:model_name)
         if model.startswith('api:'):
