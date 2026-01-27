@@ -254,11 +254,12 @@ class EpubSynthesizer(BaseSynthesizer):
         save_text: bool = False,
         confirm: bool = True,
         model_name: str = DEFAULT_MODEL,
+        output_dir: Optional[str | Path] = None,
     ):
         self.reader = EpubReader(path)
         detected_language = self.reader.get_language()
         language = language or detected_language
-        self.output_base_dir = Path(OUTPUT_BASE_DIR).resolve()
+        self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
         if not language:
@@ -921,7 +922,7 @@ class PdfSynthesizer(BaseSynthesizer):
         language: str = "en",
         model_name: str = DEFAULT_MODEL,
         speaker: str = DEFAULT_SPEAKER,
-        output_dir: str | Path = OUTPUT_BASE_DIR,
+        output_dir: Optional[str | Path] = None,
         file_name: Optional[str] = None,
         translate: Optional[str] = None,
         save_text: bool = False,
@@ -930,11 +931,11 @@ class PdfSynthesizer(BaseSynthesizer):
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found at {pdf_path}")
 
-        output_dir = Path(output_dir).resolve()
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir_path = Path(output_dir or OUTPUT_BASE_DIR).resolve()
+        output_dir_path.mkdir(parents=True, exist_ok=True)
 
         output_base_name = file_name or pdf_path.stem
-        self.output_wav_path = output_dir / f"{output_base_name}.wav"
+        self.output_wav_path = output_dir_path / f"{output_base_name}.wav"
 
         super().__init__(
             path=pdf_path,
@@ -1001,6 +1002,7 @@ class VoiceSamplesSynthesizer:
         translate: Optional[str] = None,
         sample_text: Optional[str] = None,
         max_samples: Optional[int] = None,
+        output_dir: Optional[str | Path] = None,
     ):
         self.language = language
         self.translate = translate
@@ -1014,7 +1016,8 @@ class VoiceSamplesSynthesizer:
         )
 
         # Set up paths
-        self.output_path = OUTPUT_BASE_DIR / "voice_samples"
+        base_dir = Path(output_dir or OUTPUT_BASE_DIR)
+        self.output_path = base_dir / "voice_samples"
         self.output_path.mkdir(parents=True, exist_ok=True)
 
         # Set up temporary directory

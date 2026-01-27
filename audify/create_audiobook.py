@@ -9,6 +9,7 @@ This script creates audiobook episodes from ebook chapters or PDF content by:
 """
 
 import os
+from pathlib import Path
 
 import click
 
@@ -16,6 +17,7 @@ from audify.audiobook_creator import (
     AudiobookCreator,
     AudiobookEpubCreator,
     AudiobookPdfCreator,
+    DirectoryAudiobookCreator,
 )
 from audify.utils.constants import (
     DEFAULT_LANGUAGE_LIST,
@@ -37,6 +39,7 @@ def get_creator(
     llm_model: str,
     max_chapters: int | None,
     confirm: bool,
+    output_dir: str | None = None,
 ) -> AudiobookCreator:
     """Get the appropriate AudiobookCreator subclass based on file extension.
 
@@ -61,6 +64,7 @@ def get_creator(
             llm_model=llm_model,
             max_chapters=max_chapters,
             confirm=confirm,
+            output_dir=output_dir,
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
@@ -74,6 +78,7 @@ def get_creator(
             llm_base_url=llm_base_url,
             llm_model=llm_model,
             confirm=confirm,
+            output_dir=output_dir,
         )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")
@@ -142,6 +147,13 @@ def get_creator(
     default=False,
     help="Ask for confirmation before proceeding.",
 )
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Output directory or file path for the result.",
+)
 def main(
     path: str,
     language: str,
@@ -153,56 +165,111 @@ def main(
     llm_model: str,
     max_chapters: int | None,
     confirm: bool,
+    output: str | None,
 ):
     """Create audiobook episodes from ebooks or PDFs using LLM and TTS."""
 
-    terminal_width = os.get_terminal_size()[0]
-    file_extension = get_file_extension(path)
-
-    print("=" * terminal_width)
-
-    # Show configuration
-    print(f"Source file: {path}")
-    print(f"Language: {language}")
-    print(f"LLM Model: {llm_model}")
-    if translate:
-        print(f"Translation: {language} -> {translate}")
-    if max_chapters:
-        print(f"Max episodes: {max_chapters}")
-
-    print("=" * terminal_width)
-
     try:
-        creator = get_creator(
-            file_extension=file_extension,
-            path=path,
-            language=language,
-            voice=voice,
-            model_name=voice_model,
-            translate=translate,
-            save_text=save_scripts,
-            llm_base_url=llm_base_url,
-            llm_model=llm_model,
-            max_chapters=max_chapters,
-            confirm=not confirm,
-        )
-        # Generate the audiobook
-        output_path = creator.synthesize()
+        terminal_width = os.get_terminal_size()[0]
+    except OSError:
+        terminal_width = 80  # Default width when no terminal is available
+    path_obj = Path(path)
 
-        print("\n" + "=" * terminal_width)
-        print("Audiobook creation complete!")
-        print(f"Output directory: {output_path}")
+    print("=" * terminal_width)
+
+    # Check if path is a directory
+    if path_obj.is_dir():
+        print("Directory Mode: Processing multiple files".center(terminal_width))
+        print("=" * terminal_width)
+        print(f"Source directory: {path}")
+        print(f"Language: {language}")
+        print(f"LLM Model: {llm_model}")
+        if translate:
+            print(f"Translation: {language} -> {translate}")
+
         print("=" * terminal_width)
 
-    except KeyboardInterrupt:
-        print("\n\nAudiobook creation cancelled by user.")
-    except Exception as e:
-        print(f"\nError: {e}")
-        print("Please check your configuration and try again.")
-        if "Could not connect to LLM" in str(e):
-            print("\nTip: Make sure Ollama is running:")
-            print("  ollama serve")
-            print(f"  ollama pull {llm_model}")
+        try:
+            # Create directory audiobook creator
+            dir_creator = DirectoryAudiobookCreator(
+                directory_path=path,
+                language=language,
+                voice=voice,
+                model_name=model_name,
+                translate=translate,
+                save_text=save_scripts,
+                llm_base_url=llm_base_url,
+                llm_model=llm_model,
+                confirm=not confirm,
+                output_dir=output,
+            )
+            # Generate the audiobook
+            output_path = dir_creator.synthesize()
+
+            print("\n" + "=" * terminal_width)
+            print("Directory audiobook creation complete!")
+            print(f"Output directory: {output_path}")
+            print("=" * terminal_width)
+
+        except KeyboardInterrupt:
+            print("\n\nDirectory audiobook creation cancelled by user.")
+            return
+        except Exception as e:
+            print(f"\nError: {e}")
+            print("Please check your configuration and try again.")
+            if "Could not connect to LLM" in str(e):
+                print("\nTip: Make sure Ollama is running:")
+                print("  ollama serve")
+                print(f"  ollama pull {llm_model}")
+            return
+
+    else:
+        # Single file mode
+        file_extension = get_file_extension(path)
+
+        # Show configuration
+        print(f"Source file: {path}")
+        print(f"Language: {language}")
+        print(f"LLM Model: {llm_model}")
+        if translate:
+            print(f"Translation: {language} -> {translate}")
+        if max_chapters:
+            print(f"Max episodes: {max_chapters}")
+
+        print("=" * terminal_width)
+
+        try:
+            creator = get_creator(
+                file_extension=file_extension,
+                path=path,
+                language=language,
+                voice=voice,
+                model_name=model_name,
+                translate=translate,
+                save_text=save_scripts,
+                llm_base_url=llm_base_url,
+                llm_model=llm_model,
+                max_chapters=max_chapters,
+                confirm=not confirm,
+                output_dir=output,
+            )
+            # Generate the audiobook
+            output_path = creator.synthesize()
+
+            print("\n" + "=" * terminal_width)
+            print("Audiobook creation complete!")
+            print(f"Output directory: {output_path}")
+            print("=" * terminal_width)
+
+        except KeyboardInterrupt:
+            print("\n\nAudiobook creation cancelled by user.")
+        except Exception as e:
+            print(f"\nError: {e}")
+            print("Please check your configuration and try again.")
+            if "Could not connect to LLM" in str(e):
+                print("\nTip: Make sure Ollama is running:")
+                print("  ollama serve")
+                print(f"  ollama pull {llm_model}")
 
 
 if __name__ == "__main__":

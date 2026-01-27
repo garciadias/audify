@@ -85,3 +85,11 @@ class TestOllamaAPIConfig:
         """Test __repr__ method."""
         expected = "OllamaAPIConfig(base_url='http://test:11434', timeout=600)"
         assert repr(self.config) == expected
+
+from audify.utils.api_config import APIConfig
+
+
+def test_api_config_repr():
+    config = APIConfig(base_url="http://example.com", timeout=60)
+    expected = "APIConfig(base_url='http://example.com', timeout=60)"
+    assert repr(config) == expected

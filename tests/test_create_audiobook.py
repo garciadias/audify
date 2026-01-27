@@ -47,6 +47,7 @@ class TestGetCreator:
                 llm_model="llama3.1",
                 max_chapters=None,
                 confirm=True,
+                output_dir=None,
             )
 
     def test_get_creator_pdf(self):
@@ -80,6 +81,7 @@ class TestGetCreator:
                 llm_base_url="http://localhost:11434",
                 llm_model="llama3.1",
                 confirm=True,
+                output_dir=None,
                 # Note: max_chapters is not passed to PDF creator
             )
 

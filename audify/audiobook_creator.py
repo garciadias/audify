@@ -3,7 +3,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import tqdm
 from bs4 import BeautifulSoup
@@ -104,16 +104,17 @@ class AudiobookCreator(BaseSynthesizer):
         llm_model: str = OLLAMA_DEFAULT_MODEL,
         max_chapters: Optional[int] = None,
         confirm: bool = True,
+        output_dir: Optional[str | Path] = None,
     ):
         # Initialize file reader based on extension
+        self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
-        self.reader = (
-            EpubReader(path) if file_path.suffix.lower() == ".epub" else PdfReader(path)
-        )
-        if isinstance(self.reader, EpubReader):
+        if file_path.suffix.lower() == ".epub":
+            self.reader = EpubReader(path)
             detected_language = self.reader.get_language()
             self.title = self.reader.title
-        elif isinstance(self.reader, PdfReader):
+        elif file_path.suffix.lower() == ".pdf":
+            self.reader = PdfReader(path)
             detected_language = "en"  # PDF reader will not detect language on metadata
             self.title = file_path.stem
         else:
@@ -128,7 +129,7 @@ class AudiobookCreator(BaseSynthesizer):
             )
 
         # Setup output paths
-        self.output_base_dir = Path(OUTPUT_BASE_DIR).resolve()
+        self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -292,9 +293,19 @@ class AudiobookCreator(BaseSynthesizer):
                     getattr(self, "language", None)
                     or getattr(self, "resolved_language", None)
                 )
-                cleaned_text = translate_sentence(
-                    cleaned_text, src_lang=src_lang, tgt_lang=self.translate
-                )
+                # If an explicit translate target was requested,
+                # translate the cleaned text
+                if self.translate:
+                    # prefer explicit language attrs; fall back to resolved_language
+                    src_lang = getattr(self, "language", None) or getattr(
+                        self, "resolved_language", None
+                    )
+                    cleaned_text = translate_sentence(
+                        cleaned_text, src_lang=src_lang, tgt_lang=self.translate
+                    )
+                prompt = f"{translated_prompt}\n\n{cleaned_text}"
+            else:
+                prompt = AUDIOBOOK_PROMPT + "\n\n" + cleaned_text
 
             logger.debug(f"Using language: {effective_language}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
@@ -343,9 +354,8 @@ class AudiobookCreator(BaseSynthesizer):
         # If translation is enabled, translate each sentence before synthesis
         if getattr(self, "translate", None):
             translated_sentences = []
-            src_lang = (
-                getattr(self, "language", None)
-                or getattr(self, "resolved_language", None)
+            src_lang = getattr(self, "language", None) or getattr(
+                self, "resolved_language", None
             )
             for s in sentences:
                 try:
@@ -781,3 +791,522 @@ class AudiobookPdfCreator(AudiobookCreator):
         except Exception as e:
             logger.error(f"Error creating audiobook episode: {e}", exc_info=True)
             return []
+
+
+class DirectoryAudiobookCreator:
+    """Creates a single audiobook from multiple files in a directory."""
+
+    def __init__(
+        self,
+        directory_path: str | Path,
+        language: str = "en",
+        voice: str = "af_bella",
+        model_name: str = "kokoro",
+        translate: Optional[str] = None,
+        save_text: bool = True,
+        llm_base_url: str = OLLAMA_API_BASE_URL,
+        llm_model: str = OLLAMA_DEFAULT_MODEL,
+        confirm: bool = True,
+        output_dir: Optional[str | Path] = None,
+    ):
+        self.directory_path = Path(directory_path)
+        if not self.directory_path.is_dir():
+            raise ValueError(f"Path is not a directory: {directory_path}")
+
+        self.language = language
+        self.voice = voice
+        self.model_name = model_name
+        self.translate = translate
+        self.save_text = save_text
+        self.llm_base_url = llm_base_url
+        self.llm_model = llm_model
+        self.confirm = confirm
+
+        # Setup output paths
+        self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
+        if not self.output_base_dir.exists():
+            self.output_base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create directory-specific title
+        self.title = self.directory_path.name
+        self.file_name = Path(get_file_name_title(self.title))
+        self._setup_paths(self.file_name)
+
+        # Initialize TTS synthesizer for titles
+        from audify.text_to_speech import BaseSynthesizer
+
+        self.tts_synthesizer = BaseSynthesizer(
+            path=str(self.directory_path),
+            language=self.language,
+            voice=self.voice,
+            model_name=self.model_name,
+            translate=self.translate,
+            save_text=False,
+        )
+
+        self.chapter_titles: List[str] = []
+        self.episode_paths: List[Path] = []
+
+    def _setup_paths(self, file_name_base: Path) -> None:
+        """Sets up the necessary output paths for audiobook creation."""
+        if not self.output_base_dir.exists():
+            logger.info(f"Creating output base directory: {self.output_base_dir}")
+            self.output_base_dir.mkdir(parents=True, exist_ok=True)
+
+        folder_safe_name = re.sub(r"[^\w\s-]", "", file_name_base.stem).strip()
+        self.audiobook_path = self.output_base_dir / folder_safe_name
+        self.audiobook_path.mkdir(parents=True, exist_ok=True)
+        self.scripts_path = self.audiobook_path / "scripts"
+        self.scripts_path.mkdir(parents=True, exist_ok=True)
+        self.episodes_path = self.audiobook_path / "episodes"
+        self.episodes_path.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Audiobook output directory set to: {self.audiobook_path}")
+
+    def _get_supported_files(self) -> List[Path]:
+        """Get all supported files from the directory."""
+        supported_extensions = {".epub", ".pdf", ".txt", ".md"}
+        files = []
+        for file_path in sorted(self.directory_path.iterdir()):
+            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                files.append(file_path)
+        logger.info(f"Found {len(files)} supported files in directory")
+        return files
+
+    def _synthesize_title_audio(
+        self, title: str, episode_number: int
+    ) -> Optional[Path]:
+        """Synthesize the title as audio."""
+        logger.info(f"Synthesizing title for episode {episode_number}: {title}")
+        title_wav_path = self.episodes_path / f"title_{episode_number:03d}.wav"
+        title_mp3_path = title_wav_path.with_suffix(".mp3")
+
+        if title_mp3_path.exists():
+            logger.info(f"Title audio for episode {episode_number} already exists")
+            return title_mp3_path
+
+        # Create title text with pause
+        title_text = f"{title}."
+        sentences = [title_text]
+
+        try:
+            self.tts_synthesizer._synthesize_sentences(sentences, title_wav_path)
+            return AudioProcessor.convert_wav_to_mp3(title_wav_path)
+        except Exception as e:
+            logger.error(f"Error synthesizing title for episode {episode_number}: {e}")
+            return None
+
+    def _process_single_file(
+        self, file_path: Path, episode_number: int
+    ) -> Optional[Path]:
+        """Process a single file and create an episode with title."""
+        logger.info(f"Processing file {episode_number}: {file_path.name}")
+
+        # Get the article title from filename
+        article_title = file_path.stem.replace("_", " ").replace("-", " ")
+        self.chapter_titles.append(article_title)
+
+        # Create an audiobook creator for this single file
+        try:
+            file_extension = file_path.suffix.lower()
+            creator: Union[AudiobookEpubCreator, AudiobookPdfCreator]
+
+            if file_extension == ".epub":
+                creator = AudiobookEpubCreator(
+                    path=str(file_path),
+                    language=self.language,
+                    voice=self.voice,
+                    model_name=self.model_name,
+                    translate=self.translate,
+                    save_text=self.save_text,
+                    llm_base_url=self.llm_base_url,
+                    llm_model=self.llm_model,
+                    max_chapters=None,
+                    confirm=False,
+                    output_dir=self.audiobook_path / f"temp_{episode_number:03d}",
+                )
+            elif file_extension == ".pdf":
+                creator = AudiobookPdfCreator(
+                    path=str(file_path),
+                    language=self.language,
+                    voice=self.voice,
+                    model_name=self.model_name,
+                    translate=self.translate,
+                    save_text=self.save_text,
+                    llm_base_url=self.llm_base_url,
+                    llm_model=self.llm_model,
+                    confirm=False,
+                    output_dir=self.audiobook_path / f"temp_{episode_number:03d}",
+                )
+            elif file_extension in [".txt", ".md"]:
+                # For text files, create a simple episode
+                return self._process_text_file(file_path, episode_number, article_title)
+            else:
+                logger.warning(f"Unsupported file format: {file_extension}")
+                return None
+
+            # Generate audiobook for this file
+            creator.create_audiobook_series()
+
+            # Find the generated MP3 files
+            if file_extension == ".epub":
+                temp_episodes = sorted(
+                    creator.episodes_path.glob("episode_*.mp3")
+                )
+            else:
+                temp_episodes = sorted(
+                    creator.episodes_path.glob("episode_*.mp3")
+                )
+
+            if not temp_episodes:
+                logger.warning(f"No episodes generated for {file_path.name}")
+                return None
+
+            # Combine all episodes from this file
+            combined_audio = AudioSegment.empty()
+
+            # Add title audio first
+            title_audio_path = self._synthesize_title_audio(
+                article_title, episode_number
+            )
+            if title_audio_path and title_audio_path.exists():
+                try:
+                    title_audio = AudioSegment.from_mp3(title_audio_path)
+                    combined_audio += title_audio
+                    # Add a short pause after title
+                    combined_audio += AudioSegment.silent(duration=1000)
+                except Exception as e:
+                    logger.error(f"Error adding title audio: {e}")
+
+            # Add all episode audio
+            for episode_path in temp_episodes:
+                try:
+                    episode_audio = AudioSegment.from_mp3(episode_path)
+                    combined_audio += episode_audio
+                except Exception as e:
+                    logger.error(f"Error adding episode audio from {episode_path}: {e}")
+
+            # Export combined episode
+            episode_filename = f"episode_{episode_number:03d}.mp3"
+            final_episode_path = self.episodes_path / episode_filename
+            combined_audio.export(final_episode_path, format="mp3", bitrate="128k")
+
+            logger.info(f"Created combined episode: {final_episode_path}")
+            return final_episode_path
+
+        except Exception as e:
+            logger.error(f"Error processing file {file_path.name}: {e}", exc_info=True)
+            return None
+
+    def _process_text_file(
+        self, file_path: Path, episode_number: int, article_title: str
+    ) -> Optional[Path]:
+        """Process a text file and create an episode."""
+        try:
+            # Read the text file
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Clean and prepare the text
+            cleaned_content = self._clean_text_for_audiobook(content)
+
+            # Generate script using LLM
+            llm_client = LLMClient(self.llm_base_url, self.llm_model)
+            audiobook_script = llm_client.generate_audiobook_script(
+                cleaned_content, language=self.translate or self.language
+            )
+
+            # Save script if requested
+            if self.save_text:
+                script_filename = f"episode_{episode_number:03d}_script.txt"
+                script_path = self.scripts_path / script_filename
+                with open(script_path, "w", encoding="utf-8") as f:
+                    f.write(audiobook_script)
+
+            # Synthesize title audio
+            title_audio_path = self._synthesize_title_audio(
+                article_title, episode_number
+            )
+
+            # Synthesize content audio
+            content_wav_path = self.episodes_path / f"content_{episode_number:03d}.wav"
+            sentences = break_text_into_sentences(audiobook_script)
+
+            if self.translate:
+                translated_sentences = []
+                for s in sentences:
+                    try:
+                        translated_sentences.append(
+                            translate_sentence(
+                                s, src_lang=self.language, tgt_lang=self.translate
+                            )
+                        )
+                    except Exception:
+                        translated_sentences.append(s)
+                sentences = translated_sentences
+
+            self.tts_synthesizer._synthesize_sentences(sentences, content_wav_path)
+            content_mp3_path = AudioProcessor.convert_wav_to_mp3(content_wav_path)
+
+            # Combine title and content
+            combined_audio = AudioSegment.empty()
+            if title_audio_path and title_audio_path.exists():
+                title_audio = AudioSegment.from_mp3(title_audio_path)
+                combined_audio += title_audio
+                combined_audio += AudioSegment.silent(duration=1000)
+
+            content_audio = AudioSegment.from_mp3(content_mp3_path)
+            combined_audio += content_audio
+
+            # Export final episode
+            episode_filename = f"episode_{episode_number:03d}.mp3"
+            final_episode_path = self.episodes_path / episode_filename
+            combined_audio.export(final_episode_path, format="mp3", bitrate="128k")
+
+            logger.info(f"Created episode from text file: {final_episode_path}")
+            return final_episode_path
+
+        except Exception as e:
+            logger.error(
+                f"Error processing text file {file_path.name}: {e}", exc_info=True
+            )
+            return None
+
+    def _clean_text_for_audiobook(self, text: str) -> str:
+        """Clean text by removing references and non-content elements."""
+        text = str(text)
+        if re.search(r"<[^>]+>", text):
+            text = BeautifulSoup(text, "html.parser").get_text()
+
+        text = re.sub(r"\[\d+\]", "", text)
+        text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
+        text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
+        text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
+        text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
+        text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
+        text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
+        text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+
+        return text.strip()
+
+    def _initialize_metadata_file(self) -> None:
+        """Writes the initial header to the FFmpeg metadata file."""
+        self.metadata_path = self.audiobook_path / "chapters.txt"
+        logger.info(f"Initializing metadata file: {self.metadata_path}")
+        try:
+            with open(self.metadata_path, "w") as f:
+                f.write(";FFMETADATA1\n")
+                f.write("major_brand=M4A\n")
+                f.write("minor_version=512\n")
+                f.write("compatible_brands=M4A isis2\n")
+                f.write("encoder=Lavf61.7.100\n")
+        except IOError as e:
+            logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
+            raise
+
+    def _log_episode_metadata(
+        self,
+        episode_number: int,
+        start_time_ms: int,
+        duration_s: float,
+        chapter_title: Optional[str] = None,
+    ) -> int:
+        """Appends episode metadata to the FFmpeg metadata file."""
+        end_time_ms = start_time_ms + int(duration_s * 1000)
+        title = chapter_title or f"Episode {episode_number}"
+
+        logger.debug(
+            f"Logging metadata for '{title}': Start={start_time_ms}, "
+            f"End={end_time_ms}, Duration={duration_s:.2f}s"
+        )
+        try:
+            with open(self.metadata_path, "a") as f:
+                f.write("[CHAPTER]\n")
+                f.write("TIMEBASE=1/1000\n")
+                f.write(f"START={start_time_ms}\n")
+                f.write(f"END={end_time_ms}\n")
+                f.write(f"title={title}\n")
+            return end_time_ms
+        except IOError as e:
+            logger.error(
+                f"Failed to write episode metadata for '{title}': {e}", exc_info=True
+            )
+            return start_time_ms
+
+    def create_m4b(self) -> None:
+        """Combines episodes into M4B audiobook file."""
+        logger.info("Starting M4B creation process for directory audiobook...")
+
+        # Get all episode MP3 files
+        episode_mp3_files = sorted(self.episodes_path.glob("episode_*.mp3"))
+
+        if not episode_mp3_files:
+            logger.error("No episode MP3 files found to create M4B.")
+            return
+
+        # Set up paths for M4B creation
+        self.temp_m4b_path = self.audiobook_path / f"{self.file_name}.tmp.m4b"
+        self.final_m4b_path = self.audiobook_path / f"{self.file_name}.m4b"
+
+        # Initialize metadata file
+        self._initialize_metadata_file()
+
+        logger.info(f"Creating M4B audiobook from {len(episode_mp3_files)} episodes...")
+        self._create_single_m4b(episode_mp3_files)
+
+    def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
+        """Create a single M4B file from all episodes."""
+        if not self.temp_m4b_path.exists():
+            logger.info(f"Combining {len(episode_mp3_files)} episode MP3s...")
+            combined_audio = AudioSegment.empty()
+            current_start_time_ms = 0
+
+            for i, mp3_file in enumerate(
+                tqdm.tqdm(episode_mp3_files, desc="Combining Episodes", unit="file")
+            ):
+                try:
+                    audio = AudioSegment.from_mp3(mp3_file)
+                    combined_audio += audio
+                    # Log metadata for this episode
+                    duration_s = len(audio) / 1000.0
+                    episode_number = i + 1
+                    current_start_time_ms = self._log_episode_metadata(
+                        episode_number,
+                        current_start_time_ms,
+                        duration_s,
+                        chapter_title=self.chapter_titles[i]
+                        if i < len(self.chapter_titles)
+                        else None,
+                    )
+
+                except CouldntDecodeError:
+                    logger.error(
+                        f"Could not decode episode file: {mp3_file}, skipping."
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error processing episode file {mp3_file}: {e}, skipping.",
+                        exc_info=True,
+                    )
+
+            if len(combined_audio) == 0:
+                logger.error("Combined audio is empty. Cannot create M4B.")
+                return
+
+            logger.info(
+                f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}"
+            )
+            try:
+                combined_audio.export(
+                    self.temp_m4b_path, format="mp4", codec="aac", bitrate="64k"
+                )
+            except Exception as e:
+                logger.error(f"Failed to export temporary M4B file: {e}", exc_info=True)
+                self.temp_m4b_path.unlink(missing_ok=True)
+                raise
+        else:
+            logger.info(
+                f"Temporary M4B file already exists: {self.temp_m4b_path}. "
+                "Skipping combination."
+            )
+
+        # Add metadata using FFmpeg
+        logger.info("Adding metadata using FFmpeg...")
+        ffmpeg_command = [
+            "ffmpeg",
+            "-i",
+            str(self.temp_m4b_path),
+            "-i",
+            str(self.metadata_path),
+            "-map",
+            "0:a",
+            "-map_metadata",
+            "1",
+            "-c:a",
+            "copy",
+            "-f",
+            "mp4",
+            "-y",
+            str(self.final_m4b_path),
+        ]
+
+        try:
+            logger.debug(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
+            result = subprocess.run(
+                ffmpeg_command, check=True, capture_output=True, text=True
+            )
+            logger.info("FFmpeg process completed successfully.")
+            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
+            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
+
+            logger.info(f"Cleaning up temporary file: {self.temp_m4b_path}")
+            self.temp_m4b_path.unlink(missing_ok=True)
+
+            logger.info(f"M4B audiobook created: {self.final_m4b_path}")
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg command failed with exit code {e.returncode}")
+            logger.error(f"FFmpeg stdout:\n{e.stdout}")
+            logger.error(f"FFmpeg stderr:\n{e.stderr}")
+            logger.error(
+                "M4B creation failed. The temporary M4B file and episode files are "
+                "preserved for inspection."
+            )
+            raise
+        except FileNotFoundError:
+            logger.error(
+                "FFmpeg command not found. Please ensure FFmpeg is installed and in "
+                "your system's PATH."
+            )
+            raise
+
+    def synthesize(self) -> Path:
+        """Main synthesis method - processes all files in directory."""
+        logger.info(
+            f"Starting directory audiobook creation for: {self.directory_path.name}"
+        )
+
+        # Get all supported files
+        files = self._get_supported_files()
+
+        if not files:
+            logger.error("No supported files found in directory")
+            return self.audiobook_path
+
+        if self.confirm:
+            prompt = (
+                f"Process {len(files)} files from directory "
+                f"'{self.directory_path.name}'? (y/N): "
+            )
+            response = input(prompt)
+            if response.lower() not in ["y", "yes"]:
+                logger.info("Directory audiobook creation cancelled by user.")
+                return self.audiobook_path
+
+        # Process each file
+        for i, file_path in enumerate(files, start=1):
+            episode_path = self._process_single_file(file_path, i)
+            if episode_path and episode_path.exists():
+                self.episode_paths.append(episode_path)
+                logger.info(
+                    f"Successfully processed file {i}/{len(files)}: "
+                    f"{file_path.name}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to process file {i}/{len(files)}: {file_path.name}"
+                )
+
+        if self.episode_paths:
+            logger.info(
+                f"Directory audiobook processing complete with "
+                f"{len(self.episode_paths)} episodes"
+            )
+            # Create M4B from all episodes
+            self.create_m4b()
+            return self.audiobook_path
+        else:
+            logger.error("No episodes were created successfully")
+            return self.audiobook_path
