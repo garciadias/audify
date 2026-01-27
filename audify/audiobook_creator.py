@@ -289,23 +289,12 @@ class AudiobookCreator(BaseSynthesizer):
             # translate the cleaned text
             if self.translate:
                 # prefer explicit language attrs; fall back to resolved_language
-                src_lang = (
-                    getattr(self, "language", None)
-                    or getattr(self, "resolved_language", None)
+                src_lang = getattr(self, "language", None) or getattr(
+                    self, "resolved_language", None
                 )
-                # If an explicit translate target was requested,
-                # translate the cleaned text
-                if self.translate:
-                    # prefer explicit language attrs; fall back to resolved_language
-                    src_lang = getattr(self, "language", None) or getattr(
-                        self, "resolved_language", None
-                    )
-                    cleaned_text = translate_sentence(
-                        cleaned_text, src_lang=src_lang, tgt_lang=self.translate
-                    )
-                prompt = f"{translated_prompt}\n\n{cleaned_text}"
-            else:
-                prompt = AUDIOBOOK_PROMPT + "\n\n" + cleaned_text
+                cleaned_text = translate_sentence(
+                    cleaned_text, src_lang=src_lang, tgt_lang=self.translate
+                )
 
             logger.debug(f"Using language: {effective_language}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
@@ -950,13 +939,9 @@ class DirectoryAudiobookCreator:
 
             # Find the generated MP3 files
             if file_extension == ".epub":
-                temp_episodes = sorted(
-                    creator.episodes_path.glob("episode_*.mp3")
-                )
+                temp_episodes = sorted(creator.episodes_path.glob("episode_*.mp3"))
             else:
-                temp_episodes = sorted(
-                    creator.episodes_path.glob("episode_*.mp3")
-                )
+                temp_episodes = sorted(creator.episodes_path.glob("episode_*.mp3"))
 
             if not temp_episodes:
                 logger.warning(f"No episodes generated for {file_path.name}")
@@ -1291,8 +1276,7 @@ class DirectoryAudiobookCreator:
             if episode_path and episode_path.exists():
                 self.episode_paths.append(episode_path)
                 logger.info(
-                    f"Successfully processed file {i}/{len(files)}: "
-                    f"{file_path.name}"
+                    f"Successfully processed file {i}/{len(files)}: {file_path.name}"
                 )
             else:
                 logger.warning(

@@ -1,9 +1,8 @@
-
 from unittest.mock import Mock, patch
 
 import pytest
 
-from audify.utils.api_config import OllamaAPIConfig
+from audify.utils.api_config import APIConfig, OllamaAPIConfig
 
 
 class TestOllamaAPIConfig:
@@ -59,8 +58,7 @@ class TestOllamaAPIConfig:
             mock_completion.return_value = mock_response
 
             result = self.config.generate(
-                system_prompt="System instructions",
-                user_prompt="User content"
+                system_prompt="System instructions", user_prompt="User content"
             )
 
             assert result == "Generated content"
@@ -70,7 +68,7 @@ class TestOllamaAPIConfig:
             call_args = mock_completion.call_args
             expected_messages = [
                 {"role": "system", "content": "System instructions"},
-                {"role": "user", "content": "User content"}
+                {"role": "user", "content": "User content"},
             ]
             assert call_args.kwargs["messages"] == expected_messages
 
@@ -85,8 +83,6 @@ class TestOllamaAPIConfig:
         """Test __repr__ method."""
         expected = "OllamaAPIConfig(base_url='http://test:11434', timeout=600)"
         assert repr(self.config) == expected
-
-from audify.utils.api_config import APIConfig
 
 
 def test_api_config_repr():

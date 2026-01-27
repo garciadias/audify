@@ -157,10 +157,11 @@ class TestLLMClient:
     def test_generate_audiobook_script_with_translation(self):
         """Test audiobook script generation with language translation."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
-            mock_llm = Mock()
-            mock_llm.invoke.return_value = "Generated audiobook script content"
             mock_config_instance = Mock()
-            mock_config_instance.create_llm.return_value = mock_llm
+            mock_config_instance.generate.return_value = (
+                "Generated audiobook script content"
+            )
+            mock_config_instance.base_url = "http://localhost:11434"
             mock_config.return_value = mock_config_instance
 
             client = LLMClient()
