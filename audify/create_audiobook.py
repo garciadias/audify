@@ -13,17 +13,11 @@ from pathlib import Path
 
 import click
 
-from audify.audiobook_creator import (
-    AudiobookCreator,
-    AudiobookEpubCreator,
-    AudiobookPdfCreator,
-    DirectoryAudiobookCreator,
-)
-from audify.utils.constants import (
-    DEFAULT_LANGUAGE_LIST,
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_MODEL,
-)
+from audify.audiobook_creator import (AudiobookCreator, AudiobookEpubCreator,
+                                      AudiobookPdfCreator,
+                                      DirectoryAudiobookCreator)
+from audify.utils.constants import (DEFAULT_LANGUAGE_LIST, OLLAMA_API_BASE_URL,
+                                    OLLAMA_DEFAULT_MODEL)
 from audify.utils.text import get_file_extension
 
 
@@ -131,7 +125,11 @@ def get_creator(
     "-m",
     type=str,
     default=OLLAMA_DEFAULT_MODEL,
-    help=f"The LLM model to use (default: {OLLAMA_DEFAULT_MODEL}).",
+    help=f"The LLM model to use. For Ollama: model name "
+    f"(default: {OLLAMA_DEFAULT_MODEL}). For commercial APIs: "
+    f"'api:model_name' (e.g., 'api:deepseek-chat', "
+    f"'api:claude-3-sonnet-20240229', 'api:gpt-4'). "
+    f"Requires API keys in .keys file or environment variables.",
 )
 @click.option(
     "--max-chapters",
