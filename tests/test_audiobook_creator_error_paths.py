@@ -155,7 +155,7 @@ class TestDirectoryCreatorM4bExportFailure:
             creator._initialize_metadata_file()
             creator.chapter_titles = ["Chapter 1"]
 
-            mock_tqdm.side_effect = lambda x, **kwargs: x
+            mock_tqdm.side_effect = lambda x, **_kwargs: x
 
             mock_combined = Mock()
             mock_combined.__len__ = Mock(return_value=5000)

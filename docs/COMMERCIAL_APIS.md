@@ -26,7 +26,11 @@ DEEPSEEK=sk-your-deepseek-api-key-here
 ANTHROPIC=sk-ant-your-anthropic-api-key-here
 OPENAI=sk-your-openai-api-key-here
 GEMINI=your-google-api-key-here
+# Or use GOOGLE (both names are equivalent):
+# GOOGLE=your-google-api-key-here
 ```
+
+**Note:** For Google Gemini, you can use either `GEMINI` or `GOOGLE` as the key name in your `.keys` file. Both are supported and equivalent. Similarly, when setting environment variables, both `GEMINI_API_KEY` and `GOOGLE_API_KEY` will work.
 
 **Important Security Notes:**
 
@@ -219,7 +223,9 @@ Instead of using a `.keys` file, you can set environment variables:
 export DEEPSEEK_API_KEY="sk-your-key"
 export ANTHROPIC_API_KEY="sk-ant-your-key"
 export OPENAI_API_KEY="sk-your-key"
+# For Google Gemini, use either GOOGLE_API_KEY or GEMINI_API_KEY (both work):
 export GOOGLE_API_KEY="your-key"
+# export GEMINI_API_KEY="your-key"  # Alternative, equivalent to above
 
 # Then run normally
 python -m audify.create_audiobook mybook.epub -m "api:deepseek/deepseek-chat"

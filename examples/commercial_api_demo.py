@@ -31,14 +31,14 @@ def test_llm_clients():
 
     # Test Claude
     print("\n3. Claude Configuration:")
-    claude_client = LLMClient(model="api:anthropic/claude-3-sonnet-20240229")
+    claude_client = LLMClient(model="api:anthropic/claude-sonnet-4-20250514")
     print(f"   - Is Commercial: {claude_client.is_commercial}")
     print(f"   - Config Type: {type(claude_client.config).__name__}")
     print(f"   - Model: {claude_client.config.model}")
 
     # Test GPT-4
     print("\n4. GPT-4 Configuration:")
-    gpt4_client = LLMClient(model="api:openai/gpt-4")
+    gpt4_client = LLMClient(model="api:openai/gpt-4o")
     print(f"   - Is Commercial: {gpt4_client.is_commercial}")
     print(f"   - Config Type: {type(gpt4_client.config).__name__}")
     print(f"   - Model: {gpt4_client.config.model}")
