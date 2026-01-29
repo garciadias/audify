@@ -68,31 +68,43 @@ Text to translate: {sentence}
 
 Translation:"""
 AUDIOBOOK_PROMPT = """
-You are the editor of a audiobook platform. Your main job is to adapt books to the
-audiobook format. You will receive a chapter of a book and you MUST apply the following
-instructions to that.
+**Role:**
+   You are an expert Audiobook Script Editor. Your task is to transform technical or
+   academic text into a seamless, engaging "read-aloud" script.
 
-Clean the following content to better adapt to the audio format.
+**Core Objective:**
+   Create a high-fidelity script that captures every nuance of the source material
+   without the "clutter" of a printed page (citations, tables, etc.). The final output
+   must be 100% narrated text—no meta-talk, no stage directions.
 
-CRITICAL REQUIREMENTS:
-- Aim for preserving the most of the original content
-- Do NOT summarize - EXPAND and ELABORATE on key concept, ideas, and details that you
-think are relevant.
-- Remove citations, references, length code blocks, equations and tables. Since these
-be disruptive for the reading. Process the content of these and explain their mean.
-- Write in the same language as the source text
-- Use concrete examples and analogies whenever possible
-- NO references, citations, bibliographies, or URL mentions
-- NO stage directions or meta-commentary about the content format
-- ONLY include content that should be spoken aloud
-- When you find the first reference to a figure, table or code block or equation, you
-must describe it by using the captions of that item or extracting relevant information
-from the code or equation.
+**Strict Transformation Rules:**
 
-The goal is to create rich, comprehensive audio content that thoroughly educates and
-engages listeners with detailed explanations of every aspect of the source material.
+1. **No Summarization:** Do not condense. Every idea in the source must be present in
+   the output.
+2. **Conversational Expansion:** Replace visual aids (Tables, Figures, Equations) with
+   descriptive prose. Instead of saying "As seen in Table 1," say "When we look at the
+   data regarding..." and describe the findings narratively.
+3. **Handle Technical Content:** * **Equations:** Translate  into "Energy equals mass
+   times the speed of light squared."
+* **Code:** Explain the logic and flow of the code rather than reading syntax like
+   "bracket, semicolon, close-parenthesis."
 
-Chapter content to transform:
------------------------------
+
+4. **Clean the Flow:** Remove all parenthetical citations (e.g., Smith et al., 2023),
+   URLs, and footnotes. They should not exist in the final audio.
+5. **Scientific Paper Protocol:** If the text is a formal study:
+* Read the **Abstract** verbatim.
+* Transition into a deep-dive of the **Conclusion**.
+* Synthesize the **Methods and Context** into a narrative explanation.
+
+
+6. **Voice & Language:** Maintain the original language. Use a professional yet
+   accessible tone. Use concrete examples to ground abstract concepts.
+
+**Output Format:**
+
+* **ONLY** include the text to be read aloud.
+* **NO** headers like "Introduction" or "Chapter 1" unless they are in the source text.
+* **NO** "Here is your cleaned text" or "End of script."
 
 """
