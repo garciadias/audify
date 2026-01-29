@@ -49,7 +49,7 @@ class TestStartCLINewFeatures:
         result = runner.invoke(start.main, ["--list-voices"])
 
         assert result.exit_code == 0
-        assert "Available voices:" in result.output
+        assert "Available voices for KOKORO:" in result.output
         assert "AF voices:" in result.output
         assert "af_bella" in result.output
         assert "af_alloy" in result.output
@@ -59,32 +59,36 @@ class TestStartCLINewFeatures:
         assert "fr_voice" in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
-    @patch("audify.start.get_available_models_and_voices")
+    @patch("audify.start.get_tts_config")
     def test_list_voices_api_error(
-            self, mock_get_models_voices, mock_terminal_size, runner
+            self, mock_get_tts_config, mock_terminal_size, runner
         ):
         """Test --list-voices flag when API fails."""
-        mock_get_models_voices.side_effect = Exception("API Error")
+        mock_config = Mock()
+        mock_config.get_available_voices.side_effect = Exception("API Error")
+        mock_get_tts_config.return_value = mock_config
 
         result = runner.invoke(start.main, ["--list-voices"])
 
         assert result.exit_code == 0
-        assert "Available voices:" in result.output
-        assert "Error fetching voices from Kokoro API" in result.output
+        assert "Available voices for KOKORO:" in result.output
+        assert "Error fetching voices from kokoro" in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
-    @patch("audify.start.get_available_models_and_voices")
+    @patch("audify.start.get_tts_config")
     def test_list_voices_no_voices_found(
-            self, mock_get_models_voices, mock_terminal_size, runner
+            self, mock_get_tts_config, mock_terminal_size, runner
         ):
         """Test --list-voices flag when no voices are found."""
-        mock_get_models_voices.return_value = (["kokoro"], [])
+        mock_config = Mock()
+        mock_config.get_available_voices.return_value = []
+        mock_get_tts_config.return_value = mock_config
 
         result = runner.invoke(start.main, ["--list-voices"])
 
         assert result.exit_code == 0
-        assert "Available voices:" in result.output
-        assert "No voices found." in result.output
+        assert "Available voices for KOKORO:" in result.output
+        assert "No voices found for kokoro." in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.start.VoiceSamplesSynthesizer")
@@ -168,13 +172,15 @@ class TestStartCLINewFeatures:
     @patch("os.get_terminal_size", return_value=(80, 24))
     def test_list_voices_short_flag(self, mock_terminal_size, runner):
         """Test --list-voices short flag (-lv)."""
-        with patch("audify.start.get_available_models_and_voices") as mock_get:
-            mock_get.return_value = (["kokoro"], ["af_bella"])
+        with patch("audify.start.get_tts_config") as mock_get_config:
+            mock_config = Mock()
+            mock_config.get_available_voices.return_value = ["af_bella"]
+            mock_get_config.return_value = mock_config
 
             result = runner.invoke(start.main, ["-lv"])
 
             assert result.exit_code == 0
-            assert "Available voices:" in result.output
+            assert "Available voices for KOKORO:" in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.start.VoiceSamplesSynthesizer")

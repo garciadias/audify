@@ -103,7 +103,7 @@ class TestVoiceSamplesIntegration:
             result = runner.invoke(start.main, ["--list-voices"])
 
             assert result.exit_code == 0
-            assert "Available voices:" in result.output
+            assert "Available voices for KOKORO:" in result.output
             assert "AF voices:" in result.output
             assert "af_bella" in result.output
             assert "af_alloy" in result.output
@@ -275,7 +275,7 @@ class TestEdgeCases:
     @patch("requests.get")
     def test_malformed_api_responses(self, mock_get, mock_terminal_size, runner):
         """Test handling of malformed API responses in voice listing."""
-        # Return malformed response
+        # Return malformed response - voices list will be empty
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {"invalid": "response"}
@@ -284,18 +284,19 @@ class TestEdgeCases:
         result = runner.invoke(start.main, ["--list-voices"])
 
         assert result.exit_code == 0
-        assert "No voices found." in result.output
+        assert "No voices found for kokoro." in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
-    @patch("audify.start.get_available_models_and_voices")
+    @patch("audify.start.get_tts_config")
     def test_voice_grouping_edge_cases(
-        self, mock_get_models_voices, mock_terminal_size, runner
+        self, mock_get_tts_config, mock_terminal_size, runner
     ):
         """Test voice grouping with edge case voice names."""
-        mock_get_models_voices.return_value = (
-            ["kokoro"],
-            ["voice_without_underscore", "multi_part_voice_name", "single"]
-        )
+        mock_config = Mock()
+        mock_config.get_available_voices.return_value = [
+            "voice_without_underscore", "multi_part_voice_name", "single"
+        ]
+        mock_get_tts_config.return_value = mock_config
 
         result = runner.invoke(start.main, ["--list-voices"])
 
