@@ -6,16 +6,32 @@ across different modules that interact with external APIs.
 """
 
 import logging
-from typing import Optional
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import List, Optional
 
+import boto3
+import requests
 from litellm import completion
 
 from audify.utils.constants import (
+    AWS_ACCESS_KEY_ID,
+    AWS_POLLY_ENGINE,
+    AWS_POLLY_VOICE,
+    AWS_REGION,
+    AWS_SECRET_ACCESS_KEY,
     DEFAULT_SPEAKER,
+    DEFAULT_TTS_PROVIDER,
+    GOOGLE_TTS_LANGUAGE_CODE,
+    GOOGLE_TTS_VOICE,
     KOKORO_API_BASE_URL,
+    LANG_CODES,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OLLAMA_DEFAULT_TRANSLATION_MODEL,
+    OPENAI_API_KEY,
+    OPENAI_TTS_MODEL,
+    OPENAI_TTS_VOICE,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +68,551 @@ class KokoroAPIConfig(APIConfig):
     def speech_url(self) -> str:
         """URL for text-to-speech synthesis."""
         return f"{self.base_url}/speech"
+
+
+# =============================================================================
+# TTS API Abstraction Layer
+# =============================================================================
+
+
+class TTSAPIConfig(ABC):
+    """Abstract base class for TTS API configurations.
+
+    This provides a common interface for different TTS providers
+    (Kokoro, OpenAI, AWS Polly, Google Cloud TTS).
+    """
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        timeout: int = 60,
+    ):
+        self.voice = voice
+        self.language = language
+        self.timeout = timeout
+
+    @abstractmethod
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text to audio and save to output_path.
+
+        Args:
+            text: The text to synthesize.
+            output_path: Path where the audio file will be saved (WAV format).
+
+        Returns:
+            True if synthesis was successful, False otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_available_voices(self) -> List[str]:
+        """Get list of available voices for this provider.
+
+        Returns:
+            List of voice identifiers.
+        """
+        pass
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Check if the TTS service is available and properly configured.
+
+        Returns:
+            True if service is available, False otherwise.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Return the name of the TTS provider."""
+        pass
+
+
+class KokoroTTSConfig(TTSAPIConfig):
+    """TTS configuration for local Kokoro API."""
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        base_url: Optional[str] = None,
+        timeout: int = 60,
+    ):
+        super().__init__(
+            voice=voice or DEFAULT_SPEAKER, language=language, timeout=timeout
+        )
+        self.base_url = base_url or f"{KOKORO_API_BASE_URL}/audio"
+        self._available_voices: Optional[List[str]] = None
+
+    @property
+    def provider_name(self) -> str:
+        return "kokoro"
+
+    @property
+    def voices_url(self) -> str:
+        """URL for fetching available voices."""
+        return f"{self.base_url}/voices"
+
+    @property
+    def speech_url(self) -> str:
+        """URL for text-to-speech synthesis."""
+        return f"{self.base_url}/speech"
+
+    def is_available(self) -> bool:
+        """Check if Kokoro API is reachable."""
+        try:
+            response = requests.get(self.voices_url, timeout=5)
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+
+    def get_available_voices(self) -> List[str]:
+        """Get available voices from Kokoro API."""
+        if self._available_voices is not None:
+            return self._available_voices
+        try:
+            response = requests.get(self.voices_url, timeout=self.timeout)
+            response.raise_for_status()
+            self._available_voices = response.json().get("voices", [])
+            return self._available_voices
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch Kokoro voices: {e}")
+            return []
+
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text using Kokoro API."""
+        try:
+            lang_code = LANG_CODES.get(self.language, "a")
+            response = requests.post(
+                self.speech_url,
+                json={
+                    "model": "kokoro",
+                    "input": text,
+                    "voice": self.voice,
+                    "response_format": "wav",
+                    "lang_code": lang_code,
+                    "speed": 1.0,
+                },
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+                return True
+            else:
+                logger.error(f"Kokoro API error: {response.status_code}")
+                return False
+        except requests.RequestException as e:
+            logger.error(f"Kokoro synthesis failed: {e}")
+            return False
+
+
+class OpenAITTSConfig(TTSAPIConfig):
+    """TTS configuration for OpenAI TTS API."""
+
+    # OpenAI TTS available voices
+    AVAILABLE_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        timeout: int = 60,
+    ):
+        super().__init__(
+            voice=voice or OPENAI_TTS_VOICE,
+            language=language,
+            timeout=timeout,
+        )
+        self.api_key = api_key or OPENAI_API_KEY
+        self.model = model or OPENAI_TTS_MODEL
+        self.base_url = "https://api.openai.com/v1/audio/speech"
+
+    @property
+    def provider_name(self) -> str:
+        return "openai"
+
+    def is_available(self) -> bool:
+        """Check if OpenAI API key is configured."""
+        return bool(self.api_key)
+
+    def get_available_voices(self) -> List[str]:
+        """Return available OpenAI TTS voices."""
+        return self.AVAILABLE_VOICES.copy()
+
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text using OpenAI TTS API."""
+        if not self.api_key:
+            logger.error("OpenAI API key not configured")
+            return False
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            data = {
+                "model": self.model,
+                "input": text,
+                "voice": self.voice,
+                "response_format": "wav",
+            }
+            response = requests.post(
+                self.base_url,
+                headers=headers,
+                json=data,
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+                return True
+            else:
+                logger.error(
+                    f"OpenAI TTS API error: {response.status_code} - {response.text}"
+                )
+                return False
+        except requests.RequestException as e:
+            logger.error(f"OpenAI TTS synthesis failed: {e}")
+            return False
+
+
+class AWSTTSConfig(TTSAPIConfig):
+    """TTS configuration for AWS Polly."""
+
+    # Common neural voices by language
+    NEURAL_VOICES = {
+        "en": [
+            "Joanna",
+            "Matthew",
+            "Ivy",
+            "Kendra",
+            "Kimberly",
+            "Salli",
+            "Joey",
+            "Justin",
+            "Kevin",
+            "Ruth",
+            "Stephen",
+        ],
+        "es": ["Lupe", "Pedro", "Mia"],
+        "fr": ["Lea", "Remi"],
+        "de": ["Vicki", "Daniel"],
+        "it": ["Bianca", "Adriano"],
+        "pt": ["Camila", "Thiago", "Vitoria", "Ricardo"],
+        "ja": ["Takumi", "Kazuha", "Tomoko"],
+        "zh": ["Zhiyu"],
+        "hi": ["Kajal"],
+    }
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        access_key_id: Optional[str] = None,
+        secret_access_key: Optional[str] = None,
+        region: Optional[str] = None,
+        engine: Optional[str] = None,
+        timeout: int = 60,
+    ):
+        super().__init__(
+            voice=voice or AWS_POLLY_VOICE,
+            language=language,
+            timeout=timeout,
+        )
+        self.access_key_id = access_key_id or AWS_ACCESS_KEY_ID
+        self.secret_access_key = secret_access_key or AWS_SECRET_ACCESS_KEY
+        self.region = region or AWS_REGION
+        self.engine = engine or AWS_POLLY_ENGINE
+        self._polly_client = None
+
+    @property
+    def provider_name(self) -> str:
+        return "aws"
+
+    def _get_polly_client(self):
+        """Get or create AWS Polly client."""
+        if self._polly_client is None:
+            try:
+                self._polly_client = boto3.client(
+                    "polly",
+                    aws_access_key_id=self.access_key_id,
+                    aws_secret_access_key=self.secret_access_key,
+                    region_name=self.region,
+                )
+            except ImportError:
+                logger.error(
+                    "boto3 is required for AWS Polly. Install with: pip install boto3"
+                )
+                raise
+        return self._polly_client
+
+    def is_available(self) -> bool:
+        """Check if AWS credentials are configured."""
+        if not self.access_key_id or not self.secret_access_key:
+            return False
+        try:
+            self._get_polly_client()
+            return True
+        except Exception:
+            return False
+
+    def get_available_voices(self) -> List[str]:
+        """Get available voices from AWS Polly."""
+        try:
+            client = self._get_polly_client()
+            response = client.describe_voices(Engine=self.engine)
+            return [voice["Id"] for voice in response.get("Voices", [])]
+        except Exception as e:
+            logger.error(f"Failed to fetch AWS Polly voices: {e}")
+            # Return default voices for the language
+            return self.NEURAL_VOICES.get(self.language, self.NEURAL_VOICES["en"])
+
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text using AWS Polly."""
+        try:
+            client = self._get_polly_client()
+
+            # Polly has a 3000 character limit for standard synthesis
+            # Split text if needed
+            max_chars = 3000
+            if len(text) > max_chars:
+                logger.warning(f"Text exceeds {max_chars} chars, truncating for Polly")
+                text = text[:max_chars]
+
+            response = client.synthesize_speech(
+                Text=text,
+                OutputFormat="pcm",
+                VoiceId=self.voice,
+                Engine=self.engine,
+                SampleRate="24000",
+            )
+
+            # Convert PCM to WAV
+            if "AudioStream" in response:
+                import wave
+
+                pcm_data = response["AudioStream"].read()
+
+                with wave.open(str(output_path), "wb") as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)  # 16-bit
+                    wav_file.setframerate(24000)
+                    wav_file.writeframes(pcm_data)
+                return True
+            else:
+                logger.error("No audio stream in Polly response")
+                return False
+
+        except Exception as e:
+            logger.error(f"AWS Polly synthesis failed: {e}")
+            return False
+
+
+class GoogleTTSConfig(TTSAPIConfig):
+    """TTS configuration for Google Cloud Text-to-Speech."""
+
+    # Common voices by language
+    NEURAL_VOICES = {
+        "en": [
+            "en-US-Neural2-A",
+            "en-US-Neural2-C",
+            "en-US-Neural2-D",
+            "en-US-Neural2-E",
+            "en-US-Neural2-F",
+            "en-US-Neural2-G",
+            "en-US-Neural2-H",
+            "en-US-Neural2-I",
+            "en-US-Neural2-J",
+        ],
+        "es": [
+            "es-ES-Neural2-A",
+            "es-ES-Neural2-B",
+            "es-ES-Neural2-C",
+            "es-ES-Neural2-D",
+            "es-ES-Neural2-E",
+            "es-ES-Neural2-F",
+        ],
+        "fr": [
+            "fr-FR-Neural2-A",
+            "fr-FR-Neural2-B",
+            "fr-FR-Neural2-C",
+            "fr-FR-Neural2-D",
+            "fr-FR-Neural2-E",
+        ],
+        "de": [
+            "de-DE-Neural2-A",
+            "de-DE-Neural2-B",
+            "de-DE-Neural2-C",
+            "de-DE-Neural2-D",
+            "de-DE-Neural2-F",
+        ],
+        "it": ["it-IT-Neural2-A", "it-IT-Neural2-B", "it-IT-Neural2-C"],
+        "pt": ["pt-BR-Neural2-A", "pt-BR-Neural2-B", "pt-BR-Neural2-C"],
+        "ja": ["ja-JP-Neural2-B", "ja-JP-Neural2-C", "ja-JP-Neural2-D"],
+        "zh": [
+            "cmn-CN-Neural2-A",
+            "cmn-CN-Neural2-B",
+            "cmn-CN-Neural2-C",
+            "cmn-CN-Neural2-D",
+        ],
+        "hi": [
+            "hi-IN-Neural2-A",
+            "hi-IN-Neural2-B",
+            "hi-IN-Neural2-C",
+            "hi-IN-Neural2-D",
+        ],
+    }
+
+    # Language code mapping for Google TTS
+    LANGUAGE_CODES = {
+        "en": "en-US",
+        "es": "es-ES",
+        "fr": "fr-FR",
+        "de": "de-DE",
+        "it": "it-IT",
+        "pt": "pt-BR",
+        "ja": "ja-JP",
+        "zh": "cmn-CN",
+        "hi": "hi-IN",
+        "ko": "ko-KR",
+        "ru": "ru-RU",
+        "ar": "ar-XA",
+        "nl": "nl-NL",
+        "pl": "pl-PL",
+        "tr": "tr-TR",
+    }
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        credentials_path: Optional[str] = None,
+        timeout: int = 60,
+    ):
+        super().__init__(
+            voice=voice or GOOGLE_TTS_VOICE,
+            language=language,
+            timeout=timeout,
+        )
+        self.credentials_path = credentials_path
+        self._client = None
+
+    @property
+    def provider_name(self) -> str:
+        return "google"
+
+    def _get_language_code(self) -> str:
+        """Get Google TTS language code from short language code."""
+        return self.LANGUAGE_CODES.get(self.language, GOOGLE_TTS_LANGUAGE_CODE)
+
+    def _get_client(self):
+        """Get or create Google TTS client."""
+        if self._client is None:
+            try:
+                from google.cloud import texttospeech
+
+                self._client = texttospeech.TextToSpeechClient()
+            except ImportError:
+                logger.error(
+                    "google-cloud-texttospeech is required. "
+                    "Install with: pip install google-cloud-texttospeech"
+                )
+                raise
+        return self._client
+
+    def is_available(self) -> bool:
+        """Check if Google Cloud TTS is properly configured."""
+        try:
+            self._get_client()
+            return True
+        except Exception:
+            return False
+
+    def get_available_voices(self) -> List[str]:
+        """Get available voices from Google Cloud TTS."""
+        try:
+            client = self._get_client()
+            response = client.list_voices(language_code=self._get_language_code())
+            return [voice.name for voice in response.voices]
+        except Exception as e:
+            logger.error(f"Failed to fetch Google TTS voices: {e}")
+            # Return default voices for the language
+            return self.NEURAL_VOICES.get(self.language, self.NEURAL_VOICES["en"])
+
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text using Google Cloud TTS."""
+        try:
+            from google.cloud import texttospeech
+
+            client = self._get_client()
+
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            voice_params = texttospeech.VoiceSelectionParams(
+                language_code=self._get_language_code(),
+                name=self.voice,
+            )
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+                sample_rate_hertz=24000,
+            )
+
+            response = client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice_params,
+                audio_config=audio_config,
+            )
+
+            # Write WAV file
+            with open(output_path, "wb") as f:
+                f.write(response.audio_content)
+            return True
+
+        except Exception as e:
+            logger.error(f"Google TTS synthesis failed: {e}")
+            return False
+
+
+def get_tts_config(
+    provider: Optional[str] = None,
+    voice: Optional[str] = None,
+    language: str = "en",
+    **kwargs,
+) -> TTSAPIConfig:
+    """Factory function to get the appropriate TTS configuration.
+
+    Args:
+        provider: TTS provider name ("kokoro", "openai", "aws", "google").
+                  Defaults to DEFAULT_TTS_PROVIDER from environment.
+        voice: Voice identifier for the provider.
+        language: Language code (e.g., "en", "es", "fr").
+        **kwargs: Additional provider-specific arguments.
+
+    Returns:
+        TTSAPIConfig instance for the specified provider.
+
+    Raises:
+        ValueError: If provider is not supported.
+    """
+    provider = provider or DEFAULT_TTS_PROVIDER
+
+    if provider == "kokoro":
+        return KokoroTTSConfig(voice=voice, language=language, **kwargs)
+    elif provider == "openai":
+        return OpenAITTSConfig(voice=voice, language=language, **kwargs)
+    elif provider == "aws":
+        return AWSTTSConfig(voice=voice, language=language, **kwargs)
+    elif provider == "google":
+        return GoogleTTSConfig(voice=voice, language=language, **kwargs)
+    else:
+        raise ValueError(
+            f"Unsupported TTS provider: {provider}. "
+            f"Available providers: kokoro, openai, aws, google"
+        )
 
 
 class OllamaAPIConfig(APIConfig):
