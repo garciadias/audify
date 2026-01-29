@@ -2815,3 +2815,372 @@ class TestVoiceSamplesSynthesizerCoverage2:
                 assert (
                     "Error creating metadata file" in mock_logger.error.call_args[0][0]
                 )
+
+
+class TestTTSProviderIntegration:
+    """Tests for TTS provider integration in BaseSynthesizer."""
+
+    @pytest.fixture
+    def mock_temp_dir(self):
+        """Fixture to mock temporary directory."""
+        with patch("audify.text_to_speech.tempfile.TemporaryDirectory") as mock:
+            mock.return_value.name = "/tmp/test_dir"
+            yield mock
+
+    @pytest.fixture
+    def base_synthesizer(self, mock_temp_dir, tmp_path):
+        """Fixture to create a BaseSynthesizer with non-kokoro provider."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Test content")
+        with patch("pathlib.Path.exists", return_value=True), patch(
+            "pathlib.Path.mkdir"
+        ):
+            synth = BaseSynthesizer(
+                path=str(test_file),
+                voice="test_voice",
+                translate=None,
+                save_text=False,
+                language="en",
+                tts_provider="openai",
+            )
+            synth.tmp_dir = tmp_path
+            return synth
+
+    def test_get_tts_config_initializes_provider(self, base_synthesizer):
+        """Test _get_tts_config creates and caches TTS config."""
+        with patch("audify.text_to_speech.get_tts_config") as mock_get_config:
+            mock_config = Mock()
+            mock_config.provider_name = "openai"
+            mock_config.voice = "nova"
+            mock_get_config.return_value = mock_config
+
+            config = base_synthesizer._get_tts_config()
+
+            assert config == mock_config
+            mock_get_config.assert_called_once_with(
+                provider="openai",
+                voice="test_voice",
+                language="en",
+            )
+
+    def test_get_tts_config_uses_translate_language(self, mock_temp_dir, tmp_path):
+        """Test _get_tts_config uses translation language when translating."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Test content")
+        with patch("pathlib.Path.exists", return_value=True), patch(
+            "pathlib.Path.mkdir"
+        ):
+            synth = BaseSynthesizer(
+                path=str(test_file),
+                voice="test_voice",
+                translate="es",
+                save_text=False,
+                language="en",
+                tts_provider="openai",
+            )
+            synth.tmp_dir = tmp_path
+
+        with patch("audify.text_to_speech.get_tts_config") as mock_get_config:
+            mock_config = Mock()
+            mock_config.provider_name = "openai"
+            mock_config.voice = "nova"
+            mock_get_config.return_value = mock_config
+
+            synth._get_tts_config()
+
+            # Should use translation language "es", not source "en"
+            mock_get_config.assert_called_once_with(
+                provider="openai",
+                voice="test_voice",
+                language="es",
+            )
+
+    def test_get_tts_config_caches_result(self, base_synthesizer):
+        """Test _get_tts_config returns cached config on subsequent calls."""
+        with patch("audify.text_to_speech.get_tts_config") as mock_get_config:
+            mock_config = Mock()
+            mock_config.provider_name = "openai"
+            mock_config.voice = "nova"
+            mock_get_config.return_value = mock_config
+
+            config1 = base_synthesizer._get_tts_config()
+            config2 = base_synthesizer._get_tts_config()
+
+            assert config1 is config2
+            assert mock_get_config.call_count == 1
+
+    def test_synthesize_with_provider_success(self, base_synthesizer, tmp_path):
+        """Test _synthesize_with_provider creates output file."""
+        from pydub import AudioSegment
+
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "nova"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = ["nova", "alloy"]
+
+        # Create a real wav file for testing
+        def mock_synthesize(text, output_path):
+            # Create a short silent audio segment
+            segment = AudioSegment.silent(duration=100)
+            segment.export(str(output_path), format="wav")
+            return True
+
+        mock_config.synthesize.side_effect = mock_synthesize
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            base_synthesizer._synthesize_with_provider(
+                ["Hello world", "Test sentence"], output_path
+            )
+
+            assert output_path.exists()
+
+    def test_synthesize_with_provider_unavailable(self, base_synthesizer, tmp_path):
+        """Test _synthesize_with_provider raises when provider unavailable."""
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.is_available.return_value = False
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            with pytest.raises(RuntimeError, match="not available"):
+                base_synthesizer._synthesize_with_provider(
+                    ["Hello world"], output_path
+                )
+
+    def test_synthesize_with_provider_voice_warning(
+        self, base_synthesizer, tmp_path, caplog
+    ):
+        """Test _synthesize_with_provider warns about unavailable voice."""
+        from pydub import AudioSegment
+
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "unknown_voice"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = ["nova", "alloy"]
+
+        def mock_synthesize(text, output_path):
+            segment = AudioSegment.silent(duration=100)
+            segment.export(str(output_path), format="wav")
+            return True
+
+        mock_config.synthesize.side_effect = mock_synthesize
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            with patch("audify.text_to_speech.logger") as mock_logger:
+                base_synthesizer._synthesize_with_provider(
+                    ["Hello world"], output_path
+                )
+                mock_logger.warning.assert_called()
+
+    def test_synthesize_with_provider_skips_empty_sentences(
+        self, base_synthesizer, tmp_path
+    ):
+        """Test _synthesize_with_provider skips empty sentences."""
+        from pydub import AudioSegment
+
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "nova"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = ["nova"]
+
+        def mock_synthesize(text, output_path):
+            segment = AudioSegment.silent(duration=100)
+            segment.export(str(output_path), format="wav")
+            return True
+
+        mock_config.synthesize.side_effect = mock_synthesize
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            base_synthesizer._synthesize_with_provider(
+                ["Hello", "", "  ", "World"], output_path
+            )
+
+            # Should only synthesize non-empty sentences
+            assert mock_config.synthesize.call_count == 2
+
+    def test_synthesize_with_provider_handles_synthesis_failure(
+        self, base_synthesizer, tmp_path
+    ):
+        """Test _synthesize_with_provider handles individual synthesis failures."""
+        from pydub import AudioSegment
+
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "nova"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = []
+
+        call_count = [0]
+
+        def mock_synthesize(text, output_path):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return False  # First call fails
+            segment = AudioSegment.silent(duration=100)
+            segment.export(str(output_path), format="wav")
+            return True
+
+        mock_config.synthesize.side_effect = mock_synthesize
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            with patch("audify.text_to_speech.logger") as mock_logger:
+                base_synthesizer._synthesize_with_provider(
+                    ["Sentence 1", "Sentence 2"], output_path
+                )
+                # Should warn about failed synthesis
+                assert any(
+                    "failed" in str(call).lower()
+                    for call in mock_logger.warning.call_args_list
+                )
+
+    def test_synthesize_with_provider_handles_exception(
+        self, base_synthesizer, tmp_path
+    ):
+        """Test _synthesize_with_provider handles synthesis exception."""
+        from pydub import AudioSegment
+
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "nova"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = []
+
+        call_count = [0]
+
+        def mock_synthesize(text, output_path):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("Synthesis error")
+            segment = AudioSegment.silent(duration=100)
+            segment.export(str(output_path), format="wav")
+            return True
+
+        mock_config.synthesize.side_effect = mock_synthesize
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            with patch("audify.text_to_speech.logger") as mock_logger:
+                base_synthesizer._synthesize_with_provider(
+                    ["Sentence 1", "Sentence 2"], output_path
+                )
+                # Should warn about error
+                assert any(
+                    "error" in str(call).lower()
+                    for call in mock_logger.warning.call_args_list
+                )
+
+    def test_synthesize_with_provider_decode_error(self, base_synthesizer, tmp_path):
+        """Test _synthesize_with_provider handles decode errors."""
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "nova"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = []
+
+        def mock_synthesize(text, output_path):
+            # Create invalid wav file
+            output_path.write_bytes(b"invalid wav data")
+            return True
+
+        mock_config.synthesize.side_effect = mock_synthesize
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            with patch("audify.text_to_speech.logger") as mock_logger:
+                base_synthesizer._synthesize_with_provider(
+                    ["Hello world"], output_path
+                )
+                # Should warn about decode error
+                assert any(
+                    "decode" in str(call).lower()
+                    for call in mock_logger.warning.call_args_list
+                )
+
+    def test_synthesize_with_provider_missing_temp_file(
+        self, base_synthesizer, tmp_path
+    ):
+        """Test _synthesize_with_provider handles missing temp files during combine."""
+
+        mock_config = Mock()
+        mock_config.provider_name = "openai"
+        mock_config.voice = "nova"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = []
+
+        # Synthesize returns True but doesn't create file
+        mock_config.synthesize.return_value = True
+
+        with patch.object(
+            base_synthesizer, "_get_tts_config", return_value=mock_config
+        ):
+            output_path = tmp_path / "output.wav"
+            with patch("audify.text_to_speech.logger") as mock_logger:
+                base_synthesizer._synthesize_with_provider(
+                    ["Hello world"], output_path
+                )
+                # Should warn about synthesis failure (file doesn't exist)
+                assert mock_logger.warning.called
+
+    def test_synthesize_sentences_uses_kokoro_for_kokoro_provider(
+        self, mock_temp_dir, tmp_path
+    ):
+        """Test _synthesize_sentences uses Kokoro implementation for kokoro provider."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Test content")
+        with patch("pathlib.Path.exists", return_value=True), patch(
+            "pathlib.Path.mkdir"
+        ):
+            synth = BaseSynthesizer(
+                path=str(test_file),
+                voice="test_voice",
+                translate=None,
+                save_text=False,
+                language="en",
+                tts_provider="kokoro",
+            )
+            synth.tmp_dir = tmp_path
+
+        with patch.object(synth, "_synthesize_kokoro") as mock_kokoro, patch.object(
+            synth, "_synthesize_with_provider"
+        ) as mock_provider:
+            output_path = tmp_path / "output.wav"
+            synth._synthesize_sentences(["Hello"], output_path)
+
+            mock_kokoro.assert_called_once()
+            mock_provider.assert_not_called()
+
+    def test_synthesize_sentences_uses_provider_for_non_kokoro(
+        self, base_synthesizer, tmp_path
+    ):
+        """Test _synthesize_sentences uses provider implementation for non-kokoro."""
+        with patch.object(
+            base_synthesizer, "_synthesize_kokoro"
+        ) as mock_kokoro, patch.object(
+            base_synthesizer, "_synthesize_with_provider"
+        ) as mock_provider:
+            output_path = tmp_path / "output.wav"
+            base_synthesizer._synthesize_sentences(["Hello"], output_path)
+
+            mock_kokoro.assert_not_called()
+            mock_provider.assert_called_once()

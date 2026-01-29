@@ -236,6 +236,169 @@ class TestStartCLINewFeatures:
         assert "Available languages:" not in result.output
 
 
+class TestListTTSProviders:
+    """Tests for --list-tts-providers flag."""
+
+    @pytest.fixture
+    def runner(self):
+        """Fixture to provide a CliRunner instance."""
+        return CliRunner()
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_tts_providers_all_available(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-tts-providers shows all providers with status."""
+        mock_config = Mock()
+        mock_config.is_available.return_value = True
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(start.main, ["--list-tts-providers"])
+
+        assert result.exit_code == 0
+        assert "Available TTS Providers" in result.output
+        assert "Kokoro (Local)" in result.output
+        assert "OpenAI TTS" in result.output
+        assert "AWS Polly" in result.output
+        assert "Google Cloud TTS" in result.output
+        assert "Available" in result.output
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_tts_providers_not_configured(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-tts-providers shows 'Not configured' status."""
+        mock_config = Mock()
+        mock_config.is_available.return_value = False
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(start.main, ["--list-tts-providers"])
+
+        assert result.exit_code == 0
+        assert "Not configured" in result.output
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_tts_providers_error(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-tts-providers handles provider errors gracefully."""
+        mock_get_tts_config.side_effect = Exception("Provider error")
+
+        result = runner.invoke(start.main, ["--list-tts-providers"])
+
+        assert result.exit_code == 0
+        assert "Not available" in result.output
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_tts_providers_short_flag(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test -ltp short flag for --list-tts-providers."""
+        mock_config = Mock()
+        mock_config.is_available.return_value = True
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(start.main, ["-ltp"])
+
+        assert result.exit_code == 0
+        assert "Available TTS Providers" in result.output
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_tts_providers_shows_config_info(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-tts-providers shows configuration info."""
+        mock_config = Mock()
+        mock_config.is_available.return_value = True
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(start.main, ["--list-tts-providers"])
+
+        assert result.exit_code == 0
+        # Check configuration hints are shown
+        assert "KOKORO_API_URL" in result.output
+        assert "OPENAI_API_KEY" in result.output
+        assert "AWS_ACCESS_KEY_ID" in result.output
+        assert "GOOGLE_APPLICATION_CREDENTIALS" in result.output
+        assert "TTS_PROVIDER" in result.output
+
+
+class TestListVoicesNonKokoro:
+    """Tests for --list-voices with non-Kokoro providers."""
+
+    @pytest.fixture
+    def runner(self):
+        """Fixture to provide a CliRunner instance."""
+        return CliRunner()
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_voices_openai_provider(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-voices with OpenAI provider shows flat list."""
+        mock_config = Mock()
+        mock_config.get_available_voices.return_value = [
+            "alloy", "echo", "fable", "nova"
+        ]
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(
+            start.main, ["--list-voices", "--tts-provider", "openai"]
+        )
+
+        assert result.exit_code == 0
+        assert "Available voices for OPENAI:" in result.output
+        assert "Voices for openai:" in result.output
+        assert "alloy" in result.output
+        assert "echo" in result.output
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_voices_aws_provider(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-voices with AWS provider shows flat list."""
+        mock_config = Mock()
+        mock_config.get_available_voices.return_value = ["Joanna", "Matthew", "Ivy"]
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(
+            start.main, ["--list-voices", "--tts-provider", "aws"]
+        )
+
+        assert result.exit_code == 0
+        assert "Available voices for AWS:" in result.output
+        assert "Voices for aws:" in result.output
+        assert "Joanna" in result.output
+
+    @patch("os.get_terminal_size", return_value=(80, 24))
+    @patch("audify.start.get_tts_config")
+    def test_list_voices_google_provider(
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
+        """Test --list-voices with Google provider shows flat list."""
+        mock_config = Mock()
+        mock_config.get_available_voices.return_value = [
+            "en-US-Neural2-A", "en-US-Neural2-B"
+        ]
+        mock_get_tts_config.return_value = mock_config
+
+        result = runner.invoke(
+            start.main, ["--list-voices", "--tts-provider", "google"]
+        )
+
+        assert result.exit_code == 0
+        assert "Available voices for GOOGLE:" in result.output
+        assert "Voices for google:" in result.output
+        assert "en-US-Neural2-A" in result.output
+
+
 class TestGetAvailableModelsAndVoices:
     """Tests for the get_available_models_and_voices function."""
 
