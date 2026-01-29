@@ -184,3 +184,6 @@ input
 # setup_codecov.sh
 
 .claude/settings.local.json
+
+# API Keys (NEVER commit API keys)
+.keys

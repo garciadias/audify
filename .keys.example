@@ -1,0 +1,27 @@
+# API Keys Configuration File
+# 
+# Add your commercial API keys here in the format:
+# API_NAME=your_api_key_here
+#
+# Supported APIs:
+# - DEEPSEEK: DeepSeek API (https://platform.deepseek.com/)
+# - ANTHROPIC or CLAUDE: Anthropic Claude API (https://console.anthropic.com/)
+# - OPENAI: OpenAI API (https://platform.openai.com/)
+# - GOOGLE or GEMINI: Google Gemini API (https://ai.google.dev/)
+#   Note: Both GOOGLE and GEMINI are equivalent names for the same API
+#
+# Example:
+# DEEPSEEK=sk-your-deepseek-api-key-here
+# ANTHROPIC=sk-ant-your-anthropic-api-key-here
+# OPENAI=sk-your-openai-api-key-here
+# GEMINI=your-google-api-key-here
+# # Or use GOOGLE (both are equivalent):
+# # GOOGLE=your-google-api-key-here
+#
+# Lines starting with # are comments and will be ignored
+# Empty lines are also ignored
+#
+# Security Note: 
+# - Never commit this file to version control
+# - Keep your API keys secure and private
+# - Add .keys to your .gitignore file

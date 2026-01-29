@@ -131,7 +131,11 @@ def get_creator(
     "-m",
     type=str,
     default=OLLAMA_DEFAULT_MODEL,
-    help=f"The LLM model to use (default: {OLLAMA_DEFAULT_MODEL}).",
+    help=f"The LLM model to use. For Ollama: model name "
+    f"(default: {OLLAMA_DEFAULT_MODEL}). For commercial APIs: "
+    f"'api:model_name' (e.g., 'api:deepseek/deepseek-chat', "
+    f"'api:anthropic/claude-3-sonnet-20240229', 'api:openai/gpt-4'). "
+    f"Requires API keys in .keys file or environment variables.",
 )
 @click.option(
     "--max-chapters",
