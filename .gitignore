@@ -184,3 +184,6 @@ input
 # setup_codecov.sh
 
 .claude/settings.local.json
+
+# API keys and credentials
+.keys
