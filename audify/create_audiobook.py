@@ -20,7 +20,9 @@ from audify.audiobook_creator import (
     DirectoryAudiobookCreator,
 )
 from audify.utils.constants import (
+    AVAILABLE_TTS_PROVIDERS,
     DEFAULT_LANGUAGE_LIST,
+    DEFAULT_TTS_PROVIDER,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
 )
@@ -40,6 +42,7 @@ def get_creator(
     max_chapters: int | None,
     confirm: bool,
     output_dir: str | None = None,
+    tts_provider: str | None = None,
 ) -> AudiobookCreator:
     """Get the appropriate AudiobookCreator subclass based on file extension.
 
@@ -65,6 +68,7 @@ def get_creator(
             max_chapters=max_chapters,
             confirm=confirm,
             output_dir=output_dir,
+            tts_provider=tts_provider,
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
@@ -79,6 +83,7 @@ def get_creator(
             llm_model=llm_model,
             confirm=confirm,
             output_dir=output_dir,
+            tts_provider=tts_provider,
         )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")
@@ -154,6 +159,14 @@ def get_creator(
     default=None,
     help="Output directory or file path for the result.",
 )
+@click.option(
+    "--tts-provider",
+    "-tp",
+    type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
+    default=DEFAULT_TTS_PROVIDER,
+    help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
+    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
+)
 def main(
     path: str,
     language: str,
@@ -166,6 +179,7 @@ def main(
     max_chapters: int | None,
     confirm: bool,
     output: str | None,
+    tts_provider: str,
 ):
     """Create audiobook episodes from ebooks or PDFs using LLM and TTS."""
 
@@ -184,6 +198,7 @@ def main(
         print(f"Source directory: {path}")
         print(f"Language: {language}")
         print(f"LLM Model: {llm_model}")
+        print(f"TTS Provider: {tts_provider}")
         if translate:
             print(f"Translation: {language} -> {translate}")
 
@@ -202,6 +217,7 @@ def main(
                 llm_model=llm_model,
                 confirm=not confirm,
                 output_dir=output,
+                tts_provider=tts_provider,
             )
             # Generate the audiobook
             output_path = dir_creator.synthesize()
@@ -231,6 +247,7 @@ def main(
         print(f"Source file: {path}")
         print(f"Language: {language}")
         print(f"LLM Model: {llm_model}")
+        print(f"TTS Provider: {tts_provider}")
         if translate:
             print(f"Translation: {language} -> {translate}")
         if max_chapters:
@@ -252,6 +269,7 @@ def main(
                 max_chapters=max_chapters,
                 confirm=not confirm,
                 output_dir=output,
+                tts_provider=tts_provider,
             )
             # Generate the audiobook
             output_path = creator.synthesize()
