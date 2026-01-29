@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import requests
@@ -320,15 +320,9 @@ def test_main_unsupported_file_format(mock_terminal_size, runner):
         # The exception message doesn't get printed by Click, just the exit code
         assert isinstance(result.exception, ValueError)
         assert "Unsupported file format" in str(result.exception)
+
+
 """Tests for new CLI functionality in start.py."""
-
-from unittest.mock import Mock, patch
-
-import pytest
-import requests
-from click.testing import CliRunner
-
-from audify import start
 
 
 class TestStartCLINewFeatures:

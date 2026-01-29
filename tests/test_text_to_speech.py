@@ -11,7 +11,6 @@ from audify.text_to_speech import (
     BaseSynthesizer,
     EpubSynthesizer,
     PdfSynthesizer,
-    VoiceSamplesSynthesizer,
     suppress_stdout,
 )
 from audify.utils.api_config import KokoroAPIConfig
@@ -2476,5 +2475,3 @@ class TestPdfSynthesizerCoverage:
                     with patch.object(synthesizer, "_convert_to_mp3"):
                         with patch("audify.text_to_speech.PdfReader"):
                             synthesizer.synthesize()
-
-
