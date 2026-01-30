@@ -49,9 +49,9 @@ AVAILABLE_TTS_PROVIDERS = ["kokoro", "openai", "aws", "google"]
 # OpenAI TTS configuration
 # =============================================================================
 OPENAI_API_KEY = _get_config("OPENAI_API_KEY", "")
-OPENAI_TTS_MODEL = _get_config("OPENAI_TTS_MODEL", "tts-1")  # or "tts-1-hd"
+OPENAI_TTS_MODEL = _get_config("OPENAI_TTS_MODEL", "gpt-4o-mini-tts-2025-03-20")
 # alloy, echo, fable, onyx, nova, shimmer
-OPENAI_TTS_VOICE = _get_config("OPENAI_TTS_VOICE", "alloy")
+OPENAI_TTS_VOICE = _get_config("OPENAI_TTS_VOICE", "coral")
 
 # =============================================================================
 # AWS Polly configuration

@@ -14,17 +14,14 @@ from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer
 from audify.translate import translate_sentence
-from audify.utils.api_config import OllamaAPIConfig
+from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
-from audify.utils.constants import (
-    DEFAULT_TTS_PROVIDER,
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_MODEL,
-    OUTPUT_BASE_DIR,
-)
+from audify.utils.constants import (DEFAULT_TTS_PROVIDER, OLLAMA_API_BASE_URL,
+                                    OLLAMA_DEFAULT_MODEL, OUTPUT_BASE_DIR)
 from audify.utils.logging_utils import setup_logging
 from audify.utils.prompts import AUDIOBOOK_PROMPT
-from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
+from audify.utils.text import (break_text_into_sentences, clean_text,
+                               get_file_name_title)
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -36,7 +33,15 @@ class LLMClient:
     def __init__(
         self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
     ):
-        self.config = OllamaAPIConfig(base_url=base_url, model=model)
+        # Check if model uses commercial API
+        if model.startswith("api:"):
+            # Use commercial API config
+            self.config: Union[OllamaAPIConfig, CommercialAPIConfig] = (
+                CommercialAPIConfig(model=model)
+            )
+        else:
+            # Use Ollama API config
+            self.config = OllamaAPIConfig(base_url=base_url, model=model)
 
     def generate_audiobook_script(
         self, chapter_text: str, language: Optional[str]

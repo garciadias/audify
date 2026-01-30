@@ -6,6 +6,7 @@ across different modules that interact with external APIs.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional
@@ -14,25 +15,16 @@ import boto3
 import requests
 from litellm import completion
 
-from audify.utils.constants import (
-    AWS_ACCESS_KEY_ID,
-    AWS_POLLY_ENGINE,
-    AWS_POLLY_VOICE,
-    AWS_REGION,
-    AWS_SECRET_ACCESS_KEY,
-    DEFAULT_SPEAKER,
-    DEFAULT_TTS_PROVIDER,
-    GOOGLE_TTS_LANGUAGE_CODE,
-    GOOGLE_TTS_VOICE,
-    KOKORO_API_BASE_URL,
-    LANG_CODES,
-    OLLAMA_API_BASE_URL,
-    OLLAMA_DEFAULT_MODEL,
-    OLLAMA_DEFAULT_TRANSLATION_MODEL,
-    OPENAI_API_KEY,
-    OPENAI_TTS_MODEL,
-    OPENAI_TTS_VOICE,
-)
+from audify.utils.constants import (AWS_ACCESS_KEY_ID, AWS_POLLY_ENGINE,
+                                    AWS_POLLY_VOICE, AWS_REGION,
+                                    AWS_SECRET_ACCESS_KEY, DEFAULT_SPEAKER,
+                                    DEFAULT_TTS_PROVIDER,
+                                    GOOGLE_TTS_LANGUAGE_CODE, GOOGLE_TTS_VOICE,
+                                    KOKORO_API_BASE_URL, LANG_CODES,
+                                    OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL,
+                                    OLLAMA_DEFAULT_TRANSLATION_MODEL,
+                                    OPENAI_API_KEY, OPENAI_TTS_MODEL,
+                                    OPENAI_TTS_VOICE, _keys_config)
 
 logger = logging.getLogger(__name__)
 
@@ -600,19 +592,167 @@ def get_tts_config(
     """
     provider = provider or DEFAULT_TTS_PROVIDER
 
+    # Map Kokoro voices to other providers' voices when needed
+    kokoro_to_openai = {
+        "af_bella": "nova",  # Female voice
+        "af_nicole": "shimmer",  # Female voice
+        "af_sarah": "alloy",  # Female voice
+        "am_adam": "onyx",  # Male voice
+        "am_michael": "echo",  # Male voice
+        "bf_emma": "fable",  # British female
+        "bf_isabella": "nova",  # British female
+        "bm_george": "echo",  # British male
+        "bm_lewis": "onyx",  # British male
+    }
+
     if provider == "kokoro":
         return KokoroTTSConfig(voice=voice, language=language, **kwargs)
     elif provider == "openai":
+        # Map Kokoro voice to OpenAI voice if needed
+        if voice and voice in kokoro_to_openai:
+            voice = kokoro_to_openai[voice]
         return OpenAITTSConfig(voice=voice, language=language, **kwargs)
     elif provider == "aws":
+        # For AWS, use default voice if Kokoro voice provided
+        if voice and voice.startswith(("af_", "am_", "bf_", "bm_")):
+            voice = None  # Use AWS default
         return AWSTTSConfig(voice=voice, language=language, **kwargs)
     elif provider == "google":
+        # For Google, use default voice if Kokoro voice provided
+        if voice and voice.startswith(("af_", "am_", "bf_", "bm_")):
+            voice = None  # Use Google default
         return GoogleTTSConfig(voice=voice, language=language, **kwargs)
     else:
         raise ValueError(
             f"Unsupported TTS provider: {provider}. "
             f"Available providers: kokoro, openai, aws, google"
         )
+
+
+class CommercialAPIConfig(APIConfig):
+    """Configuration for commercial LLM APIs (DeepSeek, Claude, GPT-4, Gemini).
+    
+    Uses LiteLLM to provide unified interface to commercial APIs.
+    Model format: 'api:provider/model' (e.g., 'api:deepseek-chat')
+    API keys are loaded from .keys file or environment variables.
+    """
+
+    # Map of shortened names to full LiteLLM provider/model formats
+    MODEL_MAPPINGS = {
+        "deepseek-chat": "deepseek/deepseek-chat",
+        "deepseek-reasoner": "deepseek/deepseek-reasoner",
+        "deepseekr1": "deepseek/deepseek-reasoner",
+        "claude": "anthropic/claude-3-5-sonnet-20241022",
+        "claude-sonnet": "anthropic/claude-3-5-sonnet-20241022",
+        "claude-opus": "anthropic/claude-3-opus-20240229",
+        "gpt-4": "openai/gpt-4-turbo-preview",
+        "gpt-4-turbo": "openai/gpt-4-turbo-preview",
+        "gpt-4o": "openai/gpt-4o",
+        "gemini": "gemini/gemini-2.0-flash-exp",
+        "gemini-pro": "gemini/gemini-pro",
+        "gemini-flash": "gemini/gemini-2.0-flash-exp",
+    }
+
+    def __init__(
+        self,
+        model: str,
+        timeout: int = 600,
+    ):
+        """Initialize commercial API config.
+        
+        Args:
+            model: Model identifier with 'api:' prefix (e.g., 'api:deepseek-chat')
+            timeout: Request timeout in seconds
+        """
+        super().__init__(base_url="", timeout=timeout)
+
+        # Strip 'api:' prefix if present
+        if model.startswith("api:"):
+            model = model[4:]
+
+        # Map shortened names to full provider/model format
+        self.model = self.MODEL_MAPPINGS.get(model, model)
+
+        # Load API keys from .keys file into environment variables
+        # LiteLLM expects API keys in environment variables
+        self._load_api_keys_to_env()
+
+    def _load_api_keys_to_env(self) -> None:
+        """Load API keys from .keys file into environment variables."""
+        # Map of possible key names in .keys to environment variable names
+        key_mappings = {
+            "DEEPSEEK_API_KEY": "DEEPSEEK_API_KEY",
+            "DEEPSEEK": "DEEPSEEK_API_KEY",
+            "ANTHROPIC_API_KEY": "ANTHROPIC_API_KEY",
+            "ANTHROPIC": "ANTHROPIC_API_KEY",
+            "CLAUDE": "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY": "OPENAI_API_KEY",
+            "OPENAI": "OPENAI_API_KEY",
+            "GEMINI_API_KEY": "GEMINI_API_KEY",
+            "GEMINI": "GEMINI_API_KEY",
+            "GOOGLE_API_KEY": "GEMINI_API_KEY",
+            "GOOGLE": "GEMINI_API_KEY",
+        }
+
+        for key_name, env_var in key_mappings.items():
+            if key_name in _keys_config and not os.getenv(env_var):
+                os.environ[env_var] = _keys_config[key_name]
+
+    def generate(
+        self,
+        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+        num_ctx: int = 8 * 4096,
+        repeat_penalty: float = 1.05,
+        seed: Optional[int] = None,
+        top_k: int = 60,
+        num_predict: int = 4096,
+    ) -> str:
+        """Generate text using commercial API via LiteLLM.
+
+        Args:
+            prompt: Legacy parameter for single user message (deprecated)
+            system_prompt: System role message (instructions/context)
+            user_prompt: User role message (actual content to process)
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            num_ctx: Context window size (ignored for most commercial APIs)
+            repeat_penalty: Penalty for repeating tokens (ignored for most)
+            seed: Random seed for reproducibility
+            top_k: Top-k sampling parameter (ignored for most)
+            num_predict: Maximum tokens to generate
+
+        Returns:
+            Generated text content
+        """
+        # Build messages array
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+        elif prompt:
+            # Legacy support: single prompt goes to user role
+            messages.append({"role": "user", "content": prompt})
+
+        if not messages:
+            raise ValueError("Must provide either prompt or user_prompt")
+
+        response = completion(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=num_predict,
+            seed=seed,
+            request_timeout=self.timeout,
+        )
+        return response.choices[0].message.content
 
 
 class OllamaAPIConfig(APIConfig):
