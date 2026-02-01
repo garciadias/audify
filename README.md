@@ -218,6 +218,36 @@ task audiobook "book.epub" --voice af_bella --language en
 task audiobook "book.epub" --translate pt
 ```
 
+### Using Commercial APIs (DeepSeek, Claude, GPT-4, Gemini)
+
+Instead of local Ollama models, you can use commercial APIs for better quality or faster processing:
+
+```bash
+# Using DeepSeek (cost-effective)
+task audiobook "book.epub" -m "api:deepseek/deepseek-chat"
+
+# Using Claude 3.5 Sonnet (high quality)
+task audiobook "book.epub" -m "api:anthropic/claude-3-5-sonnet-20240620"
+
+# Using GPT-4 (reliable)
+task audiobook "book.epub" -m "api:openai/gpt-4-turbo-preview"
+
+# Using Gemini Pro
+task audiobook "book.epub" -m "api:gemini/gemini-1.5-pro"
+```
+
+**Setup Required**: Create a `.keys` file with your API keys for the provider(s) you intend to use. See [Commercial APIs Guide](docs/COMMERCIAL_APIS.md) for detailed instructions.
+
+```bash
+# Copy example file and add your keys
+cp .keys.example .keys
+# Edit .keys and add keys for your chosen provider(s):
+# DEEPSEEK=your-deepseek-api-key-here
+# ANTHROPIC=your-anthropic-api-key-here
+# OPENAI=your-openai-api-key-here
+# GEMINI=your-google-api-key-here
+```
+
 ### Directory Input (Multi-file Processing)
 
 Process multiple files from a directory into a single audiobook:
