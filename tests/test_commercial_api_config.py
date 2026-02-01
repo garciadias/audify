@@ -14,7 +14,8 @@ class TestCommercialAPIConfig:
     def test_init_with_api_key(self):
         """Test initialization with explicit API key."""
         config = CommercialAPIConfig(model="deepseek-chat", api_key="test-key")
-        assert config.model == "deepseek-chat"
+        # Model gets mapped to LiteLLM format
+        assert config.model == "deepseek/deepseek-chat"
         assert config.api_key == "test-key"
 
     def test_init_deepseek_model(self):
@@ -22,7 +23,8 @@ class TestCommercialAPIConfig:
         with patch('audify.utils.api_keys.get_api_key') as mock_get_key:
             mock_get_key.return_value = "deepseek-key"
             config = CommercialAPIConfig(model="deepseek-chat")
-            assert config.model == "deepseek-chat"
+            # Model gets mapped to LiteLLM format
+            assert config.model == "deepseek/deepseek-chat"
             mock_get_key.assert_called_once_with('DEEPSEEK')
 
     def test_init_claude_model(self):
@@ -39,7 +41,8 @@ class TestCommercialAPIConfig:
         with patch('audify.utils.api_keys.get_api_key') as mock_get_key:
             mock_get_key.return_value = "openai-key"
             config = CommercialAPIConfig(model="gpt-4")
-            assert config.model == "gpt-4"
+            # Model gets mapped to LiteLLM format
+            assert config.model == "openai/gpt-4-turbo-preview"
             mock_get_key.assert_called_once_with('OPENAI')
 
     def test_init_gemini_model(self):
@@ -47,7 +50,8 @@ class TestCommercialAPIConfig:
         with patch('audify.utils.api_keys.get_api_key') as mock_get_key:
             mock_get_key.return_value = "gemini-key"
             config = CommercialAPIConfig(model="gemini-pro")
-            assert config.model == "gemini-pro"
+            # Model gets mapped to LiteLLM format
+            assert config.model == "gemini/gemini-pro"
             # Should try GOOGLE first
             assert mock_get_key.call_count >= 1
 
@@ -72,7 +76,8 @@ class TestCommercialAPIConfig:
 
             # Check the call arguments
             call_args = mock_completion.call_args
-            assert call_args[1]['model'] == "deepseek-chat"
+            # Model gets mapped to LiteLLM format
+            assert call_args[1]['model'] == "deepseek/deepseek-chat"
             messages = call_args[1]['messages']
             assert len(messages) == 2
             assert messages[0]['role'] == 'system'

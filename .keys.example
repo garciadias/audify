@@ -1,27 +1,75 @@
-# API Keys Configuration File
-# 
-# Add your commercial API keys here in the format:
-# API_NAME=your_api_key_here
-#
-# Supported APIs:
-# - DEEPSEEK: DeepSeek API (https://platform.deepseek.com/)
-# - ANTHROPIC or CLAUDE: Anthropic Claude API (https://console.anthropic.com/)
-# - OPENAI: OpenAI API (https://platform.openai.com/)
-# - GOOGLE or GEMINI: Google Gemini API (https://ai.google.dev/)
-#   Note: Both GOOGLE and GEMINI are equivalent names for the same API
-#
-# Example:
-# DEEPSEEK=sk-your-deepseek-api-key-here
-# ANTHROPIC=sk-ant-your-anthropic-api-key-here
-# OPENAI=sk-your-openai-api-key-here
-# GEMINI=your-google-api-key-here
-# # Or use GOOGLE (both are equivalent):
-# # GOOGLE=your-google-api-key-here
-#
-# Lines starting with # are comments and will be ignored
-# Empty lines are also ignored
-#
-# Security Note: 
-# - Never commit this file to version control
-# - Keep your API keys secure and private
-# - Add .keys to your .gitignore file
+# Audify TTS Provider Configuration
+# Copy this file to .keys and fill in your credentials
+# The .keys file is gitignored and will not be committed
+
+# =============================================================================
+# TTS Provider Selection
+# =============================================================================
+# Options: kokoro, openai, aws, google
+TTS_PROVIDER=kokoro
+
+# =============================================================================
+# Kokoro TTS (Local/Self-hosted)
+# =============================================================================
+# Base URL for Kokoro API (default: http://localhost:8887/v1)
+KOKORO_API_URL=http://localhost:8887/v1
+
+# =============================================================================
+# OpenAI TTS
+# =============================================================================
+# Get your API key from: https://platform.openai.com/api-keys
+OPENAI_API_KEY=
+
+# Model options: tts-1 (faster, lower quality), tts-1-hd (slower, higher quality)
+OPENAI_TTS_MODEL=tts-1
+
+# Voice options: alloy, echo, fable, onyx, nova, shimmer
+OPENAI_TTS_VOICE=alloy
+
+# =============================================================================
+# AWS Polly
+# =============================================================================
+# Get credentials from: https://console.aws.amazon.com/iam/
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+
+# AWS Region (e.g., us-east-1, eu-west-1)
+AWS_REGION=us-east-1
+
+# Voice options vary by language. Neural voices recommended:
+# English: Joanna, Matthew, Ivy, Kendra, Kimberly, Salli, Joey, Justin, Kevin, Ruth, Stephen
+# Spanish: Lupe, Pedro, Mia
+# French: Lea, Remi
+# See full list: https://docs.aws.amazon.com/polly/latest/dg/voicelist.html
+AWS_POLLY_VOICE=Joanna
+
+# Engine: standard or neural (neural recommended for better quality)
+AWS_POLLY_ENGINE=neural
+
+# =============================================================================
+# Google Cloud Text-to-Speech
+# =============================================================================
+# Path to your service account credentials JSON file
+# Create at: https://console.cloud.google.com/apis/credentials
+GOOGLE_APPLICATION_CREDENTIALS=
+
+# Voice options vary by language. Neural2 voices recommended:
+# English: en-US-Neural2-A through en-US-Neural2-J
+# Spanish: es-ES-Neural2-A through es-ES-Neural2-F
+# See full list: https://cloud.google.com/text-to-speech/docs/voices
+GOOGLE_TTS_VOICE=en-US-Neural2-F
+
+# Language code for synthesis
+GOOGLE_TTS_LANGUAGE_CODE=en-US
+
+# =============================================================================
+# LLM Configuration (for audiobook script generation)
+# =============================================================================
+# Ollama API URL (default: http://localhost:11434)
+OLLAMA_API_URL=http://localhost:11434
+
+# Default LLM model for audiobook generation
+OLLAMA_MODEL=magistral:24b
+
+# Default LLM model for translation
+OLLAMA_TRANSLATION_MODEL=qwen3:30b

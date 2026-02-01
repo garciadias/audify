@@ -27,11 +27,20 @@ class TestAPIKeyManagerLoadError:
 
     def test_load_keys_nonexistent_file(self):
         """Test loading from nonexistent file."""
-        manager = APIKeyManager(keys_file="/nonexistent/.keys")
-        assert manager.get_key("DEEPSEEK") is None
+        # Clear environment variable that would override file key
+        saved_env = os.environ.pop("DEEPSEEK_API_KEY", None)
+        try:
+            manager = APIKeyManager(keys_file="/nonexistent/.keys")
+            assert manager.get_key("DEEPSEEK") is None
+        finally:
+            if saved_env is not None:
+                os.environ["DEEPSEEK_API_KEY"] = saved_env
 
     def test_load_keys_permission_error(self):
         """Test permission error reading keys file."""
+        # Clear environment variable that would override file key
+        saved_env = os.environ.pop("DEEPSEEK_API_KEY", None)
+
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".keys", delete=False
         ) as f:
@@ -46,3 +55,5 @@ class TestAPIKeyManagerLoadError:
         finally:
             os.chmod(path, 0o644)
             os.unlink(path)
+            if saved_env is not None:
+                os.environ["DEEPSEEK_API_KEY"] = saved_env

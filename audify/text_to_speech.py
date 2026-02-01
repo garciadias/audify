@@ -15,11 +15,16 @@ from pydub.exceptions import CouldntDecodeError
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
-from audify.utils.api_config import KokoroAPIConfig
+from audify.utils.api_config import (
+    KokoroAPIConfig,
+    TTSAPIConfig,
+    get_tts_config,
+)
 from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     DEFAULT_MODEL,
     DEFAULT_SPEAKER,
+    DEFAULT_TTS_PROVIDER,
     KOKORO_API_BASE_URL,
     LANG_CODES,
     OUTPUT_BASE_DIR,
@@ -71,6 +76,9 @@ class BaseSynthesizer:
         To see available languages, run: `audify --list-languages`
     model_name: str
         Model name for synthesis. To see available models, run: `audify --list-models`
+    tts_provider: str
+        TTS provider to use. Options: "kokoro", "openai", "aws", "google".
+        Defaults to DEFAULT_TTS_PROVIDER from environment or "kokoro".
 
     """
 
@@ -82,6 +90,7 @@ class BaseSynthesizer:
         save_text: bool,
         language: str = "en",
         model_name: str = DEFAULT_MODEL,
+        tts_provider: Optional[str] = None,
     ):
         self.path = Path(path).resolve()
         self.language = language
@@ -89,10 +98,14 @@ class BaseSynthesizer:
         self.translate = translate
         self.model_name = model_name
         self.save_text = save_text
+        self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
         self.tmp_dir_context = tempfile.TemporaryDirectory(
             prefix=f"audify_{self.path.stem}_"
         )
         self.tmp_dir = Path(self.tmp_dir_context.name)
+
+        # Initialize TTS configuration
+        self._tts_config: Optional[TTSAPIConfig] = None
 
     def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
         """Synthesize sentences using the Kokoro API."""
@@ -196,13 +209,117 @@ class BaseSynthesizer:
                 temp_file.unlink(missing_ok=True)
             raise
 
+    def _get_tts_config(self) -> TTSAPIConfig:
+        """Get or create the TTS configuration for the current provider."""
+        if self._tts_config is None:
+            # Use the target language for synthesis (translated language if translating)
+            synthesis_language = self.translate or self.language
+            self._tts_config = get_tts_config(
+                provider=self.tts_provider,
+                voice=self.speaker,
+                language=synthesis_language,
+            )
+            logger.info(
+                f"Initialized TTS provider: {self._tts_config.provider_name} "
+                f"with voice: {self._tts_config.voice}"
+            )
+        return self._tts_config
+
+    def _synthesize_with_provider(
+        self, sentences: List[str], output_wav_path: Path
+    ) -> None:
+        """Synthesize sentences using the configured TTS provider."""
+        tts_config = self._get_tts_config()
+        combined_audio = AudioSegment.empty()
+        temp_audio_files: List[Path] = []
+
+        try:
+            logger.info(f"Starting {tts_config.provider_name} TTS synthesis...")
+
+            # Check if provider is available
+            if not tts_config.is_available():
+                raise RuntimeError(
+                    f"TTS provider '{tts_config.provider_name}' is not available. "
+                    "Please check your configuration and credentials."
+                )
+
+            # Check voice availability (for providers that support it)
+            available_voices = tts_config.get_available_voices()
+            if available_voices and tts_config.voice not in available_voices:
+                logger.warning(
+                    f"Voice '{tts_config.voice}' may not be available for "
+                    f"{tts_config.provider_name}."
+                    f"Available voices: {available_voices[:5]}..."
+                )
+
+            for i, sentence in tqdm.tqdm(
+                enumerate(sentences),
+                desc=f"{tts_config.provider_name.title()} Synthesizing",
+                total=len(sentences),
+                unit="sentence",
+            ):
+                if not sentence.strip():
+                    continue
+
+                try:
+                    temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
+                    success = tts_config.synthesize(sentence, temp_wav_path)
+
+                    if success and temp_wav_path.exists():
+                        temp_audio_files.append(temp_wav_path)
+                    else:
+                        logger.warning(f"Synthesis failed for sentence {i}, skipping.")
+
+                except Exception as e:
+                    logger.warning(f"Error synthesizing sentence {i}: {e}")
+                    continue
+
+            logger.info(f"Combining {len(temp_audio_files)} audio segments...")
+            for temp_wav_path in tqdm.tqdm(
+                temp_audio_files, desc="Combining Segments", unit="file"
+            ):
+                if temp_wav_path.exists():
+                    try:
+                        segment = AudioSegment.from_wav(temp_wav_path)
+                        combined_audio += segment
+                    except CouldntDecodeError:
+                        logger.warning(
+                            f"Could not decode temporary segment: {temp_wav_path}"
+                        )
+                    finally:
+                        temp_wav_path.unlink(missing_ok=True)
+                else:
+                    logger.warning(f"Temporary segment file not found: {temp_wav_path}")
+
+            logger.info(f"Exporting combined audio to {output_wav_path}")
+            combined_audio.export(output_wav_path, format="wav")
+
+        except Exception as e:
+            logger.error(
+                f"Error during {tts_config.provider_name} synthesis: {e}",
+                exc_info=True,
+            )
+            for temp_file in temp_audio_files:
+                temp_file.unlink(missing_ok=True)
+            raise
+
     def _synthesize_sentences(
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
-        """Synthesize a list of sentences into a single WAV file."""
+        """Synthesize a list of sentences into a single WAV file.
+
+        Uses the configured TTS provider (default: kokoro). For backward
+        compatibility, if tts_provider is 'kokoro', uses the original
+        Kokoro-specific implementation.
+        """
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._synthesize_kokoro(sentences, output_wav_path)
+        if self.tts_provider == "kokoro":
+            # Use the original Kokoro implementation for backward compatibility
+            self._synthesize_kokoro(sentences, output_wav_path)
+        else:
+            # Use the provider-agnostic implementation
+            self._synthesize_with_provider(sentences, output_wav_path)
 
         logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
 
@@ -255,6 +372,7 @@ class EpubSynthesizer(BaseSynthesizer):
         confirm: bool = True,
         model_name: str = DEFAULT_MODEL,
         output_dir: Optional[str | Path] = None,
+        tts_provider: Optional[str] = None,
     ):
         self.reader = EpubReader(path)
         detected_language = self.reader.get_language()
@@ -286,6 +404,7 @@ class EpubSynthesizer(BaseSynthesizer):
             model_name=model_name,
             translate=translate,
             save_text=save_text,
+            tts_provider=tts_provider,
         )
 
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -926,6 +1045,7 @@ class PdfSynthesizer(BaseSynthesizer):
         file_name: Optional[str] = None,
         translate: Optional[str] = None,
         save_text: bool = False,
+        tts_provider: Optional[str] = None,
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
@@ -944,6 +1064,7 @@ class PdfSynthesizer(BaseSynthesizer):
             model_name=model_name,
             translate=translate,
             save_text=save_text,
+            tts_provider=tts_provider,
         )
 
     def synthesize(self) -> Path:
@@ -1039,6 +1160,7 @@ class VoiceSamplesSynthesizer:
 
             # Get voices - use the API config to get the correct endpoint
             from audify.utils.api_config import KokoroAPIConfig
+
             api_config = KokoroAPIConfig()
             voices_response = requests.get(api_config.voices_url, timeout=10)
             voices_response.raise_for_status()
@@ -1201,13 +1323,20 @@ class VoiceSamplesSynthesizer:
             logger.info("Adding metadata using FFmpeg...")
             ffmpeg_command = [
                 "ffmpeg",
-                "-i", str(self.temp_m4b_path),
-                "-i", str(self.metadata_path),
-                "-map", "0:a",
-                "-map_metadata", "1",
-                "-c:a", "copy",
-                "-f", "mp4",
-                "-y", str(self.final_m4b_path),
+                "-i",
+                str(self.temp_m4b_path),
+                "-i",
+                str(self.metadata_path),
+                "-map",
+                "0:a",
+                "-map_metadata",
+                "1",
+                "-c:a",
+                "copy",
+                "-f",
+                "mp4",
+                "-y",
+                str(self.final_m4b_path),
             ]
 
             result = subprocess.run(
@@ -1248,7 +1377,7 @@ class VoiceSamplesSynthesizer:
 
         # Limit samples if max_samples is specified
         if self.max_samples and len(model_voice_combinations) > self.max_samples:
-            model_voice_combinations = model_voice_combinations[:self.max_samples]
+            model_voice_combinations = model_voice_combinations[: self.max_samples]
             logger.info(f"Limited to first {self.max_samples} combinations for testing")
 
         logger.info(
@@ -1291,7 +1420,7 @@ class VoiceSamplesSynthesizer:
     def __del__(self):
         """Clean up temporary directory."""
         try:
-            if hasattr(self, 'tmp_dir') and self.tmp_dir.exists():
+            if hasattr(self, "tmp_dir") and self.tmp_dir.exists():
                 shutil.rmtree(self.tmp_dir)
         except Exception:
             pass

@@ -17,6 +17,7 @@ from audify.translate import translate_sentence
 from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
+    DEFAULT_TTS_PROVIDER,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OUTPUT_BASE_DIR,
@@ -35,8 +36,7 @@ class LLMClient:
     def __init__(
         self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
     ):
-        """
-        Initialize LLM client.
+        """Initialize LLM client.
 
         Args:
             base_url: Base URL for Ollama API (ignored for commercial APIs)
@@ -44,7 +44,7 @@ class LLMClient:
                 (e.g., 'api:deepseek/deepseek-chat')
         """
         # Check if using commercial API (format: api:model_name)
-        if model.startswith('api:'):
+        if model.startswith("api:"):
             self.is_commercial = True
             actual_model = model[4:]  # Remove 'api:' prefix
             self.config: Union[OllamaAPIConfig, CommercialAPIConfig] = (
@@ -139,6 +139,7 @@ class AudiobookCreator(BaseSynthesizer):
         max_chapters: Optional[int] = None,
         confirm: bool = True,
         output_dir: Optional[str | Path] = None,
+        tts_provider: Optional[str] = None,
     ):
         # Initialize file reader based on extension
         self.reader: Union[EpubReader, PdfReader]
@@ -187,6 +188,7 @@ class AudiobookCreator(BaseSynthesizer):
             model_name=model_name,
             translate=translate,
             save_text=save_text,
+            tts_provider=tts_provider,
         )
 
         # Setup cover image if available
@@ -831,6 +833,7 @@ class DirectoryAudiobookCreator:
         llm_model: str = OLLAMA_DEFAULT_MODEL,
         confirm: bool = True,
         output_dir: Optional[str | Path] = None,
+        tts_provider: Optional[str] = None,
     ):
         self.directory_path = Path(directory_path)
         if not self.directory_path.is_dir():
@@ -844,6 +847,7 @@ class DirectoryAudiobookCreator:
         self.llm_base_url = llm_base_url
         self.llm_model = llm_model
         self.confirm = confirm
+        self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
 
         # Setup output paths
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
@@ -865,6 +869,7 @@ class DirectoryAudiobookCreator:
             model_name=self.model_name,
             translate=self.translate,
             save_text=False,
+            tts_provider=self.tts_provider,
         )
 
         self.chapter_titles: List[str] = []
@@ -947,6 +952,7 @@ class DirectoryAudiobookCreator:
                     max_chapters=None,
                     confirm=False,
                     output_dir=self.audiobook_path / f"temp_{episode_number:03d}",
+                    tts_provider=self.tts_provider,
                 )
             elif file_extension == ".pdf":
                 creator = AudiobookPdfCreator(
@@ -960,6 +966,7 @@ class DirectoryAudiobookCreator:
                     llm_model=self.llm_model,
                     confirm=False,
                     output_dir=self.audiobook_path / f"temp_{episode_number:03d}",
+                    tts_provider=self.tts_provider,
                 )
             elif file_extension in [".txt", ".md"]:
                 # For text files, create a simple episode

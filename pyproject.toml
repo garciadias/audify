@@ -17,6 +17,8 @@ dependencies = [
     "tqdm>=4.67.1",
     "pydub>=0.25.1",
     "reportlab>=4.4.3",
+    "boto3-stubs>=1.42.37",
+    "boto3>=1.42.37",
 ]
 
 [build-system]

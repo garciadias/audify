@@ -20,6 +20,12 @@ class TestAPIKeyManager:
 
     def test_load_keys_from_file(self):
         """Test loading API keys from a file."""
+        # Save and clear environment variables that would override file keys
+        saved_env = {}
+        for key in ['DEEPSEEK_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']:
+            if key in os.environ:
+                saved_env[key] = os.environ.pop(key)
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.keys', delete=False) as f:
             f.write("DEEPSEEK=test-key-123\n")
             f.write("ANTHROPIC=test-key-456\n")
@@ -36,9 +42,14 @@ class TestAPIKeyManager:
             assert len(manager._keys) == 3
         finally:
             os.unlink(keys_file)
+            # Restore environment variables
+            os.environ.update(saved_env)
 
     def test_get_key_case_insensitive(self):
         """Test that get_key is case-insensitive."""
+        # Save and clear environment variable that would override file key
+        saved_env = os.environ.pop('DEEPSEEK_API_KEY', None)
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.keys', delete=False) as f:
             f.write("DEEPSEEK=test-key-123\n")
             keys_file = f.name
@@ -50,6 +61,9 @@ class TestAPIKeyManager:
             assert manager.get_key('DeepSeek') == 'test-key-123'
         finally:
             os.unlink(keys_file)
+            # Restore environment variable
+            if saved_env is not None:
+                os.environ['DEEPSEEK_API_KEY'] = saved_env
 
     def test_get_key_nonexistent(self):
         """Test getting a non-existent API key."""

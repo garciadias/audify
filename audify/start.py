@@ -9,9 +9,12 @@ from audify.text_to_speech import (
     PdfSynthesizer,
     VoiceSamplesSynthesizer,
 )
+from audify.utils.api_config import get_tts_config
 from audify.utils.constants import (
     AVAILABLE_LANGUAGES,
+    AVAILABLE_TTS_PROVIDERS,
     DEFAULT_LANGUAGE_LIST,
+    DEFAULT_TTS_PROVIDER,
     KOKORO_API_BASE_URL,
 )
 from audify.utils.text import get_file_extension
@@ -127,6 +130,20 @@ def get_available_models_and_voices():
     default=None,
     help="Output directory or file path for the result.",
 )
+@click.option(
+    "--tts-provider",
+    "-tp",
+    type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
+    default=DEFAULT_TTS_PROVIDER,
+    help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
+    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
+)
+@click.option(
+    "--list-tts-providers",
+    "-ltp",
+    is_flag=True,
+    help="List available TTS providers and their configuration requirements.",
+)
 def main(
     file_path: str,
     language: str,
@@ -141,9 +158,51 @@ def main(
     max_samples: int | None = None,
     y: bool = False,
     output: str | None = None,
+    tts_provider: str = DEFAULT_TTS_PROVIDER,
+    list_tts_providers: bool = False,
 ):
     terminal_width = os.get_terminal_size()[0]
-    if create_voice_samples:
+    if list_tts_providers:
+        print("=" * terminal_width)
+        print("Available TTS Providers".center(terminal_width))
+        print("=" * terminal_width)
+        print("\nProvider\tStatus\t\tConfiguration")
+        print("-" * terminal_width)
+
+        provider_info = {
+            "kokoro": {
+                "name": "Kokoro (Local)",
+                "config": "KOKORO_API_URL (default: http://localhost:8887/v1)",
+            },
+            "openai": {
+                "name": "OpenAI TTS",
+                "config": "OPENAI_API_KEY, OPENAI_TTS_MODEL, OPENAI_TTS_VOICE",
+            },
+            "aws": {
+                "name": "AWS Polly",
+                "config": "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, "
+                "AWS_REGION, AWS_POLLY_VOICE",
+            },
+            "google": {
+                "name": "Google Cloud TTS",
+                "config": "GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_TTS_VOICE",
+            },
+        }
+
+        for provider in AVAILABLE_TTS_PROVIDERS:
+            try:
+                config = get_tts_config(provider=provider, language=language)
+                status = "Available" if config.is_available() else "Not configured"
+            except Exception:
+                status = "Not available"
+
+            info = provider_info.get(provider, {"name": provider, "config": "N/A"})
+            print(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
+
+        print("\n" + "=" * terminal_width)
+        print("Set TTS_PROVIDER environment variable or use --tts-provider/-tp flag")
+        print("=" * terminal_width)
+    elif create_voice_samples:
         print("=" * terminal_width)
         print("Creating Voice Samples M4B".center(terminal_width))
         print("=" * terminal_width)
@@ -177,32 +236,40 @@ def main(
             print(f"Error fetching models from Kokoro API: {e}")
     elif list_voices:
         print("=" * terminal_width)
-        print("Available voices:".center(terminal_width))
+        print(f"Available voices for {tts_provider.upper()}:".center(terminal_width))
         print("=" * terminal_width)
         try:
-            models, voices = get_available_models_and_voices()
+            config = get_tts_config(provider=tts_provider, language=language)
+            voices = config.get_available_voices()
             if voices:
-                # Group voices by prefix for better organization
-                voice_groups: dict[str, list[str]] = {}
-                for voice in voices:
-                    prefix = voice.split('_')[0] if '_' in voice else 'other'
-                    if prefix not in voice_groups:
-                        voice_groups[prefix] = []
-                    voice_groups[prefix].append(voice)
+                if tts_provider == "kokoro":
+                    # Group Kokoro voices by prefix for better organization
+                    voice_groups: dict[str, list[str]] = {}
+                    for v in voices:
+                        prefix = v.split("_")[0] if "_" in v else "other"
+                        if prefix not in voice_groups:
+                            voice_groups[prefix] = []
+                        voice_groups[prefix].append(v)
 
-                for prefix in sorted(voice_groups.keys()):
-                    print(f"\n{prefix.upper()} voices:")
-                    for voice in sorted(voice_groups[prefix]):
-                        print(f"  {voice}")
+                    for prefix in sorted(voice_groups.keys()):
+                        print(f"\n{prefix.upper()} voices:")
+                        for v in sorted(voice_groups[prefix]):
+                            print(f"  {v}")
+                else:
+                    # For other providers, just list voices
+                    print(f"\nVoices for {tts_provider}:")
+                    for v in sorted(voices):
+                        print(f"  {v}")
             else:
-                print("No voices found.")
+                print(f"No voices found for {tts_provider}.")
         except Exception as e:
-            print(f"Error fetching voices from Kokoro API: {e}")
+            print(f"Error fetching voices from {tts_provider}: {e}")
     else:
         if get_file_extension(file_path) == ".epub":
             print("=" * terminal_width)
             print("Epub to Audiobook".center(terminal_width))
             print("=" * terminal_width)
+            print(f"TTS Provider: {tts_provider}")
             synthesizer = EpubSynthesizer(
                 file_path,
                 language=language,
@@ -212,12 +279,14 @@ def main(
                 save_text=save_text,
                 confirm=not y,
                 output_dir=output,
+                tts_provider=tts_provider,
             )  # type: ignore
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
             print("==========")
             print("PDF to mp3")
             print("==========")
+            print(f"TTS Provider: {tts_provider}")
             synthesizer = PdfSynthesizer(
                 file_path,
                 language=language,
@@ -226,6 +295,7 @@ def main(
                 translate=translate,
                 save_text=save_text,
                 output_dir=output,
+                tts_provider=tts_provider,
             )  # type: ignore
             synthesizer.synthesize()
         else:
