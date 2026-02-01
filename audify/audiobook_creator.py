@@ -97,6 +97,55 @@ class LLMClient:
             else:
                 return f"Error: Failed to generate audiobook script due to: {str(e)}"
 
+    async def generate_audiobook_script_async(
+        self, chapter_text: str, language: Optional[str]
+    ) -> str:
+        """Async version of generate_audiobook_script."""
+        from audify.translate import translate_sentence_async
+
+        # Prepare system prompt (instructions)
+        if language != "en":
+            system_prompt = await translate_sentence_async(
+                AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
+            )
+        else:
+            system_prompt = AUDIOBOOK_PROMPT
+
+        try:
+            logger.info(f"Sending async request to LLM at {self.config.base_url}")
+
+            response = await self.config.generate_async(
+                system_prompt=system_prompt,
+                user_prompt=chapter_text,
+                num_ctx=8 * 4096,
+                temperature=0.8,
+                top_p=0.9,
+                repeat_penalty=1.05,
+                seed=428798,
+                top_k=60,
+                num_predict=4096,
+            )
+
+            if response:
+                if "think" in response.lower():
+                    return clean_text(response.split("</think>")[-1].strip())
+                return clean_text(response.strip())
+            else:
+                logger.error("Empty response from LLM")
+                return "Error: Unable to generate audiobook script for this content."
+
+        except Exception as e:
+            logger.error(f"Error communicating with LLM: {e}")
+            if "connection" in str(e).lower():
+                return (
+                    "Error: Could not connect to LLM server. "
+                    f"Please ensure the service is running at {self.config.base_url}."
+                )
+            elif "timeout" in str(e).lower():
+                return "Error: Request to LLM timed out. Content might be too long."
+            else:
+                return f"Error: Failed to generate audiobook script due to: {str(e)}"
+
 
 class AudiobookCreator(BaseSynthesizer):
     """Creates audiobooks from ebook content using LLM and TTS."""

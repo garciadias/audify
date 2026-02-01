@@ -323,6 +323,69 @@ class BaseSynthesizer:
 
         logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
 
+    async def _synthesize_sentences_async(
+        self,
+        sentences: List[str],
+        output_wav_path: Path,
+        max_concurrent: int = 10,
+    ) -> None:
+        """Async version of _synthesize_sentences with concurrent TTS calls.
+
+        Args:
+            sentences: List of sentences to synthesize.
+            output_wav_path: Path where the combined WAV file will be saved.
+            max_concurrent: Maximum concurrent TTS requests.
+        """
+        output_wav_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Get TTS config
+        tts_config = self._get_tts_config()
+
+        # Filter out empty sentences and create temp paths
+        valid_sentences = [(i, s) for i, s in enumerate(sentences) if s.strip()]
+        if not valid_sentences:
+            logger.warning("No valid sentences to synthesize")
+            return
+
+        temp_paths = [self.tmp_dir / f"segment_{i}.wav" for i, _ in valid_sentences]
+
+        logger.info(
+            f"Starting async {tts_config.provider_name} synthesis "
+            f"for {len(valid_sentences)} sentences..."
+        )
+
+        # Synthesize all sentences concurrently
+        results = await tts_config.synthesize_batch_async(
+            texts=[s for _, s in valid_sentences],
+            output_paths=temp_paths,
+            max_concurrent=max_concurrent,
+        )
+
+        # Combine successful audio files
+        combined_audio = AudioSegment.empty()
+        successful_count = 0
+
+        for path, success in zip(temp_paths, results):
+            if success and path.exists():
+                try:
+                    segment = AudioSegment.from_wav(path)
+                    combined_audio += segment
+                    successful_count += 1
+                except CouldntDecodeError:
+                    logger.warning(f"Could not decode segment: {path}")
+                finally:
+                    path.unlink(missing_ok=True)
+            elif path.exists():
+                path.unlink(missing_ok=True)
+
+        logger.info(f"Combined {successful_count}/{len(valid_sentences)} segments")
+
+        if len(combined_audio) > 0:
+            combined_audio.export(output_wav_path, format="wav")
+            logger.info(f"Async WAV synthesis complete: {output_wav_path}")
+        else:
+            logger.error("No audio segments were synthesized successfully")
+
     def _convert_to_mp3(self, wav_path: Path) -> Path:
         """Converts a WAV file to MP3 and removes the original WAV."""
         return AudioProcessor.convert_wav_to_mp3(wav_path)

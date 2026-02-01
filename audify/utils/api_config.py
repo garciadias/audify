@@ -5,6 +5,7 @@ This module consolidates API configuration classes to reduce code duplication
 across different modules that interact with external APIs.
 """
 
+import asyncio
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -12,8 +13,9 @@ from pathlib import Path
 from typing import List, Optional
 
 import boto3
+import httpx
 import requests
-from litellm import completion
+from litellm import acompletion, completion
 
 from audify.utils.constants import (
     AWS_ACCESS_KEY_ID,
@@ -133,6 +135,52 @@ class TTSAPIConfig(ABC):
         """Return the name of the TTS provider."""
         pass
 
+    async def synthesize_async(self, text: str, output_path: Path) -> bool:
+        """Async version of synthesize. Default implementation wraps sync method.
+
+        Subclasses should override this with native async implementation.
+
+        Args:
+            text: The text to synthesize.
+            output_path: Path where the audio file will be saved (WAV format).
+
+        Returns:
+            True if synthesis was successful, False otherwise.
+        """
+        return await asyncio.to_thread(self.synthesize, text, output_path)
+
+    async def synthesize_batch_async(
+        self,
+        texts: List[str],
+        output_paths: List[Path],
+        max_concurrent: int = 10,
+    ) -> List[bool]:
+        """Synthesize multiple texts concurrently.
+
+        Args:
+            texts: List of texts to synthesize.
+            output_paths: List of output paths (same length as texts).
+            max_concurrent: Maximum concurrent synthesis operations.
+
+        Returns:
+            List of success flags for each synthesis.
+        """
+        from audify.utils.async_utils import AsyncBatcher
+
+        if len(texts) != len(output_paths):
+            raise ValueError("texts and output_paths must have same length")
+
+        batcher = AsyncBatcher(max_concurrent=max_concurrent)
+        tasks = [
+            self.synthesize_async(text, path)
+            for text, path in zip(texts, output_paths)
+            if text.strip()
+        ]
+        results = await batcher.run_batch(tasks)
+
+        # Convert exceptions to False
+        return [r if isinstance(r, bool) else False for r in results]
+
 
 class KokoroTTSConfig(TTSAPIConfig):
     """TTS configuration for local Kokoro API."""
@@ -212,6 +260,32 @@ class KokoroTTSConfig(TTSAPIConfig):
             logger.error(f"Kokoro synthesis failed: {e}")
             return False
 
+    async def synthesize_async(self, text: str, output_path: Path) -> bool:
+        """Async synthesis using httpx."""
+        try:
+            lang_code = LANG_CODES.get(self.language, "a")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.speech_url,
+                    json={
+                        "model": "kokoro",
+                        "input": text,
+                        "voice": self.voice,
+                        "response_format": "wav",
+                        "lang_code": lang_code,
+                        "speed": 1.0,
+                    },
+                )
+                if response.status_code == 200:
+                    output_path.write_bytes(response.content)
+                    return True
+                else:
+                    logger.error(f"Kokoro API error: {response.status_code}")
+                    return False
+        except httpx.RequestError as e:
+            logger.error(f"Kokoro async synthesis failed: {e}")
+            return False
+
 
 class OpenAITTSConfig(TTSAPIConfig):
     """TTS configuration for OpenAI TTS API."""
@@ -282,6 +356,42 @@ class OpenAITTSConfig(TTSAPIConfig):
                 return False
         except requests.RequestException as e:
             logger.error(f"OpenAI TTS synthesis failed: {e}")
+            return False
+
+    async def synthesize_async(self, text: str, output_path: Path) -> bool:
+        """Async synthesis using httpx."""
+        if not self.api_key:
+            logger.error("OpenAI API key not configured")
+            return False
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            data = {
+                "model": self.model,
+                "input": text,
+                "voice": self.voice,
+                "response_format": "wav",
+            }
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.base_url,
+                    headers=headers,
+                    json=data,
+                )
+                if response.status_code == 200:
+                    output_path.write_bytes(response.content)
+                    return True
+                else:
+                    logger.error(
+                        f"OpenAI TTS API error: {response.status_code} "
+                        f"- {response.text}"
+                    )
+                    return False
+        except httpx.RequestError as e:
+            logger.error(f"OpenAI TTS async synthesis failed: {e}")
             return False
 
 
@@ -676,6 +786,43 @@ class QwenTTSConfig(TTSAPIConfig):
             logger.error(f"Qwen-TTS synthesis failed: {e}")
             return False
 
+    async def synthesize_async(self, text: str, output_path: Path) -> bool:
+        """Async synthesis using httpx."""
+        try:
+            language_map = {
+                "en": "Auto",
+                "es": "Auto",
+                "fr": "Auto",
+                "de": "Auto",
+                "it": "Auto",
+                "pt": "Auto",
+                "zh": "Auto",
+                "ja": "Auto",
+                "hi": "Auto",
+            }
+            qwen_language = language_map.get(self.language, "Auto")
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.tts_url,
+                    json={
+                        "text": text,
+                        "language": qwen_language,
+                        "speaker": self.voice,
+                        "instruct": None,
+                    },
+                )
+
+                if response.status_code == 200:
+                    output_path.write_bytes(response.content)
+                    return True
+                else:
+                    logger.error(f"Qwen-TTS API error: {response.status_code}")
+                    return False
+        except httpx.RequestError as e:
+            logger.error(f"Qwen-TTS async synthesis failed: {e}")
+            return False
+
 
 def get_tts_config(
     provider: Optional[str] = None,
@@ -867,6 +1014,60 @@ class CommercialAPIConfig(APIConfig):
         )
         return response.choices[0].message.content
 
+    async def generate_async(
+        self,
+        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+        num_ctx: int = 8 * 4096,
+        repeat_penalty: float = 1.05,
+        seed: Optional[int] = None,
+        top_k: int = 60,
+        num_predict: int = 4096,
+    ) -> str:
+        """Async text generation using litellm.acompletion().
+
+        Args:
+            prompt: Legacy parameter for single user message (deprecated)
+            system_prompt: System role message (instructions/context)
+            user_prompt: User role message (actual content to process)
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            num_ctx: Context window size (ignored for most commercial APIs)
+            repeat_penalty: Penalty for repeating tokens (ignored for most)
+            seed: Random seed for reproducibility
+            top_k: Top-k sampling parameter (ignored for most)
+            num_predict: Maximum tokens to generate
+
+        Returns:
+            Generated text content
+        """
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+        elif prompt:
+            messages.append({"role": "user", "content": prompt})
+
+        if not messages:
+            raise ValueError("Must provide either prompt or user_prompt")
+
+        response = await acompletion(
+            model=self.model,
+            messages=messages,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=num_predict,
+            seed=seed,
+            request_timeout=self.timeout,
+        )
+        return response.choices[0].message.content
+
 
 class OllamaAPIConfig(APIConfig):
     """Configuration for Ollama LLM API."""
@@ -942,6 +1143,64 @@ class OllamaAPIConfig(APIConfig):
         )
         return response.choices[0].message.content
 
+    async def generate_async(
+        self,
+        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+        num_ctx: int = 8 * 4096,
+        repeat_penalty: float = 1.05,
+        seed: Optional[int] = None,
+        top_k: int = 60,
+        num_predict: int = 4096,
+    ) -> str:
+        """Async text generation using litellm.acompletion().
+
+        Args:
+            prompt: Legacy parameter for single user message (deprecated)
+            system_prompt: System role message (instructions/context)
+            user_prompt: User role message (actual content to process)
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            num_ctx: Context window size
+            repeat_penalty: Penalty for repeating tokens
+            seed: Random seed for reproducibility
+            top_k: Top-k sampling parameter
+            num_predict: Maximum tokens to generate
+
+        Returns:
+            Generated text content
+        """
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+        elif prompt:
+            messages.append({"role": "user", "content": prompt})
+
+        if not messages:
+            raise ValueError("Must provide either prompt or user_prompt")
+
+        response = await acompletion(
+            model=f"ollama/{self.model}",
+            messages=messages,
+            api_base=self.base_url,
+            temperature=temperature,
+            top_p=top_p,
+            seed=seed,
+            num_ctx=num_ctx,
+            top_k=top_k,
+            max_tokens=num_predict,
+            repeat_penalty=repeat_penalty,
+            request_timeout=self.timeout,
+        )
+        return response.choices[0].message.content
+
 
 class OllamaTranslationConfig(OllamaAPIConfig):
     """Configuration for Ollama translation API using LiteLLM."""
@@ -965,4 +1224,15 @@ class OllamaTranslationConfig(OllamaAPIConfig):
             num_ctx=4096,  # Smaller context for translation
             repeat_penalty=1.0,  # No repeat penalty for translation
             num_predict=2048,  # Shorter responses for translation
+        )
+
+    async def translate_async(self, prompt: str) -> str:
+        """Async translation using litellm.acompletion()."""
+        return await self.generate_async(
+            prompt=prompt,
+            temperature=0.1,
+            top_p=0.9,
+            num_ctx=4096,
+            repeat_penalty=1.0,
+            num_predict=2048,
         )
