@@ -15,16 +15,28 @@ import boto3
 import requests
 from litellm import completion
 
-from audify.utils.constants import (AWS_ACCESS_KEY_ID, AWS_POLLY_ENGINE,
-                                    AWS_POLLY_VOICE, AWS_REGION,
-                                    AWS_SECRET_ACCESS_KEY, DEFAULT_SPEAKER,
-                                    DEFAULT_TTS_PROVIDER,
-                                    GOOGLE_TTS_LANGUAGE_CODE, GOOGLE_TTS_VOICE,
-                                    KOKORO_API_BASE_URL, LANG_CODES,
-                                    OLLAMA_API_BASE_URL, OLLAMA_DEFAULT_MODEL,
-                                    OLLAMA_DEFAULT_TRANSLATION_MODEL,
-                                    OPENAI_API_KEY, OPENAI_TTS_MODEL,
-                                    OPENAI_TTS_VOICE, _keys_config)
+from audify.utils.constants import (
+    AWS_ACCESS_KEY_ID,
+    AWS_POLLY_ENGINE,
+    AWS_POLLY_VOICE,
+    AWS_REGION,
+    AWS_SECRET_ACCESS_KEY,
+    DEFAULT_SPEAKER,
+    DEFAULT_TTS_PROVIDER,
+    GOOGLE_TTS_LANGUAGE_CODE,
+    GOOGLE_TTS_VOICE,
+    KOKORO_API_BASE_URL,
+    LANG_CODES,
+    OLLAMA_API_BASE_URL,
+    OLLAMA_DEFAULT_MODEL,
+    OLLAMA_DEFAULT_TRANSLATION_MODEL,
+    OPENAI_API_KEY,
+    OPENAI_TTS_MODEL,
+    OPENAI_TTS_VOICE,
+    QWEN_API_BASE_URL,
+    QWEN_TTS_VOICE,
+    _keys_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +232,8 @@ class OpenAITTSConfig(TTSAPIConfig):
             language=language,
             timeout=timeout,
         )
-        self.api_key = api_key or OPENAI_API_KEY
-        self.model = model or OPENAI_TTS_MODEL
+        self.api_key = api_key if api_key is not None else OPENAI_API_KEY
+        self.model = model if model is not None else OPENAI_TTS_MODEL
         self.base_url = "https://api.openai.com/v1/audio/speech"
 
     @property
@@ -569,6 +581,102 @@ class GoogleTTSConfig(TTSAPIConfig):
             return False
 
 
+class QwenTTSConfig(TTSAPIConfig):
+    """TTS configuration for Qwen3-TTS API."""
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        base_url: Optional[str] = None,
+        timeout: int = 60,
+    ):
+        super().__init__(
+            voice=voice or QWEN_TTS_VOICE,
+            language=language,
+            timeout=timeout,
+        )
+        self.base_url = base_url or QWEN_API_BASE_URL
+        self._available_voices: Optional[List[str]] = None
+
+    @property
+    def provider_name(self) -> str:
+        return "qwen"
+
+    @property
+    def health_url(self) -> str:
+        """URL for health check."""
+        return f"{self.base_url}/health"
+
+    @property
+    def tts_url(self) -> str:
+        """URL for text-to-speech synthesis."""
+        return f"{self.base_url}/tts"
+
+    def is_available(self) -> bool:
+        """Check if Qwen-TTS API is reachable."""
+        try:
+            response = requests.get(self.health_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                return (
+                    data.get("status") == "healthy"
+                    and data.get("model_loaded", False)
+                )
+            return False
+        except requests.RequestException:
+            return False
+
+    def get_available_voices(self) -> List[str]:
+        """Get available voices for Qwen-TTS.
+
+        Note: Qwen3-TTS supports custom voice cloning, but has default voices.
+        This returns a basic list of common voices.
+        """
+        # Qwen-TTS default voices based on the documentation
+        return ["Vivian"]  # Add more voices as they become available
+
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text using Qwen-TTS API."""
+        try:
+            # Map language codes to Qwen-TTS language format
+            # Qwen-TTS uses "Auto" by default for automatic language detection
+            language_map = {
+                "en": "Auto",
+                "es": "Auto",
+                "fr": "Auto",
+                "de": "Auto",
+                "it": "Auto",
+                "pt": "Auto",
+                "zh": "Auto",
+                "ja": "Auto",
+                "hi": "Auto",
+            }
+            qwen_language = language_map.get(self.language, "Auto")
+
+            response = requests.post(
+                self.tts_url,
+                json={
+                    "text": text,
+                    "language": qwen_language,
+                    "speaker": self.voice,
+                    "instruct": None,  # Optional instruction for voice style
+                },
+                timeout=self.timeout,
+            )
+
+            if response.status_code == 200:
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+                return True
+            else:
+                logger.error(f"Qwen-TTS API error: {response.status_code}")
+                return False
+        except requests.RequestException as e:
+            logger.error(f"Qwen-TTS synthesis failed: {e}")
+            return False
+
+
 def get_tts_config(
     provider: Optional[str] = None,
     voice: Optional[str] = None,
@@ -578,7 +686,7 @@ def get_tts_config(
     """Factory function to get the appropriate TTS configuration.
 
     Args:
-        provider: TTS provider name ("kokoro", "openai", "aws", "google").
+        provider: TTS provider name ("kokoro", "openai", "aws", "google", "qwen").
                   Defaults to DEFAULT_TTS_PROVIDER from environment.
         voice: Voice identifier for the provider.
         language: Language code (e.g., "en", "es", "fr").
@@ -622,16 +730,21 @@ def get_tts_config(
         if voice and voice.startswith(("af_", "am_", "bf_", "bm_")):
             voice = None  # Use Google default
         return GoogleTTSConfig(voice=voice, language=language, **kwargs)
+    elif provider == "qwen":
+        # For Qwen, use default voice if Kokoro voice provided
+        if voice and voice.startswith(("af_", "am_", "bf_", "bm_")):
+            voice = None  # Use Qwen default
+        return QwenTTSConfig(voice=voice, language=language, **kwargs)
     else:
         raise ValueError(
             f"Unsupported TTS provider: {provider}. "
-            f"Available providers: kokoro, openai, aws, google"
+            f"Available providers: kokoro, openai, aws, google, qwen"
         )
 
 
 class CommercialAPIConfig(APIConfig):
     """Configuration for commercial LLM APIs (DeepSeek, Claude, GPT-4, Gemini).
-    
+
     Uses LiteLLM to provide unified interface to commercial APIs.
     Model format: 'api:provider/model' (e.g., 'api:deepseek-chat')
     API keys are loaded from .keys file or environment variables.
@@ -659,7 +772,7 @@ class CommercialAPIConfig(APIConfig):
         timeout: int = 600,
     ):
         """Initialize commercial API config.
-        
+
         Args:
             model: Model identifier with 'api:' prefix (e.g., 'api:deepseek-chat')
             timeout: Request timeout in seconds
