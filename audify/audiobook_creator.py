@@ -36,15 +36,7 @@ class LLMClient:
     def __init__(
         self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
     ):
-        # Check if model uses commercial API
-        if model.startswith("api:"):
-            # Use commercial API config
-            self.config: Union[OllamaAPIConfig, CommercialAPIConfig] = (
-                CommercialAPIConfig(model=model)
-            )
-        else:
-            # Use Ollama API config
-            self.config = OllamaAPIConfig(base_url=base_url, model=model)
+        """Initialize LLM client.
 
         Args:
             base_url: Base URL for Ollama API (ignored for commercial APIs)
@@ -52,7 +44,7 @@ class LLMClient:
                 (e.g., 'api:deepseek/deepseek-chat')
         """
         # Check if using commercial API (format: api:model_name)
-        if model.startswith('api:'):
+        if model.startswith("api:"):
             self.is_commercial = True
             actual_model = model[4:]  # Remove 'api:' prefix
             self.config: Union[OllamaAPIConfig, CommercialAPIConfig] = (
