@@ -31,25 +31,35 @@ logger = setup_logging(module_name=__name__)
 
 
 class LLMClient:
-    """Client for interacting with local LLM using LiteLLM."""
+    """Client for interacting with LLM services (Ollama or commercial APIs)."""
 
     def __init__(
         self, base_url: str = OLLAMA_API_BASE_URL, model: str = OLLAMA_DEFAULT_MODEL
     ):
-        # Check if model uses commercial API
+        """Initialize LLM client.
+
+        Args:
+            base_url: Base URL for Ollama API (ignored for commercial APIs)
+            model: Model name. Use 'api:model_name' for commercial APIs
+                (e.g., 'api:deepseek/deepseek-chat')
+        """
+        # Check if using commercial API (format: api:model_name)
         if model.startswith("api:"):
-            # Use commercial API config
+            self.is_commercial = True
+            actual_model = model[4:]  # Remove 'api:' prefix
             self.config: Union[OllamaAPIConfig, CommercialAPIConfig] = (
-                CommercialAPIConfig(model=model)
+                CommercialAPIConfig(model=actual_model)
             )
+            logger.info(f"Using commercial API with model: {actual_model}")
         else:
-            # Use Ollama API config
+            self.is_commercial = False
             self.config = OllamaAPIConfig(base_url=base_url, model=model)
+            logger.info(f"Using Ollama with model: {model}")
 
     def generate_audiobook_script(
         self, chapter_text: str, language: Optional[str]
     ) -> str:
-        """Generate audiobook script from chapter text using LiteLLM."""
+        """Generate audiobook script from chapter text using LLM."""
         # Prepare system prompt (instructions)
         if language != "en":
             system_prompt = translate_sentence(
@@ -59,7 +69,10 @@ class LLMClient:
             system_prompt = AUDIOBOOK_PROMPT
 
         try:
-            logger.info(f"Sending request to LLM at {self.config.base_url}")
+            if self.is_commercial:
+                logger.info(f"Sending request to commercial API: {self.config.model}")
+            else:
+                logger.info(f"Sending request to LLM at {self.config.base_url}")
 
             # Generate response using LiteLLM with audiobook-specific parameters
             # System role: instructions, User role: content to process
@@ -88,12 +101,24 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Error communicating with LLM: {e}")
             if "connection" in str(e).lower():
-                return (
-                    "Error: Could not connect to local LLM server. "
-                    f"Please ensure Ollama is running at {self.config.base_url}."
-                )
+                if self.is_commercial:
+                    return (
+                        "Error: Could not connect to commercial API. "
+                        "Please check your API key and internet connection."
+                    )
+                else:
+                    return (
+                        "Error: Could not connect to local LLM server. "
+                        f"Please ensure Ollama is running at {self.config.base_url}."
+                    )
             elif "timeout" in str(e).lower():
                 return "Error: Request to LLM timed out. Content might be too long."
+            elif "api" in str(e).lower() and "key" in str(e).lower():
+                return (
+                    "Error: API key issue. Please ensure your API key is "
+                    "properly configured in the .keys file or environment "
+                    "variables."
+                )
             else:
                 return f"Error: Failed to generate audiobook script due to: {str(e)}"
 

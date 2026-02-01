@@ -894,7 +894,7 @@ class CommercialAPIConfig(APIConfig):
 
     Uses LiteLLM to provide unified interface to commercial APIs.
     Model format: 'api:provider/model' (e.g., 'api:deepseek-chat')
-    API keys are loaded from .keys file or environment variables.
+    API keys are loaded from .keys file, api_keys module, or environment variables.
     """
 
     # Map of shortened names to full LiteLLM provider/model formats
@@ -916,12 +916,15 @@ class CommercialAPIConfig(APIConfig):
     def __init__(
         self,
         model: str,
+        api_key: Optional[str] = None,
         timeout: int = 600,
     ):
         """Initialize commercial API config.
 
         Args:
-            model: Model identifier with 'api:' prefix (e.g., 'api:deepseek-chat')
+            model: Model identifier (e.g., 'deepseek-chat', 'claude-3-sonnet')
+            api_key: API key for the service. If None, will try to get from
+                api_keys module or environment
             timeout: Request timeout in seconds
         """
         super().__init__(base_url="", timeout=timeout)
@@ -930,11 +933,51 @@ class CommercialAPIConfig(APIConfig):
         if model.startswith("api:"):
             model = model[4:]
 
+        # Store original model name for API key lookups (before mapping)
+        original_model = model
+
         # Map shortened names to full provider/model format
         self.model = self.MODEL_MAPPINGS.get(model, model)
+        self.api_key = api_key
 
-        # Load API keys from .keys file into environment variables
-        # LiteLLM expects API keys in environment variables
+        # If no API key provided, try to load from api_keys module
+        if not self.api_key:
+            try:
+                from audify.utils.api_keys import get_api_key
+
+                # Map model prefixes to API key names
+                if "deepseek" in original_model.lower():
+                    self.api_key = get_api_key("DEEPSEEK")
+                elif "claude" in original_model.lower():
+                    self.api_key = get_api_key("ANTHROPIC") or get_api_key("CLAUDE")
+                elif (
+                    "gpt" in original_model.lower()
+                    or "openai" in original_model.lower()
+                ):
+                    self.api_key = get_api_key("OPENAI")
+                elif "gemini" in original_model.lower():
+                    self.api_key = get_api_key("GOOGLE") or get_api_key("GEMINI")
+
+                if not self.api_key:
+                    logger.warning(f"No API key found for model {model}")
+            except ImportError:
+                logger.warning("Could not import api_keys module")
+
+        # Set API key as environment variable for LiteLLM
+        if self.api_key:
+            if "deepseek" in original_model.lower():
+                os.environ["DEEPSEEK_API_KEY"] = self.api_key
+            elif "claude" in original_model.lower():
+                os.environ["ANTHROPIC_API_KEY"] = self.api_key
+            elif (
+                "gpt" in original_model.lower()
+                or "openai" in original_model.lower()
+            ):
+                os.environ["OPENAI_API_KEY"] = self.api_key
+            elif "gemini" in original_model.lower():
+                os.environ["GOOGLE_API_KEY"] = self.api_key
+
+        # Also load any additional keys from .keys file
         self._load_api_keys_to_env()
 
     def _load_api_keys_to_env(self) -> None:

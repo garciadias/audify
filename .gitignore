@@ -185,5 +185,5 @@ input
 
 .claude/settings.local.json
 
-# API keys and credentials
+# API Keys (NEVER commit API keys)
 .keys
