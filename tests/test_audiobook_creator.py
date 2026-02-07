@@ -218,6 +218,7 @@ class TestAudiobookCreatorMethods:
     def test_break_script_into_segments(self, mock_init):
         """Test _break_script_into_segments method."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
+        creator.tts_provider = "kokoro"  # Set default provider for test
 
         with patch("audify.audiobook_creator.break_text_into_sentences") as mock_break:
             mock_break.return_value = [

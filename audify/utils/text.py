@@ -2,6 +2,7 @@ import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Optional
 
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
@@ -40,7 +41,7 @@ def combine_small_sentences(sentences: list[str], min_length: int = 10) -> list[
     return result
 
 
-def break_too_long_sentences(sentences: list[str], max_length: int = 239) -> list[str]:
+def break_too_long_sentences(sentences: list[str], max_length: int = 1500) -> list[str]:
     result: list[str] = []
     for sentence in sentences:
         sentence_words = sentence.split()
@@ -56,11 +57,39 @@ def break_too_long_sentences(sentences: list[str], max_length: int = 239) -> lis
 
 
 def break_text_into_sentences(
-    text: str, max_length: int = 5000, min_length: int = 20
+    text: str,
+    max_length: int = 5000,
+    min_length: int = 500,
+    tts_provider: Optional[str] = None,
 ) -> list[str]:
+    """Break text into sentences optimized for TTS synthesis.
+
+    Args:
+        text: The text to break into sentences
+        max_length: Maximum character length per chunk (default: 5000)
+        min_length: Minimum character length per chunk (default: 100)
+        tts_provider: TTS provider name for provider-specific optimization
+
+    Returns:
+        List of text chunks optimized for the TTS provider
+    """
+    # Use provider-specific limits if available
+    if tts_provider:
+        from audify.utils.constants import (
+            DEFAULT_TTS_CHARACTER_LIMIT,
+            TTS_CHARACTER_LIMITS,
+        )
+
+        provider_limit = TTS_CHARACTER_LIMITS.get(
+            tts_provider, DEFAULT_TTS_CHARACTER_LIMIT
+        )
+        # Use 90% of limit to leave room for safety margin
+        max_length = min(max_length, int(provider_limit * 0.9))
+
     # Split text into sentences using punctuation marks
     sentences = re.split(r"(?<=[.!?;:¿¡]) +", text)
     # Split long sentences into smaller ones to avoid TTS errors
+    # Reserve some space for combining small sentences
     result = break_too_long_sentences(sentences, max_length - min_length)
     # Combine sentences that are too short with the previous one
     result = combine_small_sentences(result, min_length)

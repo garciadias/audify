@@ -15,11 +15,7 @@ from pydub.exceptions import CouldntDecodeError
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
-from audify.utils.api_config import (
-    KokoroAPIConfig,
-    TTSAPIConfig,
-    get_tts_config,
-)
+from audify.utils.api_config import KokoroAPIConfig, TTSAPIConfig, get_tts_config
 from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     DEFAULT_MODEL,
@@ -513,7 +509,9 @@ class EpubSynthesizer(BaseSynthesizer):
             return chapter_mp3_path
 
         chapter_txt = self.reader.extract_text(chapter_content)
-        sentences = break_text_into_sentences(chapter_txt)
+        sentences = break_text_into_sentences(
+            chapter_txt, tts_provider=self.tts_provider
+        )
 
         if not sentences:
             logger.warning(
@@ -546,7 +544,9 @@ class EpubSynthesizer(BaseSynthesizer):
                     "Proceeding with original text for synthesis due to translation"
                     " error."
                 )
-                sentences = break_text_into_sentences(chapter_txt)
+                sentences = break_text_into_sentences(
+                    chapter_txt, tts_provider=self.tts_provider
+                )
 
         self._synthesize_sentences(sentences, chapter_wav_path)
         return self._convert_to_mp3(chapter_wav_path)
@@ -995,7 +995,7 @@ class EpubSynthesizer(BaseSynthesizer):
         chapter_mp3_path = self.audiobook_path / f"chapter_{chapter_index:03d}.mp3"
         duration_s = 0.0
 
-        MIN_CHAPTER_LENGTH = 100
+        MIN_CHAPTER_LENGTH = 500
         is_too_short = len(chapter_content) < MIN_CHAPTER_LENGTH
         chapter_exists = chapter_mp3_path.exists()
 
@@ -1068,7 +1068,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 logger.warning(f"Skipping empty or invalid chapter data at index {i}.")
                 continue
 
-            MIN_CHAPTER_LENGTH = 100
+            MIN_CHAPTER_LENGTH = 500
             if len(chapter_content) >= MIN_CHAPTER_LENGTH:
                 try:
                     current_chapter_start_time_ms = self._process_single_chapter(
@@ -1137,7 +1137,9 @@ class PdfSynthesizer(BaseSynthesizer):
             reader = PdfReader(self.path)
             logger.info("Extracting and cleaning text from PDF...")
 
-            sentences = break_text_into_sentences(reader.cleaned_text)
+            sentences = break_text_into_sentences(
+                reader.cleaned_text, tts_provider=self.tts_provider
+            )
 
             if not sentences:
                 logger.warning("No text extracted from PDF. Cannot synthesize.")
@@ -1161,7 +1163,9 @@ class PdfSynthesizer(BaseSynthesizer):
                 except Exception as e:
                     logger.error(f"Error translating PDF content: {e}", exc_info=True)
                     logger.warning("Proceeding with original text for synthesis.")
-                    sentences = break_text_into_sentences(reader.cleaned_text)
+                    sentences = break_text_into_sentences(
+                        reader.cleaned_text, tts_provider=self.tts_provider
+                    )
 
             self.output_wav_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1265,7 +1269,9 @@ class VoiceSamplesSynthesizer:
                 )
 
             # Generate audio
-            sentences = break_text_into_sentences(sample_text)
+            sentences = break_text_into_sentences(
+                sample_text, tts_provider=temp_synthesizer.tts_provider
+            )
             output_wav_path = (
                 self.tmp_dir / f"sample_{chapter_index:03d}_{model}_{voice}.wav"
             )

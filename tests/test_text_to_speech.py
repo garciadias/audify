@@ -697,7 +697,9 @@ class TestPdfSynthesizer:
             result = synthesizer.synthesize()
 
             assert result == Path("output.mp3")
-            mock_break.assert_called_once_with("Test content")
+            mock_break.assert_called_once_with(
+                "Test content", tts_provider=synthesizer.tts_provider
+            )
             mock_synth.assert_called_once()
             mock_convert.assert_called_once()
 

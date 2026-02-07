@@ -546,7 +546,9 @@ class AudiobookCreator(BaseSynthesizer):
         """Break audiobook script into segments suitable for TTS."""
 
         # First break into sentences
-        sentences = break_text_into_sentences(script)
+        sentences = break_text_into_sentences(
+            script, tts_provider=self.tts_provider
+        )
 
         # For audiobook content, we might want longer segments
         # Combine short sentences into longer segments
