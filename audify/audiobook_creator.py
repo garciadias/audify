@@ -18,6 +18,7 @@ from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     DEFAULT_TTS_PROVIDER,
+    DEFAULT_TTS_VOICE,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OUTPUT_BASE_DIR,
@@ -240,6 +241,9 @@ class AudiobookCreator(BaseSynthesizer):
             tts_provider=tts_provider,
         )
 
+        # Validate TTS provider availability early to avoid wasting LLM processing
+        self._validate_tts_provider()
+
         # Setup cover image if available
         if isinstance(self.reader, EpubReader):
             self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -264,6 +268,91 @@ class AudiobookCreator(BaseSynthesizer):
         self.episodes_path.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Audiobook output directory set to: {self.audiobook_path}")
+
+    def _validate_tts_provider(self) -> None:
+        """Validate TTS provider is available before processing.
+
+        Raises:
+            RuntimeError: If TTS provider is not available.
+        """
+        from audify.utils.api_config import get_tts_config
+
+        try:
+            # Get tts_provider, handling case where parent __init__ might be mocked
+            provider = getattr(self, "tts_provider", DEFAULT_TTS_PROVIDER)
+            speaker = getattr(self, "speaker", DEFAULT_TTS_VOICE)
+
+            tts_config = get_tts_config(
+                provider=provider,
+                voice=speaker,
+                language=self.language,
+            )
+
+            if not tts_config.is_available():
+                error_msg = (
+                    f"TTS provider '{tts_config.provider_name}' is not "
+                    "available. "
+                    "Please check your configuration and credentials.\n"
+                )
+
+                # Add provider-specific help
+                if tts_config.provider_name == "qwen":
+                    error_msg += (
+                        "\nFor Qwen-TTS:\n"
+                        f"  1. Ensure Qwen-TTS API is running at "
+                        f"{getattr(tts_config, 'base_url', 'http://localhost:8890')}\n"
+                        "  2. Test with: curl http://localhost:8890/health\n"
+                        "  3. See: https://github.com/QwenLM/Qwen3-TTS\n"
+                        "\nConfiguration options:\n"
+                        "  - Set QWEN_API_URL in .keys file or environment\n"
+                        "  - Default URL: http://localhost:8890"
+                    )
+                elif tts_config.provider_name == "kokoro":
+                    error_msg += (
+                        "\nFor Kokoro TTS:\n"
+                        f"  1. Ensure Kokoro API is running at "
+                        f"{getattr(tts_config, 'base_url', 'http://localhost:8887/v1')}\n"
+                        "  2. Start with: docker compose up -d\n"
+                        "  3. Test with: "
+                        "curl http://localhost:8887/v1/audio/voices"
+                    )
+                elif tts_config.provider_name == "openai":
+                    error_msg += (
+                        "\nFor OpenAI TTS:\n"
+                        "  1. Set OPENAI_API_KEY in .keys file or "
+                        "environment\n"
+                        "  2. Get your API key from: "
+                        "https://platform.openai.com/api-keys"
+                    )
+                elif tts_config.provider_name == "aws":
+                    error_msg += (
+                        "\nFor AWS Polly:\n"
+                        "  1. Set AWS_ACCESS_KEY_ID and "
+                        "AWS_SECRET_ACCESS_KEY\n"
+                        "  2. Configure AWS credentials: "
+                        "https://aws.amazon.com/polly/"
+                    )
+                elif tts_config.provider_name == "google":
+                    error_msg += (
+                        "\nFor Google Cloud TTS:\n"
+                        "  1. Set GOOGLE_APPLICATION_CREDENTIALS path\n"
+                        "  2. Setup: https://cloud.google.com/text-to-speech"
+                    )
+
+                raise RuntimeError(error_msg)
+
+            logger.info(
+                f"TTS provider '{tts_config.provider_name}' is available "
+                "and ready."
+            )
+
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
+            provider = getattr(self, "tts_provider", "unknown")
+            raise RuntimeError(
+                f"Error validating TTS provider '{provider}': {e}"
+            )
 
     def _clean_text_for_audiobook(self, text: str) -> str:
         """
@@ -923,6 +1012,96 @@ class DirectoryAudiobookCreator:
 
         self.chapter_titles: List[str] = []
         self.episode_paths: List[Path] = []
+
+        # Validate TTS provider availability early
+        self._validate_tts_provider()
+
+    def _validate_tts_provider(self) -> None:
+        """Validate TTS provider is available before processing.
+
+        Raises:
+            RuntimeError: If TTS provider is not available.
+        """
+        from audify.utils.api_config import get_tts_config
+
+        try:
+            tts_config = get_tts_config(
+                provider=self.tts_provider,
+                voice=self.voice,
+                language=self.language,
+            )
+
+            if not tts_config.is_available():
+                error_msg = (
+                    f"TTS provider '{tts_config.provider_name}' is not "
+                    "available. "
+                    "Please check your configuration and credentials.\n"
+                )
+
+                # Add provider-specific help
+                if tts_config.provider_name == "qwen":
+                    error_msg += (
+                        "\nFor Qwen-TTS:\n"
+                        f"  1. Ensure Qwen-TTS API is running at "
+                        f"{getattr(tts_config, 'base_url', 'http://localhost:8890')}\n"
+                        "  2. Test with: curl http://localhost:8890/health\n"
+                        "  3. See: https://github.com/QwenLM/Qwen3-TTS\n"
+                        "\nConfiguration options:\n"
+                        "  - Set QWEN_API_URL in .keys file or environment\n"
+                        "  - Default URL: http://localhost:8890"
+                    )
+                elif tts_config.provider_name == "kokoro":
+                    error_msg += (
+                        "\nFor Kokoro TTS:\n"
+                        f"  1. Ensure Kokoro API is running at "
+                        f"{getattr(tts_config, 'base_url', 'http://localhost:8890')}\n"
+                        "  2. Start with: docker compose up -d\n"
+                        "  3. Test with: "
+                        "curl http://localhost:8887/v1/audio/voices"
+                    )
+                elif tts_config.provider_name == "openai":
+                    error_msg += (
+                        "\nFor OpenAI TTS:\n"
+                        "  1. Set OPENAI_API_KEY in .keys file or "
+                        "environment\n"
+                        "  2. Get your API key from: "
+                        "https://platform.openai.com/api-keys"
+                    )
+                elif tts_config.provider_name == "aws":
+                    error_msg += (
+                        "\nFor AWS Polly:\n"
+                        "  1. Set AWS_ACCESS_KEY_ID and "
+                        "AWS_SECRET_ACCESS_KEY\n"
+                        "  2. Configure AWS credentials: "
+                        "https://aws.amazon.com/polly/"
+                    )
+                elif tts_config.provider_name == "google":
+                    error_msg += (
+                        "\nFor Google Cloud TTS:\n"
+                        "  1. Set GOOGLE_APPLICATION_CREDENTIALS path\n"
+                        "  2. Setup: https://cloud.google.com/text-to-speech"
+                    )
+
+                raise RuntimeError(error_msg)
+
+            logger.info(
+                f"TTS provider '{tts_config.provider_name}' is available "
+                "and ready."
+            )
+
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
+            provider = getattr(self, "tts_provider", "unknown")
+            raise RuntimeError(
+                f"Error validating TTS provider '{provider}': {e}"
+            )
+            if isinstance(e, RuntimeError):
+                raise
+            provider = getattr(self, "tts_provider", "unknown")
+            raise RuntimeError(
+                f"Error validating TTS provider '{provider}': {e}"
+            )
 
     def _setup_paths(self, file_name_base: Path) -> None:
         """Sets up the necessary output paths for audiobook creation."""

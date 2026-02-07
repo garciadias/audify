@@ -364,7 +364,7 @@ export GOOGLE_TTS_LANGUAGE_CODE="en-US"
 
 # Qwen-TTS (Local)
 export QWEN_API_URL="http://localhost:8890"
-export QWEN_TTS_VOICE="Vivian"
+export QWEN_TTS_VOICE="vivian"
 
 # Default Provider
 export TTS_PROVIDER="kokoro"  # Options: kokoro, qwen, openai, aws, google

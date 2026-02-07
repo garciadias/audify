@@ -44,7 +44,7 @@ OLLAMA_API_BASE_URL = _get_config("OLLAMA_API_URL", "http://localhost:11434")
 # =============================================================================
 DEFAULT_TTS_PROVIDER = _get_config("TTS_PROVIDER", "kokoro")
 AVAILABLE_TTS_PROVIDERS = ["kokoro", "openai", "aws", "google", "qwen"]
-
+DEFAULT_TTS_VOICE = _get_config("TTS_VOICE", "af_v0")  # Default voice for kokoro
 # =============================================================================
 # OpenAI TTS configuration
 # =============================================================================
@@ -73,7 +73,8 @@ GOOGLE_TTS_LANGUAGE_CODE = _get_config("GOOGLE_TTS_LANGUAGE_CODE", "en-US")
 # Qwen-TTS configuration
 # =============================================================================
 QWEN_API_BASE_URL = _get_config("QWEN_API_URL", "http://localhost:8890")
-QWEN_TTS_VOICE = _get_config("QWEN_TTS_VOICE", "Vivian")
+QWEN_TTS_VOICE = _get_config("QWEN_TTS_VOICE", "vivian")
+QWEN_TTS_LANGUAGE = _get_config("QWEN_TTS_LANGUAGE", "english")
 
 # =============================================================================
 # LLM configuration (for audiobook script generation)

@@ -7,7 +7,7 @@
 # =============================================================================
 # Options: kokoro, openai, aws, google
 TTS_PROVIDER=kokoro
-
+TTS_VOICE=af_v0  # Default voice for Kokoro (if using Kokoro provider)
 # =============================================================================
 # Kokoro TTS (Local/Self-hosted)
 # =============================================================================
