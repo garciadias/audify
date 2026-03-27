@@ -30,12 +30,22 @@ def clean_text(text: str) -> str:
     return cleaned
 
 
-def combine_small_sentences(sentences: list[str], min_length: int = 10) -> list[str]:
+def combine_small_sentences(
+    sentences: list[str], min_length: int = 10, max_length: int = 5000
+) -> list[str]:
     result: list[str] = []
     for sentence in sentences:
         if len(sentence) < min_length:
             if result:
-                result[-1] += " " + sentence
+                # Only combine if it won't exceed max_length
+                combined_length = len(result[-1]) + 1 + len(sentence)  # +1 for space
+                if combined_length <= max_length:
+                    result[-1] += " " + sentence
+                else:
+                    # Too long to combine, add as separate sentence
+                    result.append(sentence)
+            else:
+                result.append(sentence)
         else:
             result.append(sentence)
     return result
@@ -47,6 +57,17 @@ def break_too_long_sentences(sentences: list[str], max_length: int = 1500) -> li
         sentence_words = sentence.split()
         new_sentence = ""
         for word in sentence_words:
+            # If a single word is too long, split it by characters
+            if len(word) > max_length:
+                # Save current sentence if any
+                if new_sentence:
+                    result.append(new_sentence.strip(" "))
+                    new_sentence = ""
+                # Split the long word into chunks
+                for i in range(0, len(word), max_length):
+                    result.append(word[i : i + max_length])
+                continue
+
             if len(new_sentence) + len(word) > max_length:
                 result.append(new_sentence.strip(" "))
                 new_sentence = ""
@@ -92,7 +113,7 @@ def break_text_into_sentences(
     # Reserve some space for combining small sentences
     result = break_too_long_sentences(sentences, max_length - min_length)
     # Combine sentences that are too short with the previous one
-    result = combine_small_sentences(result, min_length)
+    result = combine_small_sentences(result, min_length, max_length)
     # Parallelize the cleaning of the sentences
     with ThreadPoolExecutor() as executor:
         result = list(executor.map(clean_text, result))
