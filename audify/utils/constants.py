@@ -154,11 +154,11 @@ DEFAULT_ENGINE = "kokoro"
 # These are the maximum characters each provider can handle per request
 # =============================================================================
 TTS_CHARACTER_LIMITS = {
-    "kokoro": 8000,      # No hard limit, but 8K is efficient for batching
-    "qwen": 8000,        # No documented limit, 8K is safe
-    "openai": 4096,      # Practical limit based on model context
-    "aws": 3000,         # AWS Polly documented limit
-    "google": 5000,      # Google Cloud TTS documented limit
+    "kokoro": 4096,  # Kokoro API hard limit (enforced by API validation)
+    "qwen": 8000,  # No documented limit, 8K is safe
+    "openai": 4096,  # Practical limit based on model context
+    "aws": 3000,  # AWS Polly documented limit
+    "google": 5000,  # Google Cloud TTS documented limit
 }
 
 # Default limit when provider is unknown
