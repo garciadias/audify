@@ -2058,7 +2058,7 @@ class TestEpubSynthesizerCoverage:
             with patch("shutil.copy"):
                 with patch("tempfile.NamedTemporaryFile") as mock_ntf:
                     mock_ntf.return_value.name = "/tmp/cover_temp.jpg"
-                    cmd, temp = build_ffmpeg_command(
+                    cmd, _temp = build_ffmpeg_command(
                         Path("temp.m4b"),
                         Path("meta.txt"),
                         Path("final.m4b"),
@@ -2074,7 +2074,7 @@ class TestEpubSynthesizerCoverage:
             with patch("shutil.copy"):
                 with patch("tempfile.NamedTemporaryFile") as mock_ntf:
                     mock_ntf.return_value.name = "/tmp/cover_temp.jpg"
-                    cmd, temp = build_ffmpeg_command(
+                    cmd, _temp = build_ffmpeg_command(
                         Path("temp.m4b"),
                         Path("meta.txt"),
                         Path("final.m4b"),
