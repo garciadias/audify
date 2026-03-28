@@ -219,6 +219,8 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
 
             # Mock AudioSegment for pydub audio processing
             mock_audio_instance = MagicMock()
+            mock_audio_instance.__len__ = MagicMock(return_value=1000)
+            mock_audio_instance.__iadd__ = MagicMock(return_value=mock_audio_instance)
             mock_audio_segment.from_wav.return_value = mock_audio_instance
             mock_audio_segment.empty.return_value = mock_audio_instance
             mock_audio_instance.export.return_value = None

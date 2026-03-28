@@ -13,12 +13,14 @@ POST /synthesize        – convert an uploaded EPUB/PDF to MP3 (simple TTS)
 POST /audiobook         – convert an uploaded EPUB/PDF to an M4B audiobook via LLM
 """
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.background import BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 
 from audify.utils.api_config import get_tts_config
@@ -125,7 +127,8 @@ def _validate_extension(path: Path, allowed: tuple) -> None:
 
 
 @app.post("/synthesize", tags=["synthesis"])
-async def synthesize(
+def synthesize(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="EPUB or PDF file to synthesize"),
     voice: str = Form(DEFAULT_SPEAKER, description="Voice ID"),
     language: Optional[str] = Form(None, description="Override language (e.g. 'en')"),
@@ -147,10 +150,15 @@ async def synthesize(
         output_dir.mkdir()
 
         try:
+            from audify.text_to_speech import (
+                BaseSynthesizer,
+                EpubSynthesizer,
+                PdfSynthesizer,
+            )
+
+            synth: BaseSynthesizer
             ext = input_path.suffix.lower()
             if ext == ".epub":
-                from audify.text_to_speech import EpubSynthesizer
-
                 synth = EpubSynthesizer(
                     path=input_path,
                     language=language,
@@ -160,8 +168,6 @@ async def synthesize(
                     tts_provider=tts_provider,
                 )
             else:
-                from audify.text_to_speech import PdfSynthesizer
-
                 synth = PdfSynthesizer(
                     pdf_path=input_path,
                     language=language or "en",
@@ -178,24 +184,31 @@ async def synthesize(
                     status_code=500, detail="Synthesis produced no output file"
                 )
 
-            # Copy result out of the temp directory before it is cleaned up
+            # Copy result out before temp directory is cleaned up
             permanent_tmp = tempfile.NamedTemporaryFile(
                 suffix=result_path.suffix, delete=False
             )
             shutil.copy(result_path, permanent_tmp.name)
             permanent_tmp.close()
+            background_tasks.add_task(os.remove, permanent_tmp.name)
 
             return FileResponse(
                 path=permanent_tmp.name,
                 media_type="audio/mpeg",
                 filename=result_path.name,
+                background=background_tasks,
             )
 
         except HTTPException:
             raise
+        except ValueError as exc:
+            logger.warning(f"Invalid synthesis request: {exc}")
+            raise HTTPException(
+                status_code=400, detail="Invalid request parameters"
+            ) from exc
         except Exception as exc:
             logger.error(f"Synthesis failed: {exc}", exc_info=True)
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail="Synthesis failed") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +217,8 @@ async def synthesize(
 
 
 @app.post("/audiobook", tags=["synthesis"])
-async def create_audiobook(
+def create_audiobook(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="EPUB or PDF file"),
     voice: str = Form(DEFAULT_SPEAKER, description="Voice ID"),
     language: Optional[str] = Form(None, description="Override language"),
@@ -231,10 +245,15 @@ async def create_audiobook(
         output_dir.mkdir()
 
         try:
+            from audify.audiobook_creator import (
+                AudiobookCreator,
+                AudiobookEpubCreator,
+                AudiobookPdfCreator,
+            )
+
+            creator: AudiobookCreator
             ext = input_path.suffix.lower()
             if ext == ".epub":
-                from audify.audiobook_creator import AudiobookEpubCreator
-
                 creator = AudiobookEpubCreator(
                     path=input_path,
                     language=language,
@@ -248,8 +267,6 @@ async def create_audiobook(
                     tts_provider=tts_provider,
                 )
             else:
-                from audify.audiobook_creator import AudiobookPdfCreator
-
                 creator = AudiobookPdfCreator(
                     path=input_path,
                     language=language,
@@ -276,15 +293,24 @@ async def create_audiobook(
             permanent_tmp = tempfile.NamedTemporaryFile(suffix=".m4b", delete=False)
             shutil.copy(m4b_path, permanent_tmp.name)
             permanent_tmp.close()
+            background_tasks.add_task(os.remove, permanent_tmp.name)
 
             return FileResponse(
                 path=permanent_tmp.name,
                 media_type="audio/mp4",
                 filename=m4b_path.name,
+                background=background_tasks,
             )
 
         except HTTPException:
             raise
+        except ValueError as exc:
+            logger.warning(f"Invalid audiobook request: {exc}")
+            raise HTTPException(
+                status_code=400, detail="Invalid request parameters"
+            ) from exc
         except Exception as exc:
             logger.error(f"Audiobook creation failed: {exc}", exc_info=True)
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=500, detail="Audiobook creation failed"
+            ) from exc

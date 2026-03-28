@@ -2083,9 +2083,10 @@ class TestEpubSynthesizerCoverage:
                     assert "-disposition:v" in cmd
 
     def test_log_chapter_metadata_ioerror(self, synthesizer):
-        """Test _log_chapter_metadata with IOError."""
-        with patch("builtins.open", side_effect=IOError):
-            synthesizer._log_chapter_metadata("Title", 0, 10.0)
+        """Test _log_chapter_metadata re-raises IOError."""
+        with patch("builtins.open", side_effect=IOError("disk full")):
+            with pytest.raises(IOError, match="disk full"):
+                synthesizer._log_chapter_metadata("Title", 0, 10.0)
 
     def test_process_single_chapter_too_short(self, synthesizer):
         """Test _process_single_chapter with short content."""

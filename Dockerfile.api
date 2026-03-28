@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --gid 1001 appuser \
+    && useradd --uid 1001 --gid appuser --no-create-home appuser
+
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -18,7 +21,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY pyproject.toml README.md uv.lock ./
 COPY ./audify/ /app/audify/
 
-RUN uv sync --no-dev
+RUN uv sync --no-dev \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
 

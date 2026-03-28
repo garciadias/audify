@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import IO, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def append_chapter_metadata(
             f"Failed to write chapter metadata for '{cleaned_title}': {e}",
             exc_info=True,
         )
-        return start_ms
+        raise
 
 
 def build_ffmpeg_command(
@@ -78,7 +78,7 @@ def build_ffmpeg_command(
     metadata_path: Path,
     output_m4b: Path,
     cover_image: Optional[Path] = None,
-) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
+) -> Tuple[List[str], Optional[IO[bytes]]]:
     """Build the FFmpeg command to assemble the final M4B file.
 
     A temporary copy of the cover image is created (when provided) because

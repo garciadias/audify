@@ -240,6 +240,11 @@ class AudioProcessor:
             else:
                 _log.warning(f"Temporary segment file not found: {temp_wav_path}")
 
+        if len(combined_audio) == 0:
+            _log.error("Combined WAV segments are empty; nothing to export.")
+            raise ValueError(
+                "Combined WAV segments are empty; no valid segments found."
+            )
         _log.info(f"Exporting combined audio to {output_wav_path}")
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
         combined_audio.export(output_wav_path, format="wav")
