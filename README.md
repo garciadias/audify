@@ -5,7 +5,7 @@
 
 Convert ebooks and PDFs to audiobooks using AI text-to-speech and translation services.
 
-Audify is a API-based system that transforms written content into high-quality audio using:
+Audify is a pipeline and REST API that transforms written content into high-quality audio using:
 
 - **Multiple TTS Providers** - Choose from Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, or Google Cloud TTS
 - **Ollama + LiteLLM** for intelligent translation
@@ -16,7 +16,8 @@ Audify is a API-based system that transforms written content into high-quality a
 - **📚 Multiple Formats**: Convert EPUB ebooks, PDF documents, TXT, and MD files
 - **📁 Directory Processing**: Create audiobooks from multiple files in a directory
 - **🎙️ Audiobook Creation**: Generate audiobook-style content from books using LLM
-- **� Multiple TTS Providers**: Choose from Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, or Google Cloud TTS
+- **🌐 REST API**: HTTP API for programmatic synthesis and audiobook creation
+- **🔒 Multiple TTS Providers**: Choose from Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, or Google Cloud TTS
 - **🌍 Multi-language Support**: Translate content
 - **🎵 High-Quality TTS**: Natural-sounding speech with multiple provider options
 - **⚙️ Flexible Configuration**: Environment-based settings and `.keys` file support
@@ -391,6 +392,9 @@ The `docker-compose.yml` configures (only needed for local/Kokoro TTS):
 
 - **Kokoro TTS**: Port 8887 (GPU-accelerated speech synthesis, local)
 - **Ollama**: Port 11434 (LLM for translation and audiobook generation, optional)
+- **Audify API**: Port 8000 (REST API server, starts after Kokoro and Ollama are healthy)
+
+The `api` service waits for Kokoro and Ollama to pass their healthchecks before starting, so services are always ready when the API accepts requests.
 
 Note: Docker services are only required for Kokoro (local TTS). Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
 
@@ -445,8 +449,9 @@ data/output/
 task test      # Run tests with coverage
 task format    # Format code with ruff
 task run       # Convert ebook to audiobook
-task audiobook   # Create audiobook from content
+task audiobook # Create audiobook from content
 task up        # Start Docker services
+task api       # Start REST API server (dev mode, port 8000)
 ```
 
 ### Local Development Setup
@@ -465,30 +470,88 @@ task format
 mypy ./audify ./tests --ignore-missing-imports
 ```
 
+## 🌐 REST API
+
+Audify exposes a FastAPI HTTP server for programmatic access to synthesis and audiobook creation.
+
+### Starting the API
+
+```bash
+# Development mode (auto-reload)
+task api
+
+# Or via Docker (starts with Kokoro and Ollama)
+docker compose up -d
+```
+
+The API runs on `http://localhost:8000` by default.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/providers` | List available TTS providers |
+| `GET` | `/voices?provider=kokoro&language=en` | List voices for a provider |
+| `POST` | `/synthesize` | Convert EPUB or PDF to MP3 |
+| `POST` | `/audiobook` | Convert EPUB or PDF to M4B audiobook |
+
+### Example: Synthesize an EPUB
+
+```bash
+curl -X POST http://localhost:8000/synthesize \
+  -F "file=@book.epub" \
+  -F "voice=af_bella" \
+  -F "language=en" \
+  --output book.mp3
+```
+
+### Example: Create an M4B Audiobook
+
+```bash
+curl -X POST http://localhost:8000/audiobook \
+  -F "file=@book.epub" \
+  -F "voice=af_bella" \
+  -F "language=en" \
+  --output book.m4b
+```
+
+### API Reference
+
+Interactive docs are available at `http://localhost:8000/docs` (Swagger UI) once the server is running.
+
 ## 🏗️ Architecture
 
 Audify uses a flexible multi-provider architecture supporting both local and cloud services:
 
 ```text
-┌─────────────────────┐
-│   Audify CLI        │
-│ • EPUB/PDF Read     │
-│ • Text Process      │
-│ • Audio Combine     │
-└──────┬──────────────┘
+┌──────────────────────────────────┐
+│   Audify REST API (port 8000)    │
+│ • POST /synthesize               │
+│ • POST /audiobook                │
+│ • GET  /voices, /providers       │
+└──────────────┬───────────────────┘
+               │
+┌──────────────▼───────────────────┐
+│   Audify CLI / Python API        │
+│ • EPUB/PDF/TXT Reader            │
+│ • LLM Script Generation          │
+│ • Audio Combine & M4B Assembly   │
+└──────┬───────────────────────────┘
        │
-       ├─── TTS Providers ───────┐
-       │    ├─ Kokoro (local)    │
-       │    ├─ OpenAI TTS        │
-       │    ├─ AWS Polly         │
-       │    └─ Google Cloud TTS  │
-       │                          │
-       └─── LLM APIs ────────────┤
-            ├─ Ollama (local)    │
-            ├─ DeepSeek          │
-            ├─ Claude            │
-            ├─ GPT-4             │
-            └─ Gemini            │
+       ├─── TTS Providers ───────────┐
+       │    ├─ Kokoro (local)        │
+       │    ├─ Qwen-TTS (local)      │
+       │    ├─ OpenAI TTS            │
+       │    ├─ AWS Polly             │
+       │    └─ Google Cloud TTS      │
+       │                             │
+       └─── LLM APIs ───────────────┘
+            ├─ Ollama (local)
+            ├─ DeepSeek
+            ├─ Claude
+            ├─ GPT-4
+            └─ Gemini
 ```
 
 ### Key Components
