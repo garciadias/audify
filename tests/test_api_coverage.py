@@ -45,15 +45,14 @@ class TestAPIKeyManagerLoadError:
             mode="w", suffix=".keys", delete=False
         ) as f:
             f.write("DEEPSEEK=test-key\n")
-            f.flush()
             path = f.name
 
-        os.chmod(path, 0o000)
         try:
-            manager = APIKeyManager(keys_file=path)
-            assert manager.get_key("DEEPSEEK") is None
+            # Patch open to raise PermissionError (chmod 0o000 doesn't block root)
+            with patch("builtins.open", side_effect=PermissionError):
+                manager = APIKeyManager(keys_file=path)
+                assert manager.get_key("DEEPSEEK") is None
         finally:
-            os.chmod(path, 0o644)
             os.unlink(path)
             if saved_env is not None:
                 os.environ["DEEPSEEK_API_KEY"] = saved_env
