@@ -300,3 +300,22 @@ def test_audiobook_invalid_extension():
     )
     assert response.status_code == 400
     assert "Unsupported file type" in response.json()["detail"]
+
+
+def test_synthesize_no_output_file(tmp_path):
+    """POST /synthesize returns 500 when synthesize() returns a non-existent path."""
+    missing_path = tmp_path / "missing.mp3"
+    # do NOT create the file
+
+    mock_synth = MagicMock()
+    mock_synth.synthesize.return_value = missing_path
+
+    with patch("audify.text_to_speech.EpubSynthesizer", return_value=mock_synth):
+        response = client.post(
+            "/synthesize",
+            files=_epub_upload(),
+            data={"voice": "af_bella"},
+        )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Synthesis produced no output file"

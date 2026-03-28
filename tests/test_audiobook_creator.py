@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, mock_open, patch
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
 import pytest
 
@@ -1609,3 +1609,66 @@ class TestAudiobookCreatorSynthesize:
             result = creator.synthesize()
 
             assert result == creator.audiobook_path
+
+
+class TestM4bBuilderCoverage:
+    """Tests targeting uncovered lines in audify/utils/m4b_builder.py."""
+
+    def test_build_ffmpeg_command_cover_not_found_warning(self):
+        """build_ffmpeg_command logs a warning when cover_image path doesn't exist."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
+
+        cover = Path("/nonexistent/cover.jpg")
+        with patch("pathlib.Path.exists", return_value=False):
+            with patch("audify.utils.m4b_builder.logger") as mock_log:
+                cmd, tmp = build_ffmpeg_command(
+                    Path("in.m4b"), Path("meta.txt"), Path("out.m4b"),
+                    cover_image=cover,
+                )
+        mock_log.warning.assert_called_with(f"Cover image not found: {cover}")
+        assert tmp is None
+
+    def test_assemble_m4b_cleans_up_temp_cover(self, tmp_path):
+        """assemble_m4b deletes the temp cover file in the finally block."""
+        from audify.utils.m4b_builder import assemble_m4b
+
+        in_m4b = tmp_path / "in.m4b"
+        in_m4b.write_bytes(b"data")
+        meta = tmp_path / "meta.txt"
+        meta.write_bytes(b"data")
+        out_m4b = tmp_path / "out.m4b"
+        cover = tmp_path / "cover.jpg"
+        cover.write_bytes(b"jpg")
+
+        mock_tmp = MagicMock()
+        mock_tmp.name = str(tmp_path / "tmp_cover.jpg")
+
+        with patch("audify.utils.m4b_builder.build_ffmpeg_command",
+                   return_value=(["ffmpeg", "-y", str(out_m4b)], mock_tmp)):
+            with patch("audify.utils.m4b_builder.run_ffmpeg"):
+                with patch("pathlib.Path.unlink"):
+                    assemble_m4b(in_m4b, meta, out_m4b, cover)
+
+        mock_tmp.close.assert_called_once()
+
+    def test_assemble_m4b_cover_cleanup_exception(self, tmp_path):
+        """assemble_m4b logs a warning if temp cover cleanup fails."""
+        from audify.utils.m4b_builder import assemble_m4b
+
+        in_m4b = tmp_path / "in.m4b"
+        in_m4b.write_bytes(b"data")
+        meta = tmp_path / "meta.txt"
+        meta.write_bytes(b"data")
+        out_m4b = tmp_path / "out.m4b"
+
+        mock_tmp = MagicMock()
+        mock_tmp.close.side_effect = Exception("close failed")
+
+        with patch("audify.utils.m4b_builder.build_ffmpeg_command",
+                   return_value=(["ffmpeg", "-y", str(out_m4b)], mock_tmp)):
+            with patch("audify.utils.m4b_builder.run_ffmpeg"):
+                with patch("pathlib.Path.unlink"):
+                    with patch("audify.utils.m4b_builder.logger") as mock_log:
+                        assemble_m4b(in_m4b, meta, out_m4b)
+
+        mock_log.warning.assert_called()

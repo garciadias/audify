@@ -2202,6 +2202,23 @@ class TestEpubSynthesizerCoverage:
             with pytest.raises(IOError, match="Disk full"):
                 synthesizer._create_metadata_for_chunk(chunk_files, 0)
 
+    def test_create_metadata_for_chunk_appends_entry(self, synthesizer, tmp_path):
+        """_create_metadata_for_chunk calls append_chapter_metadata (duration > 0)."""
+        chunk_files = [tmp_path / "chapter_1.mp3"]
+        chunk_files[0].write_bytes(b"data")
+
+        with patch(
+            "audify.text_to_speech.AudioProcessor.get_duration", return_value=10.0
+        ):
+            with patch(
+                "audify.text_to_speech.append_chapter_metadata",
+                return_value=10000,
+            ) as mock_append:
+                with patch("audify.text_to_speech.write_metadata_header"):
+                    synthesizer._create_metadata_for_chunk(chunk_files, 0)
+
+        mock_append.assert_called_once()
+
     def test_create_single_m4b_decode_error(self, synthesizer):
         """Test _create_single_m4b when AudioProcessor.combine_audio_files raises."""
         files = [Path("1.mp3")]
