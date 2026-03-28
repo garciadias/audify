@@ -12,6 +12,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
   kokoro:
     image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
     ports:
@@ -23,3 +24,20 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - KOKORO_API_URL=http://kokoro:8880/v1
+      - OLLAMA_API_URL=http://ollama:11434
+      - TTS_PROVIDER=kokoro
+    depends_on:
+      - kokoro
+      - ollama
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

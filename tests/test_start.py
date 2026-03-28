@@ -178,13 +178,14 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
         mock_get_file_extension.return_value = ".pdf"
         # Now invoke the main command with the PDF file mocking all API calls
         with (
-            patch("audify.text_to_speech.requests.get") as mock_get_voices,
-            patch("audify.text_to_speech.requests.post") as mock_post_synthesis,
+            patch("audify.utils.api_config.requests.get") as mock_get_voices,
+            patch("audify.utils.api_config.requests.post") as mock_post_synthesis,
             patch(
                 "audify.translate.OllamaTranslationConfig.translate"
             ) as mock_translate,
-            patch("audify.text_to_speech.subprocess.run") as mock_subprocess,
+            patch("audify.utils.m4b_builder.subprocess.run") as mock_subprocess,
             patch("audify.text_to_speech.AudioSegment") as mock_audio_segment,
+            patch("audify.utils.audio.AudioSegment") as mock_audio_segment_utils,
             patch("pathlib.Path.unlink") as mock_unlink,
         ):
             # Mock the voices GET request
@@ -221,6 +222,9 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             mock_audio_segment.from_wav.return_value = mock_audio_instance
             mock_audio_segment.empty.return_value = mock_audio_instance
             mock_audio_instance.export.return_value = None
+            # Also mock AudioSegment in utils.audio (used by combine_wav_segments)
+            mock_audio_segment_utils.from_wav.return_value = mock_audio_instance
+            mock_audio_segment_utils.empty.return_value = mock_audio_instance
 
             # Mock file operations
             mock_unlink.return_value = None  # File deletion succeeds

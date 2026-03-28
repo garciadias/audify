@@ -1,10 +1,9 @@
-import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from pydub import AudioSegment
-from pydub.exceptions import CouldntDecodeError
+from audify.utils.audio import AudioProcessor
+from audify.utils.file_utils import PathManager
 
 
 def clean_text(text: str) -> str:
@@ -71,15 +70,8 @@ def break_text_into_sentences(
 
 
 def get_audio_duration(file_path: str) -> float:
-    # Load the audio file
-    try:
-        audio = AudioSegment.from_file(file_path)
-    except CouldntDecodeError:
-        logging.error(f"Could not decode audio file: {file_path}")
-        return 0.0
-    # Calculate the duration in seconds
-    duration = len(audio) / 1000.0
-    return duration
+    """Get audio duration in seconds. Delegates to AudioProcessor.get_duration."""
+    return AudioProcessor.get_duration(file_path)
 
 
 def get_file_extension(file_path: str) -> str:
@@ -87,22 +79,8 @@ def get_file_extension(file_path: str) -> str:
 
 
 def get_file_name_title(title: str) -> str:
-    # Make title snake_case and remove special characters and spaces
-    title = title.lower().replace(" ", "_")
-    # replace multiple underscores with a single one
-    title = re.sub(r"_+", "_", title)
-    # Remove leading and trailing underscores
-    title = title.strip("_")
-    # replace letter with accents using regex for simple letters
-    title = re.sub(r"[àáâãäå]", "a", title)
-    title = re.sub(r"[èéêë]", "e", title)
-    title = re.sub(r"[ìíîï]", "i", title)
-    title = re.sub(r"[òóôõö]", "o", title)
-    title = re.sub(r"[ùúûü]", "u", title)
-    title = re.sub(r"[ñ]", "n", title)
-    title = re.sub(r"[ç]", "c", title)
-    # Remove special characters
-    title = re.sub(r"[^a-z0-9_]", "", title)  # Remove special characters
-    # Remove leading and trailing underscores
-    title = title.strip("_")
-    return title
+    """Convert a title to a filesystem-safe snake_case name.
+
+    Delegates to ``PathManager.clean_file_name`` so the logic lives in one place.
+    """
+    return PathManager.clean_file_name(title)

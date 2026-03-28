@@ -992,12 +992,13 @@ class TestAudiobookCreatorM4BCreation:
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_build_ffmpeg_command_with_cover(self, mock_init):
-        """Test FFmpeg command building with cover image."""
-        creator = AudiobookCreator.__new__(AudiobookCreator)
-        creator.temp_m4b_path = Path("/fake/temp.m4b")
-        creator.metadata_path = Path("/fake/metadata.txt")
-        creator.final_m4b_path = Path("/fake/final.m4b")
-        creator.cover_image_path = Path("/fake/cover.jpg")
+        """Test FFmpeg command building with cover image (via m4b_builder)."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
+
+        temp_m4b_path = Path("/fake/temp.m4b")
+        metadata_path = Path("/fake/metadata.txt")
+        final_m4b_path = Path("/fake/final.m4b")
+        cover_image_path = Path("/fake/cover.jpg")
 
         with (
             patch("pathlib.Path.exists", return_value=True),
@@ -1008,12 +1009,14 @@ class TestAudiobookCreatorM4BCreation:
             mock_temp_file.name = "/tmp/cover_temp.jpg"
             mock_temp.return_value = mock_temp_file
 
-            command, cover_temp_file = creator._build_ffmpeg_command()
+            command, cover_temp_file = build_ffmpeg_command(
+                temp_m4b_path, metadata_path, final_m4b_path, cover_image_path
+            )
 
             # Verify command structure
             assert "ffmpeg" in command
-            assert str(creator.temp_m4b_path) in command
-            assert str(creator.metadata_path) in command
+            assert str(temp_m4b_path) in command
+            assert str(metadata_path) in command
             assert "-map" in command
             assert "0:a" in command
             assert "2:v" in command
@@ -1026,19 +1029,22 @@ class TestAudiobookCreatorM4BCreation:
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_build_ffmpeg_command_without_cover(self, mock_init):
-        """Test FFmpeg command building without cover image."""
-        creator = AudiobookCreator.__new__(AudiobookCreator)
-        creator.temp_m4b_path = Path("/fake/temp.m4b")
-        creator.metadata_path = Path("/fake/metadata.txt")
-        creator.final_m4b_path = Path("/fake/final.m4b")
+        """Test FFmpeg command building without cover image (via m4b_builder)."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
+
+        temp_m4b_path = Path("/fake/temp.m4b")
+        metadata_path = Path("/fake/metadata.txt")
+        final_m4b_path = Path("/fake/final.m4b")
 
         with patch("pathlib.Path.exists", return_value=False):
-            command, cover_temp_file = creator._build_ffmpeg_command()
+            command, cover_temp_file = build_ffmpeg_command(
+                temp_m4b_path, metadata_path, final_m4b_path, cover_image=None
+            )
 
             # Verify command structure without cover
             assert "ffmpeg" in command
-            assert str(creator.temp_m4b_path) in command
-            assert str(creator.metadata_path) in command
+            assert str(temp_m4b_path) in command
+            assert str(metadata_path) in command
             assert "-map" in command
             assert "0:a" in command
             assert "2:v" not in command  # No video mapping without cover
@@ -1138,11 +1144,8 @@ class TestAudiobookCreatorM4BCreation:
                 "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
             ),
             patch.object(creator, "_log_episode_metadata", side_effect=[1000, 2000]),
-            patch.object(
-                creator, "_build_ffmpeg_command", return_value=(["ffmpeg", "cmd"], None)
-            ),
-            patch("subprocess.run") as mock_subprocess,
-            patch("pathlib.Path.unlink") as mock_unlink,
+            patch("audify.audiobook_creator.assemble_m4b") as mock_assemble,
+            patch("pathlib.Path.unlink"),
         ):
             # Mock audio segments
             mock_combined = Mock()
@@ -1155,23 +1158,14 @@ class TestAudiobookCreatorM4BCreation:
             mock_episode_audio.__len__ = Mock(return_value=2500)
             mock_audio_seg.from_mp3.return_value = mock_episode_audio
 
-            # Mock successful subprocess
-            mock_result = Mock()
-            mock_result.stdout = "Success"
-            mock_result.stderr = ""
-            mock_subprocess.return_value = mock_result
-
             creator._create_single_m4b(episode_files)
 
             # Verify audio processing
             assert mock_audio_seg.from_mp3.call_count == 2
             mock_combined.export.assert_called_once()
 
-            # Verify FFmpeg execution
-            mock_subprocess.assert_called_once()
-
-            # Verify cleanup
-            mock_unlink.assert_called()
+            # Verify assemble_m4b was called for FFmpeg step
+            mock_assemble.assert_called_once()
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_create_single_m4b_decode_error(self, mock_init):
@@ -1205,9 +1199,11 @@ class TestAudiobookCreatorM4BCreation:
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_create_single_m4b_ffmpeg_error(self, mock_init):
-        """Test _create_single_m4b with FFmpeg error."""
+        """Test _create_single_m4b with FFmpeg error (assemble_m4b raises)."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.temp_m4b_path = Path("/fake/temp.m4b")
+        creator.metadata_path = Path("/fake/metadata.txt")
+        creator.final_m4b_path = Path("/fake/final.m4b")
         creator.chapter_titles = []
 
         episode_files = [Path("/fake/episode_001.mp3")]
@@ -1219,10 +1215,10 @@ class TestAudiobookCreatorM4BCreation:
                 "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
             ),
             patch.object(creator, "_log_episode_metadata", return_value=1000),
-            patch.object(
-                creator, "_build_ffmpeg_command", return_value=(["ffmpeg"], None)
+            patch(
+                "audify.audiobook_creator.assemble_m4b",
+                side_effect=subprocess.CalledProcessError(1, "ffmpeg"),
             ),
-            patch("subprocess.run") as mock_subprocess,
         ):
             # Mock successful audio creation
             mock_combined = Mock()
@@ -1231,12 +1227,6 @@ class TestAudiobookCreatorM4BCreation:
             mock_combined.export = Mock()
             mock_audio_seg.empty.return_value = mock_combined
             mock_audio_seg.from_mp3.return_value = Mock(__len__=Mock(return_value=2500))
-
-            # Mock FFmpeg failure
-            error = subprocess.CalledProcessError(1, "ffmpeg")
-            error.stdout = ""
-            error.stderr = "FFmpeg error"
-            mock_subprocess.side_effect = error
 
             # Should raise the subprocess error
             with pytest.raises(subprocess.CalledProcessError):
@@ -1244,9 +1234,11 @@ class TestAudiobookCreatorM4BCreation:
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_create_single_m4b_ffmpeg_not_found(self, mock_init):
-        """Test _create_single_m4b with FFmpeg not found."""
+        """Test _create_single_m4b with FFmpeg not found (assemble_m4b raises)."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.temp_m4b_path = Path("/fake/temp.m4b")
+        creator.metadata_path = Path("/fake/metadata.txt")
+        creator.final_m4b_path = Path("/fake/final.m4b")
         creator.chapter_titles = []
 
         episode_files = [Path("/fake/episode_001.mp3")]
@@ -1258,10 +1250,10 @@ class TestAudiobookCreatorM4BCreation:
                 "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
             ),
             patch.object(creator, "_log_episode_metadata", return_value=1000),
-            patch.object(
-                creator, "_build_ffmpeg_command", return_value=(["ffmpeg"], None)
+            patch(
+                "audify.audiobook_creator.assemble_m4b",
+                side_effect=FileNotFoundError("ffmpeg not found"),
             ),
-            patch("subprocess.run") as mock_subprocess,
         ):
             # Mock successful audio creation
             mock_combined = Mock()
@@ -1271,8 +1263,7 @@ class TestAudiobookCreatorM4BCreation:
             mock_audio_seg.empty.return_value = mock_combined
             mock_audio_seg.from_mp3.return_value = Mock(__len__=Mock(return_value=2500))
 
-            # Mock FFmpeg not found
-            mock_subprocess.side_effect = FileNotFoundError("ffmpeg not found")
+            # Mock FFmpeg not found - kept for reference
 
             # Should raise FileNotFoundError
             with pytest.raises(FileNotFoundError):

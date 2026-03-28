@@ -1,9 +1,6 @@
 import re
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 import tqdm
 from bs4 import BeautifulSoup
@@ -23,6 +20,11 @@ from audify.utils.constants import (
     OUTPUT_BASE_DIR,
 )
 from audify.utils.logging_utils import setup_logging
+from audify.utils.m4b_builder import (
+    append_chapter_metadata,
+    assemble_m4b,
+    write_metadata_header,
+)
 from audify.utils.prompts import AUDIOBOOK_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
 
@@ -507,17 +509,7 @@ class AudiobookCreator(BaseSynthesizer):
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
         self.metadata_path = self.audiobook_path / "chapters.txt"
-        logger.info(f"Initializing metadata file: {self.metadata_path}")
-        try:
-            with open(self.metadata_path, "w") as f:
-                f.write(";FFMETADATA1\n")
-                f.write("major_brand=M4A\n")
-                f.write("minor_version=512\n")
-                f.write("compatible_brands=M4A isis2\n")
-                f.write("encoder=Lavf61.7.100\n")
-        except IOError as e:
-            logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
-            raise
+        write_metadata_header(self.metadata_path)
 
     def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
         """Calculate total duration of MP3 files in seconds."""
@@ -538,102 +530,28 @@ class AudiobookCreator(BaseSynthesizer):
         chapter_title: Optional[str] = None,
     ) -> int:
         """Appends episode metadata to the FFmpeg metadata file."""
-        end_time_ms = start_time_ms + int(duration_s * 1000)
         title = chapter_title or f"Episode {episode_number}"
-
-        logger.debug(
-            f"Logging metadata for '{title}': Start={start_time_ms}, "
-            f"End={end_time_ms}, Duration={duration_s:.2f}s"
+        return append_chapter_metadata(
+            self.metadata_path, title, start_time_ms, duration_s
         )
-        try:
-            with open(self.metadata_path, "a") as f:
-                f.write("[CHAPTER]\n")
-                f.write("TIMEBASE=1/1000\n")
-                f.write(f"START={start_time_ms}\n")
-                f.write(f"END={end_time_ms}\n")
-                f.write(f"title={title}\n")
-            return end_time_ms
-        except IOError as e:
-            logger.error(
-                f"Failed to write episode metadata for '{title}': {e}", exc_info=True
-            )
-            return start_time_ms
-
-    def _build_ffmpeg_command(
-        self,
-    ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
-        """Builds the FFmpeg command for M4B creation."""
-        cover_args = []
-        cover_temp_file = None
-
-        if (
-            hasattr(self, "cover_image_path")
-            and isinstance(self.cover_image_path, Path)
-            and self.cover_image_path.exists()
-        ):
-            cover_temp_file = tempfile.NamedTemporaryFile(
-                suffix=self.cover_image_path.suffix, delete=False
-            )
-            shutil.copy(self.cover_image_path, cover_temp_file.name)
-            logger.info(f"Using cover image: {self.cover_image_path}")
-            cover_args = [
-                "-i",
-                cover_temp_file.name,
-                "-map",
-                "0:a",
-                "-map",
-                "2:v",
-                "-disposition:v",
-                "attached_pic",
-                "-c:v",
-                "copy",
-            ]
-        else:
-            logger.warning("No cover image found or provided.")
-            cover_args = ["-map", "0:a"]
-
-        command = [
-            "ffmpeg",
-            "-i",
-            str(self.temp_m4b_path),
-            "-i",
-            str(self.metadata_path),
-            *cover_args,
-            "-map_metadata",
-            "1",
-            "-c:a",
-            "copy",
-            "-f",
-            "mp4",
-            "-y",
-            str(self.final_m4b_path),
-        ]
-
-        return command, cover_temp_file
 
     def create_m4b(self) -> None:
         """Combines audiobook episodes into M4B audiobook file."""
         logger.info("Starting M4B creation process for audiobook...")
 
-        # Get all episode MP3 files
         episode_mp3_files = sorted(self.episodes_path.glob("episode_*.mp3"))
-
         if not episode_mp3_files:
             logger.error("No episode MP3 files found to create M4B.")
             return
 
-        # Set up paths for M4B creation
         self.temp_m4b_path = self.audiobook_path / f"{self.file_name}.tmp.m4b"
         self.final_m4b_path = self.audiobook_path / f"{self.file_name}.m4b"
 
-        # Initialize metadata file
         self._initialize_metadata_file()
 
-        # Calculate total duration
         total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
         logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        # Create single M4B (audiobooks are typically shorter than 15 hours)
         logger.info("Creating M4B audiobook from audiobook episodes...")
         self._create_single_m4b(episode_mp3_files)
 
@@ -650,18 +568,15 @@ class AudiobookCreator(BaseSynthesizer):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)
                     combined_audio += audio
-                    # Log metadata for this episode
                     duration_s = len(audio) / 1000.0
-                    episode_number = i + 1
                     current_start_time_ms = self._log_episode_metadata(
-                        episode_number,
+                        i + 1,
                         current_start_time_ms,
                         duration_s,
                         chapter_title=self.chapter_titles[i]
                         if i < len(self.chapter_titles)
                         else None,
                     )
-
                 except CouldntDecodeError:
                     logger.error(
                         f"Could not decode episode file: {mp3_file}, skipping."
@@ -689,56 +604,17 @@ class AudiobookCreator(BaseSynthesizer):
                 raise
         else:
             logger.info(
-                f"Temporary M4B file already exists: {self.temp_m4b_path}. "
-                "Skipping combination."
+                f"Temporary M4B already exists: {self.temp_m4b_path}. Skipping."
             )
 
-        # Add metadata and cover image using FFmpeg
         logger.info("Adding metadata and cover image using FFmpeg...")
-        ffmpeg_command, cover_temp_file = self._build_ffmpeg_command()
-
-        try:
-            logger.debug(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
-            result = subprocess.run(
-                ffmpeg_command, check=True, capture_output=True, text=True
-            )
-            logger.info("FFmpeg process completed successfully.")
-            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
-            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
-
-            logger.info(f"Cleaning up temporary file: {self.temp_m4b_path}")
-            self.temp_m4b_path.unlink(missing_ok=True)
-
-            logger.info(f"M4B audiobook created: {self.final_m4b_path}")
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg command failed with exit code {e.returncode}")
-            logger.error(f"FFmpeg stdout:\n{e.stdout}")
-            logger.error(f"FFmpeg stderr:\n{e.stderr}")
-            logger.error(
-                "M4B creation failed. The temporary M4B file and episode files are "
-                "preserved for inspection."
-            )
-            raise
-        except FileNotFoundError:
-            logger.error(
-                "FFmpeg command not found. Please ensure FFmpeg is installed and in "
-                "your system's PATH."
-            )
-            raise
-        finally:
-            if cover_temp_file:
-                try:
-                    cover_temp_file.close()
-                    Path(cover_temp_file.name).unlink(missing_ok=True)
-                    logger.debug(
-                        f"Cleaned up temporary cover file:{cover_temp_file.name}"
-                    )
-                except Exception as e_clean:
-                    logger.warning(
-                        f"Error cleaning up temporary cover file"
-                        f"{cover_temp_file.name}: {e_clean}"
-                    )
+        assemble_m4b(
+            self.temp_m4b_path,
+            self.metadata_path,
+            self.final_m4b_path,
+            getattr(self, "cover_image_path", None),
+        )
+        logger.info(f"M4B audiobook created: {self.final_m4b_path}")
 
     def synthesize(self) -> Path:
         """Main synthesis method - creates the audiobook series."""
@@ -1120,17 +996,7 @@ class DirectoryAudiobookCreator:
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
         self.metadata_path = self.audiobook_path / "chapters.txt"
-        logger.info(f"Initializing metadata file: {self.metadata_path}")
-        try:
-            with open(self.metadata_path, "w") as f:
-                f.write(";FFMETADATA1\n")
-                f.write("major_brand=M4A\n")
-                f.write("minor_version=512\n")
-                f.write("compatible_brands=M4A isis2\n")
-                f.write("encoder=Lavf61.7.100\n")
-        except IOError as e:
-            logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
-            raise
+        write_metadata_header(self.metadata_path)
 
     def _log_episode_metadata(
         self,
@@ -1140,26 +1006,10 @@ class DirectoryAudiobookCreator:
         chapter_title: Optional[str] = None,
     ) -> int:
         """Appends episode metadata to the FFmpeg metadata file."""
-        end_time_ms = start_time_ms + int(duration_s * 1000)
         title = chapter_title or f"Episode {episode_number}"
-
-        logger.debug(
-            f"Logging metadata for '{title}': Start={start_time_ms}, "
-            f"End={end_time_ms}, Duration={duration_s:.2f}s"
+        return append_chapter_metadata(
+            self.metadata_path, title, start_time_ms, duration_s
         )
-        try:
-            with open(self.metadata_path, "a") as f:
-                f.write("[CHAPTER]\n")
-                f.write("TIMEBASE=1/1000\n")
-                f.write(f"START={start_time_ms}\n")
-                f.write(f"END={end_time_ms}\n")
-                f.write(f"title={title}\n")
-            return end_time_ms
-        except IOError as e:
-            logger.error(
-                f"Failed to write episode metadata for '{title}': {e}", exc_info=True
-            )
-            return start_time_ms
 
     def create_m4b(self) -> None:
         """Combines episodes into M4B audiobook file."""
@@ -1238,55 +1088,14 @@ class DirectoryAudiobookCreator:
                 "Skipping combination."
             )
 
-        # Add metadata using FFmpeg
         logger.info("Adding metadata using FFmpeg...")
-        ffmpeg_command = [
-            "ffmpeg",
-            "-i",
-            str(self.temp_m4b_path),
-            "-i",
-            str(self.metadata_path),
-            "-map",
-            "0:a",
-            "-map_metadata",
-            "1",
-            "-c:a",
-            "copy",
-            "-f",
-            "mp4",
-            "-y",
-            str(self.final_m4b_path),
-        ]
-
-        try:
-            logger.debug(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
-            result = subprocess.run(
-                ffmpeg_command, check=True, capture_output=True, text=True
-            )
-            logger.info("FFmpeg process completed successfully.")
-            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
-            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
-
-            logger.info(f"Cleaning up temporary file: {self.temp_m4b_path}")
-            self.temp_m4b_path.unlink(missing_ok=True)
-
-            logger.info(f"M4B audiobook created: {self.final_m4b_path}")
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg command failed with exit code {e.returncode}")
-            logger.error(f"FFmpeg stdout:\n{e.stdout}")
-            logger.error(f"FFmpeg stderr:\n{e.stderr}")
-            logger.error(
-                "M4B creation failed. The temporary M4B file and episode files are "
-                "preserved for inspection."
-            )
-            raise
-        except FileNotFoundError:
-            logger.error(
-                "FFmpeg command not found. Please ensure FFmpeg is installed and in "
-                "your system's PATH."
-            )
-            raise
+        assemble_m4b(
+            self.temp_m4b_path,
+            self.metadata_path,
+            self.final_m4b_path,
+            cover_image=None,
+        )
+        logger.info(f"M4B audiobook created: {self.final_m4b_path}")
 
     def synthesize(self) -> Path:
         """Main synthesis method - processes all files in directory."""
