@@ -743,3 +743,146 @@ class TestEpubReader:
             with tempfile.TemporaryDirectory() as temp_dir:
                 with pytest.raises(IOError, match="Permission denied"):
                     reader.get_cover_image(temp_dir)
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_no_body_tag(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test title extraction from HTML without a <body> tag."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = "<p>Chapter 1: No Body Tag</p><p>Content here.</p>"
+
+        title = reader.get_chapter_title(html_content)
+        assert title == "Chapter 1: No Body Tag"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_empty_paragraphs_skipped(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test that empty paragraphs are skipped during extraction."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><body>"
+            "<p></p><p>   </p>"
+            "<p>Chapter 5: After Empty Paragraphs</p>"
+            "<p>Some regular content follows here.</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Chapter 5: After Empty Paragraphs"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_emphasis_without_heading_or_class(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test bold emphasis tag extraction when no heading or class matches."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        # No headings, no title-related class/id, but bold text with chapter pattern
+        html_content = (
+            "<html><body>"
+            "<p><b>Chapter 12 — The Awakening</b></p>"
+            "<p>The sun rose over the mountains and everything changed.</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Chapter 12 — The Awakening"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_llm_with_empty_body(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test LLM fallback when body has no extractable text."""
+        mock_read_epub.return_value = mock_epub_book
+
+        mock_llm = Mock()
+        reader = EpubReader(temp_epub_path, llm_config=mock_llm)
+        # All paragraphs are empty — LLM should not be called
+        html_content = (
+            "<html><body>"
+            "<p>   </p><p></p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Unknown"
+        mock_llm.generate.assert_not_called()
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_llm_strips_quotes(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test that LLM response with quotes is properly stripped."""
+        mock_read_epub.return_value = mock_epub_book
+
+        mock_llm = Mock()
+        mock_llm.generate.return_value = '"The Winding Road"'
+
+        reader = EpubReader(temp_epub_path, llm_config=mock_llm)
+        html_content = (
+            "<html><body>"
+            "<p>This is a fairly long first paragraph that clearly "
+            "is not a title because it ends with a period.</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "The Winding Road"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_llm_empty_response(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test that empty LLM response falls back to Unknown."""
+        mock_read_epub.return_value = mock_epub_book
+
+        mock_llm = Mock()
+        mock_llm.generate.return_value = ""
+
+        reader = EpubReader(temp_epub_path, llm_config=mock_llm)
+        html_content = (
+            "<html><body>"
+            "<p>This is a fairly long first paragraph that clearly "
+            "is not a title because it ends with a period.</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Unknown"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_class_with_empty_text(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test that title-class elements with empty text are skipped."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><body>"
+            '<div class="chapter-title">   </div>'
+            "<p>Actual Title Here</p>"
+            "<p>Then some long content that follows after the title paragraph.</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Actual Title Here"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapter_title_heading_empty_text_falls_through(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test that heading tags with empty text fall through to next strategy."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><body>"
+            "<h1>   </h1>"
+            "<p>Prologue: The Beginning</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Prologue: The Beginning"
