@@ -23,6 +23,7 @@ from audify.utils.constants import (
     AWS_SECRET_ACCESS_KEY,
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
+    GOOGLE_APPLICATION_CREDENTIALS,
     GOOGLE_TTS_LANGUAGE_CODE,
     GOOGLE_TTS_VOICE,
     KOKORO_API_BASE_URL,
@@ -503,7 +504,7 @@ class GoogleTTSConfig(TTSAPIConfig):
             language=language,
             timeout=timeout,
         )
-        self.credentials_path = credentials_path
+        self.credentials_path = credentials_path or GOOGLE_APPLICATION_CREDENTIALS
         self._client = None
 
     @property
@@ -520,7 +521,16 @@ class GoogleTTSConfig(TTSAPIConfig):
             try:
                 from google.cloud import texttospeech
 
-                self._client = texttospeech.TextToSpeechClient()
+                if self.credentials_path:
+                    from google.oauth2 import service_account
+
+                    credentials = service_account.Credentials.from_service_account_file(
+                        self.credentials_path,
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+                    )
+                    self._client = texttospeech.TextToSpeechClient(credentials=credentials)
+                else:
+                    self._client = texttospeech.TextToSpeechClient()
             except ImportError:
                 logger.error(
                     "google-cloud-texttospeech is required. "
