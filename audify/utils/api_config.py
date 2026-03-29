@@ -504,7 +504,7 @@ class GoogleTTSConfig(TTSAPIConfig):
             language=language,
             timeout=timeout,
         )
-        self.credentials_path = credentials_path or GOOGLE_APPLICATION_CREDENTIALS
+        self.credentials_path = credentials_path or GOOGLE_APPLICATION_CREDENTIALS or None
         self._client = None
 
     @property
