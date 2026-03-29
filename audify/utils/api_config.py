@@ -504,7 +504,9 @@ class GoogleTTSConfig(TTSAPIConfig):
             language=language,
             timeout=timeout,
         )
-        self.credentials_path = credentials_path or GOOGLE_APPLICATION_CREDENTIALS or None
+        self.credentials_path = (
+            credentials_path or GOOGLE_APPLICATION_CREDENTIALS or None
+        )
         self._client = None
 
     @property
@@ -631,9 +633,8 @@ class QwenTTSConfig(TTSAPIConfig):
             response = requests.get(self.health_url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                return (
-                    data.get("status") == "healthy"
-                    and data.get("model_loaded", False)
+                return data.get("status") == "healthy" and data.get(
+                    "model_loaded", False
                 )
             return False
         except requests.RequestException:
@@ -834,10 +835,7 @@ class CommercialAPIConfig(APIConfig):
                 os.environ["DEEPSEEK_API_KEY"] = self.api_key
             elif "claude" in original_model.lower():
                 os.environ["ANTHROPIC_API_KEY"] = self.api_key
-            elif (
-                "gpt" in original_model.lower()
-                or "openai" in original_model.lower()
-            ):
+            elif "gpt" in original_model.lower() or "openai" in original_model.lower():
                 os.environ["OPENAI_API_KEY"] = self.api_key
             elif "gemini" in original_model.lower():
                 os.environ["GOOGLE_API_KEY"] = self.api_key
