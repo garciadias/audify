@@ -41,11 +41,16 @@ CHAPTER_PATTERNS = [
     ),
 ]
 
-# CSS class/id patterns that commonly indicate titles
+# CSS class/id patterns that commonly indicate titles.
+# Uses token boundaries (start/end of string or common separators) to avoid
+# false positives on substrings like "section-content" matching "title".
+_TITLE_TOKENS = (
+    "title|heading|chapter|chaptertitle|chaptitle|chapter-title|"
+    "chapter-head|chapter-heading|book-title|section-title|"
+    "calibre_heading|sgc-toc-level"
+)
 TITLE_ATTR_PATTERNS = re.compile(
-    r"(title|heading|chapter|chaptertitle|chaptitle|ct|chapter-title|"
-    r"chapter-head|chapter-heading|book-title|section-title|"
-    r"calibre_heading|sgc-toc-level)",
+    rf"(?:^|[\s_\-\.])({_TITLE_TOKENS})(?:$|[\s_\-\.])",
     re.IGNORECASE,
 )
 
@@ -118,11 +123,19 @@ class EpubReader(Reader):
         return "Unknown"
 
     def _extract_from_heading_tags(self, soup: bs4.BeautifulSoup) -> str:
-        heading_tags = [f"h{i}" for i in range(1, 7)]
-        heading_tags += ["title", "hgroup", "header"]
-        tag = soup.find(heading_tags)
+        body = self._find_body(soup)
+        # First: search within the body for real content headings
+        body_heading_tags = [f"h{i}" for i in range(1, 7)]
+        body_heading_tags += ["hgroup", "header"]
+        tag = body.find(body_heading_tags)
         if tag:
             text = tag.get_text(separator=" ", strip=True)
+            if text:
+                return text
+        # Fallback: check <title> and other metadata tags in <head>
+        fallback_tag = soup.find("title")
+        if fallback_tag:
+            text = fallback_tag.get_text(separator=" ", strip=True)
             if text:
                 return text
         return ""
@@ -160,10 +173,21 @@ class EpubReader(Reader):
                             return text
         return ""
 
-    def _extract_from_paragraph_patterns(self, soup: bs4.BeautifulSoup) -> str:
+    @staticmethod
+    def _is_leaf_paragraph(tag: bs4.element.PageElement) -> bool:
+        """Return True if the tag has no nested paragraph-like children."""
+        if not isinstance(tag, Tag):
+            return True
+        return tag.find(["p", "div", "span"]) is None
+
+    def _extract_from_paragraph_patterns(
+        self, soup: bs4.BeautifulSoup
+    ) -> str:
         body = self._find_body(soup)
         paragraphs = body.find_all(["p", "div", "span"], limit=10)
         for p in paragraphs:
+            if not self._is_leaf_paragraph(p):
+                continue
             text = p.get_text(separator=" ", strip=True)
             if not text:
                 continue
@@ -172,10 +196,14 @@ class EpubReader(Reader):
                     return text
         return ""
 
-    def _extract_short_paragraph_title(self, soup: bs4.BeautifulSoup) -> str:
+    def _extract_short_paragraph_title(
+        self, soup: bs4.BeautifulSoup
+    ) -> str:
         body = self._find_body(soup)
         paragraphs = body.find_all(["p", "div"], limit=5)
         for p in paragraphs:
+            if not self._is_leaf_paragraph(p):
+                continue
             text = p.get_text(separator=" ", strip=True)
             if not text:
                 continue

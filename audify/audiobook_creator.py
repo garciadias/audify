@@ -142,12 +142,15 @@ class AudiobookCreator(BaseSynthesizer):
         confirm: bool = True,
         output_dir: Optional[str | Path] = None,
         tts_provider: Optional[str] = None,
+        llm_config: Optional[
+            Union[OllamaAPIConfig, CommercialAPIConfig]
+        ] = None,
     ):
         # Initialize file reader based on extension
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
         if file_path.suffix.lower() == ".epub":
-            self.reader = EpubReader(path)
+            self.reader = EpubReader(path, llm_config=llm_config)
             detected_language = self.reader.get_language()
             self.title = self.reader.title
         elif file_path.suffix.lower() == ".pdf":

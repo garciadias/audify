@@ -886,3 +886,124 @@ class TestEpubReader:
         )
         title = reader.get_chapter_title(html_content)
         assert title == "Prologue: The Beginning"
+
+    # --- Regression tests for review findings ---
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_heading_body_h1_preferred_over_head_title(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: <h1> in body should win over <title> in <head>."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><head><title>Page Title</title></head>"
+            "<body><h1>Body Heading</h1><p>Content.</p></body></html>"
+        )
+        assert reader.get_chapter_title(html_content) == "Body Heading"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_heading_title_fallback_when_no_body_heading(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: <title> should still work when no heading in body."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><head><title>Fallback Title</title></head>"
+            "<body><p>Content only, no headings here.</p></body></html>"
+        )
+        assert reader.get_chapter_title(html_content) == "Fallback Title"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_title_attr_no_false_positive_on_section_content(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: class='section-content' should NOT match title pattern."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        # The div has a non-title class; the content is long enough
+        # and ends with a period to avoid matching short-paragraph heuristic
+        html_content = (
+            "<html><body>"
+            '<div class="section-content">'
+            "This is a long paragraph inside a section-content div "
+            "that should not be matched as a title at all.</div>"
+            "<p>Another long paragraph to fill the body "
+            "with regular text content.</p>"
+            "</body></html>"
+        )
+        # Should NOT match "section-content" as a title class
+        title = reader.get_chapter_title(html_content)
+        assert title == "Unknown"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_title_attr_true_positive_still_matches(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: class='chapter-title' should still match."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><body>"
+            '<div class="chapter-title">The Real Title</div>'
+            "<p>Content.</p></body></html>"
+        )
+        assert reader.get_chapter_title(html_content) == "The Real Title"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_nested_wrapper_returns_leaf_not_container(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: nested <div> wrapper should not return combined text."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        # Use a non-title class so strategy 2 doesn't match the wrapper
+        html_content = (
+            "<html><body>"
+            '<div class="content"><p>Chapter 3</p>'
+            "<p>Body text that is long enough to not look like a "
+            "title and ends with a period.</p></div>"
+            "</body></html>"
+        )
+        assert reader.get_chapter_title(html_content) == "Chapter 3"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_title_attr_matches_token_at_start(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: class starting with a title token should match."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><body>"
+            '<p class="title-text">Opening Title</p>'
+            "<p>Content.</p></body></html>"
+        )
+        assert reader.get_chapter_title(html_content) == "Opening Title"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_title_attr_no_false_positive_on_subtitle(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regression: class='subtitle' should NOT match (embedded 'title')."""
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        html_content = (
+            "<html><body>"
+            '<div class="subtitle">'
+            "This is a long subtitle paragraph that should not "
+            "be matched as a title by the CSS class pattern.</div>"
+            "<p>Another long paragraph with regular content "
+            "that fills the body.</p>"
+            "</body></html>"
+        )
+        title = reader.get_chapter_title(html_content)
+        assert title == "Unknown"
