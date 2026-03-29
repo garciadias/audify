@@ -528,7 +528,9 @@ class GoogleTTSConfig(TTSAPIConfig):
                         self.credentials_path,
                         scopes=["https://www.googleapis.com/auth/cloud-platform"],
                     )
-                    self._client = texttospeech.TextToSpeechClient(credentials=credentials)
+                    self._client = texttospeech.TextToSpeechClient(
+                        credentials=credentials
+                    )
                 else:
                     self._client = texttospeech.TextToSpeechClient()
             except ImportError:
