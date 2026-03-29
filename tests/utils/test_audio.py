@@ -509,3 +509,71 @@ class TestAudioProcessor:
             assert result == mock_combined
             # Only one file should be successfully added
             assert mock_combined.__iadd__.call_count == 1
+
+    # ------------------------------------------------------------------
+    # combine_wav_segments
+    # ------------------------------------------------------------------
+
+    def test_combine_wav_segments_decode_error(self, tmp_path):
+        """combine_wav_segments logs a warning and skips a bad WAV segment."""
+        good = tmp_path / "good.wav"
+        bad = tmp_path / "bad.wav"
+        good.write_bytes(b"data")
+        bad.write_bytes(b"data")
+
+        mock_good = MagicMock()
+        mock_combined = MagicMock()
+        mock_combined.__len__ = MagicMock(return_value=1000)
+        mock_combined.__iadd__ = MagicMock(return_value=mock_combined)
+
+        with patch("audify.utils.audio.AudioSegment.empty", return_value=mock_combined):
+            with patch(
+                "audify.utils.audio.AudioSegment.from_wav",
+                side_effect=[CouldntDecodeError, mock_good],
+            ):
+                AudioProcessor.combine_wav_segments([bad, good], tmp_path / "out.wav")
+
+        assert not bad.exists()
+        mock_combined.export.assert_called_once()
+
+    def test_combine_wav_segments_missing_file(self, tmp_path):
+        """combine_wav_segments logs a warning for segments that do not exist."""
+        missing = tmp_path / "missing.wav"
+        present = tmp_path / "present.wav"
+        present.write_bytes(b"data")
+
+        mock_seg = MagicMock()
+        mock_combined = MagicMock()
+        mock_combined.__len__ = MagicMock(return_value=500)
+        mock_combined.__iadd__ = MagicMock(return_value=mock_combined)
+
+        mock_log = MagicMock()
+        with patch("audify.utils.audio.AudioSegment.empty", return_value=mock_combined):
+            with patch(
+                "audify.utils.audio.AudioSegment.from_wav", return_value=mock_seg
+            ):
+                AudioProcessor.combine_wav_segments(
+                    [missing, present], tmp_path / "out.wav", logger_instance=mock_log
+                )
+
+        mock_log.warning.assert_any_call(
+            f"Temporary segment file not found: {missing}"
+        )
+
+    def test_combine_wav_segments_empty_raises(self, tmp_path):
+        """combine_wav_segments raises ValueError when combined audio is empty."""
+        seg = tmp_path / "bad.wav"
+        seg.write_bytes(b"data")
+
+        mock_combined = MagicMock()
+        mock_combined.__len__ = MagicMock(return_value=0)
+
+        with patch("audify.utils.audio.AudioSegment.empty", return_value=mock_combined):
+            with patch(
+                "audify.utils.audio.AudioSegment.from_wav",
+                side_effect=CouldntDecodeError,
+            ):
+                with pytest.raises(ValueError, match="empty"):
+                    AudioProcessor.combine_wav_segments(
+                        [seg], tmp_path / "out.wav"
+                    )

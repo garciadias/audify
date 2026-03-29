@@ -83,7 +83,7 @@ class TestAudiobookCreatorMetadataIOError:
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     def test_log_episode_metadata_io_error(self, mock_base_synth):
-        """Test IOError in _log_episode_metadata."""
+        """Test IOError in _log_episode_metadata is re-raised."""
         with tempfile.TemporaryDirectory() as tmpdir:
             creator = DirectoryAudiobookCreator(
                 directory_path=tmpdir, output_dir=tmpdir
@@ -91,14 +91,13 @@ class TestAudiobookCreatorMetadataIOError:
             # Point to nonexistent path to trigger IOError
             creator.metadata_path = Path("/proc/nonexistent/metadata.txt")
 
-            result = creator._log_episode_metadata(
-                episode_number=1,
-                start_time_ms=0,
-                duration_s=60.0,
-                chapter_title="Test",
-            )
-            # Should return start_time_ms on failure
-            assert result == 0
+            with pytest.raises((IOError, FileNotFoundError)):
+                creator._log_episode_metadata(
+                    episode_number=1,
+                    start_time_ms=0,
+                    duration_s=60.0,
+                    chapter_title="Test",
+                )
 
 
 class TestDirectoryCreatorMetadataIOErrors:
@@ -120,20 +119,20 @@ class TestDirectoryCreatorMetadataIOErrors:
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     def test_dir_log_episode_metadata_io_error(self, mock_base_synth):
-        """Test IOError in Dir._log_episode_metadata."""
+        """Test IOError in Dir._log_episode_metadata is re-raised."""
         with tempfile.TemporaryDirectory() as tmpdir:
             creator = DirectoryAudiobookCreator(
                 directory_path=tmpdir, output_dir=tmpdir
             )
             creator.metadata_path = Path("/proc/nonexistent/metadata.txt")
 
-            result = creator._log_episode_metadata(
-                episode_number=1,
-                start_time_ms=0,
-                duration_s=30.0,
-                chapter_title="Test",
-            )
-            assert result == 0
+            with pytest.raises((IOError, FileNotFoundError)):
+                creator._log_episode_metadata(
+                    episode_number=1,
+                    start_time_ms=0,
+                    duration_s=30.0,
+                    chapter_title="Test",
+                )
 
 
 class TestDirectoryCreatorM4bExportFailure:

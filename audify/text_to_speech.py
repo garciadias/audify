@@ -1,6 +1,5 @@
 import contextlib
 import shutil
-import subprocess
 import sys
 import tempfile
 import warnings
@@ -10,13 +9,11 @@ from typing import List, Optional, Tuple
 import requests
 import tqdm
 from pydub import AudioSegment
-from pydub.exceptions import CouldntDecodeError
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
 from audify.utils.api_config import (
-    KokoroAPIConfig,
     TTSAPIConfig,
     get_tts_config,
 )
@@ -26,10 +23,14 @@ from audify.utils.constants import (
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
     KOKORO_API_BASE_URL,
-    LANG_CODES,
     OUTPUT_BASE_DIR,
 )
 from audify.utils.logging_utils import setup_logging
+from audify.utils.m4b_builder import (
+    append_chapter_metadata,
+    assemble_m4b,
+    write_metadata_header,
+)
 from audify.utils.text import break_text_into_sentences, get_file_name_title
 
 # Configure logging
@@ -107,108 +108,6 @@ class BaseSynthesizer:
         # Initialize TTS configuration
         self._tts_config: Optional[TTSAPIConfig] = None
 
-    def _synthesize_kokoro(self, sentences: List[str], output_wav_path: Path) -> None:
-        """Synthesize sentences using the Kokoro API."""
-        # Initialize API config
-        api_config = KokoroAPIConfig()
-        combined_audio = AudioSegment.empty()
-        temp_audio_files: List[Path] = []
-
-        try:
-            logger.info("Starting Kokoro API synthesis...")
-
-            # Check if API is available
-            try:
-                response = requests.get(api_config.voices_url, timeout=5)
-                if response.status_code != 200:
-                    raise requests.RequestException(
-                        f"API returned status {response.status_code}"
-                    )
-                available_voices = response.json().get("voices", [])
-                logger.info(
-                    f"Connected to Kokoro API. Available voices: "
-                    f"{len(available_voices)}"
-                )
-            except requests.RequestException as e:
-                logger.error(
-                    f"Failed to connect to Kokoro API at {api_config.base_url}: {e}"
-                )
-                raise
-
-            for i, sentence in tqdm.tqdm(
-                enumerate(sentences),
-                desc="Kokoro Synthesizing",
-                total=len(sentences),
-                unit="sentence",
-            ):
-                if not sentence.strip():
-                    continue
-
-                try:
-                    # Make API request for each sentence
-                    if self.speaker not in available_voices:
-                        raise ValueError(
-                            f"Speaker '{self.speaker}' not available in Kokoro voices."
-                        )
-                    if self.language not in LANG_CODES.keys():
-                        raise ValueError(
-                            f"Language code '{self.language}' is not supported."
-                        )
-                    response = requests.post(
-                        api_config.speech_url,
-                        json={
-                            "model": "kokoro",
-                            "input": sentence,
-                            "voice": self.speaker,
-                            "response_format": "wav",
-                            "lang_code": LANG_CODES[self.translate or self.language],
-                            "speed": 1.0,
-                        },
-                        timeout=api_config.timeout,
-                    )
-
-                    if response.status_code == 200:
-                        temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
-                        with open(temp_wav_path, "wb") as f:
-                            f.write(response.content)
-                        temp_audio_files.append(temp_wav_path)
-                    else:
-                        logger.warning(
-                            f"API request failed for sentence {i}: "
-                            f"{response.status_code}"
-                        )
-                        continue
-
-                except requests.RequestException as e:
-                    logger.warning(f"Request failed for sentence {i}: {e}")
-                    continue
-
-            logger.info("Combining Kokoro audio segments...")
-            for temp_wav_path in tqdm.tqdm(
-                temp_audio_files, desc="Combining Segments", unit="file"
-            ):
-                if temp_wav_path.exists():
-                    try:
-                        segment = AudioSegment.from_wav(temp_wav_path)
-                        combined_audio += segment
-                    except CouldntDecodeError:
-                        logger.warning(
-                            f"Could not decode temporary segment: {temp_wav_path}"
-                        )
-                    finally:
-                        temp_wav_path.unlink(missing_ok=True)
-                else:
-                    logger.warning(f"Temporary segment file not found: {temp_wav_path}")
-
-            logger.info(f"Exporting combined Kokoro audio to {output_wav_path}")
-            combined_audio.export(output_wav_path, format="wav")
-
-        except Exception as e:
-            logger.error(f"Error during Kokoro API synthesis: {e}", exc_info=True)
-            for temp_file in temp_audio_files:
-                temp_file.unlink(missing_ok=True)
-            raise
-
     def _get_tts_config(self) -> TTSAPIConfig:
         """Get or create the TTS configuration for the current provider."""
         if self._tts_config is None:
@@ -230,7 +129,6 @@ class BaseSynthesizer:
     ) -> None:
         """Synthesize sentences using the configured TTS provider."""
         tts_config = self._get_tts_config()
-        combined_audio = AudioSegment.empty()
         temp_audio_files: List[Path] = []
 
         try:
@@ -275,24 +173,9 @@ class BaseSynthesizer:
                     continue
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")
-            for temp_wav_path in tqdm.tqdm(
-                temp_audio_files, desc="Combining Segments", unit="file"
-            ):
-                if temp_wav_path.exists():
-                    try:
-                        segment = AudioSegment.from_wav(temp_wav_path)
-                        combined_audio += segment
-                    except CouldntDecodeError:
-                        logger.warning(
-                            f"Could not decode temporary segment: {temp_wav_path}"
-                        )
-                    finally:
-                        temp_wav_path.unlink(missing_ok=True)
-                else:
-                    logger.warning(f"Temporary segment file not found: {temp_wav_path}")
-
-            logger.info(f"Exporting combined audio to {output_wav_path}")
-            combined_audio.export(output_wav_path, format="wav")
+            AudioProcessor.combine_wav_segments(
+                temp_audio_files, output_wav_path, logger_instance=logger
+            )
 
         except Exception as e:
             logger.error(
@@ -306,21 +189,9 @@ class BaseSynthesizer:
     def _synthesize_sentences(
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
-        """Synthesize a list of sentences into a single WAV file.
-
-        Uses the configured TTS provider (default: kokoro). For backward
-        compatibility, if tts_provider is 'kokoro', uses the original
-        Kokoro-specific implementation.
-        """
+        """Synthesize a list of sentences into a single WAV file."""
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if self.tts_provider == "kokoro":
-            # Use the original Kokoro implementation for backward compatibility
-            self._synthesize_kokoro(sentences, output_wav_path)
-        else:
-            # Use the provider-agnostic implementation
-            self._synthesize_with_provider(sentences, output_wav_path)
-
+        self._synthesize_with_provider(sentences, output_wav_path)
         logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
 
     def _convert_to_mp3(self, wav_path: Path) -> Path:
@@ -425,17 +296,7 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
-        logger.info(f"Initializing metadata file: {self.list_of_contents_path}")
-        try:
-            with open(self.list_of_contents_path, "w") as f:
-                f.write(";FFMETADATA1\n")
-                f.write("major_brand=M4A\n")
-                f.write("minor_version=512\n")
-                f.write("compatible_brands=M4A isis2\n")
-                f.write("encoder=Lavf61.7.100\n")
-        except IOError as e:
-            logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
-            raise
+        write_metadata_header(self.list_of_contents_path)
 
     def synthesize_chapter(self, chapter_content: str, chapter_number: int) -> Path:
         """Synthesizes a single chapter into an MP3 file."""
@@ -520,39 +381,12 @@ class EpubSynthesizer(BaseSynthesizer):
         logger.info(
             f"Combining {len(chunk_files)} chapter MP3s for chunk {chunk_index + 1}..."
         )
-        combined_audio = AudioSegment.empty()
-
-        for mp3_file in tqdm.tqdm(
-            chunk_files, desc=f"Combining Chunk {chunk_index + 1}", unit="file"
-        ):
-            try:
-                audio = AudioSegment.from_mp3(mp3_file)
-                combined_audio += audio
-            except CouldntDecodeError:
-                logger.error(f"Could not decode chapter file: {mp3_file}, skipping.")
-            except Exception as e:
-                logger.error(
-                    f"Error processing chapter file {mp3_file}: {e}, skipping.",
-                    exc_info=True,
-                )
-
-        if len(combined_audio) == 0:
-            logger.error(f"Combined audio for chunk {chunk_index + 1} is empty.")
-            return chunk_temp_path
-
-        logger.info(f"Exporting combined audio to temporary M4B: {chunk_temp_path}")
-        try:
-            combined_audio.export(
-                chunk_temp_path, format="mp4", codec="aac", bitrate="64k"
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to export temporary M4B file for chunk {chunk_index + 1}: {e}",
-                exc_info=True,
-            )
-            chunk_temp_path.unlink(missing_ok=True)
-            raise
-
+        AudioProcessor.combine_audio_files(
+            chunk_files,
+            chunk_temp_path,
+            output_format="mp4",
+            description=f"Combining Chunk {chunk_index + 1}",
+        )
         return chunk_temp_path
 
     def _create_metadata_for_chunk(
@@ -562,45 +396,24 @@ class EpubSynthesizer(BaseSynthesizer):
         chunk_metadata_path = (
             self.audiobook_path / f"chapters_part{chunk_index + 1}.txt"
         )
-
         logger.info(
             f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
         )
-        try:
-            with open(chunk_metadata_path, "w") as f:
-                f.write(";FFMETADATA1\n")
-                f.write("major_brand=M4A\n")
-                f.write("minor_version=512\n")
-                f.write("compatible_brands=M4A isis2\n")
-                f.write("encoder=Lavf61.7.100\n")
-
-                current_start_time_ms = 0
-                for mp3_file in chunk_files:
-                    try:
-                        # Extract chapter number from file_name
-                        chapter_num = int(mp3_file.stem.split("_")[1])
-                        duration = AudioProcessor.get_duration(str(mp3_file))
-
-                        if duration > 0:
-                            end_time_ms = current_start_time_ms + int(duration * 1000)
-                            f.write("[CHAPTER]\n")
-                            f.write("TIMEBASE=1/1000\n")
-                            f.write(f"START={current_start_time_ms}\n")
-                            f.write(f"END={end_time_ms}\n")
-                            f.write(f"title=Chapter {chapter_num}\n")
-                            current_start_time_ms = end_time_ms
-                    except Exception as e:
-                        logger.warning(
-                            f"Could not process metadata for {mp3_file}: {e}"
-                        )
-
-        except IOError as e:
-            logger.error(
-                f"Failed to create metadata file for chunk {chunk_index + 1}: {e}",
-                exc_info=True,
-            )
-            raise
-
+        write_metadata_header(chunk_metadata_path)
+        current_start_ms = 0
+        for mp3_file in chunk_files:
+            try:
+                chapter_num = int(mp3_file.stem.split("_")[1])
+                duration = AudioProcessor.get_duration(str(mp3_file))
+                if duration > 0:
+                    current_start_ms = append_chapter_metadata(
+                        chunk_metadata_path,
+                        f"Chapter {chapter_num}",
+                        current_start_ms,
+                        duration,
+                    )
+            except Exception as e:
+                logger.warning(f"Could not process metadata for {mp3_file}: {e}")
         return chunk_metadata_path
 
     def create_m4b(self) -> None:
@@ -632,87 +445,24 @@ class EpubSynthesizer(BaseSynthesizer):
         """Create a single M4B file from all chapters."""
         if not self.temp_m4b_path.exists():
             logger.info(f"Combining {len(chapter_mp3_files)} chapter MP3s...")
-            combined_audio = AudioSegment.empty()
-            for mp3_file in tqdm.tqdm(
-                chapter_mp3_files, desc="Combining Chapters", unit="file"
-            ):
-                try:
-                    audio = AudioSegment.from_mp3(mp3_file)
-                    combined_audio += audio
-                except CouldntDecodeError:
-                    logger.error(
-                        f"Could not decode chapter file: {mp3_file}, skipping."
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error processing chapter file {mp3_file}: {e}, skipping.",
-                        exc_info=True,
-                    )
-
-            if len(combined_audio) == 0:
-                logger.error("Combined audio is empty. Cannot create M4B.")
-                return
-
-            logger.info(
-                f"Exporting combined audio to temporary M4B: {self.temp_m4b_path}"
+            AudioProcessor.combine_audio_files(
+                chapter_mp3_files,
+                self.temp_m4b_path,
+                output_format="mp4",
+                description="Combining Chapters",
             )
-            try:
-                combined_audio.export(
-                    self.temp_m4b_path, format="mp4", codec="aac", bitrate="64k"
-                )
-            except Exception as e:
-                logger.error(f"Failed to export temporary M4B file: {e}", exc_info=True)
-                self.temp_m4b_path.unlink(missing_ok=True)
-                raise
         else:
             logger.info(
-                f"Temporary M4B file already exists: {self.temp_m4b_path}."
-                " Skipping combination."
+                f"Temporary M4B already exists: {self.temp_m4b_path}. Skipping."
             )
 
         logger.info("Adding metadata and cover image using FFmpeg...")
-        ffmpeg_command, cover_temp_file = self._build_ffmpeg_command(chapter_mp3_files)
-
-        try:
-            logger.debug(f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
-            result = subprocess.run(
-                ffmpeg_command, check=True, capture_output=True, text=True
-            )
-            logger.info("FFmpeg process completed successfully.")
-            logger.debug(f"FFmpeg stdout:\n{result.stdout}")
-            logger.debug(f"FFmpeg stderr:\n{result.stderr}")
-
-            logger.info(f"Cleaning up temporary file: {self.temp_m4b_path}")
-            self.temp_m4b_path.unlink(missing_ok=True)
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg command failed with exit code {e.returncode}")
-            logger.error(f"FFmpeg stdout:\n{e.stdout}")
-            logger.error(f"FFmpeg stderr:\n{e.stderr}")
-            logger.error(
-                "M4B creation failed. The temporary M4B file and chapter files are"
-                " preserved for inspection."
-            )
-            raise
-        except FileNotFoundError:
-            logger.error(
-                "FFmpeg command not found. Please ensure FFmpeg is installed and in"
-                " your system's PATH."
-            )
-            raise
-        finally:
-            if cover_temp_file:
-                try:
-                    cover_temp_file.close()
-                    Path(cover_temp_file.name).unlink(missing_ok=True)
-                    logger.debug(
-                        f"Cleaned up temporary cover file: {cover_temp_file.name}"
-                    )
-                except Exception as e_clean:
-                    logger.warning(
-                        f"Error cleaning up temporary cover file"
-                        f" {cover_temp_file.name}: {e_clean}"
-                    )
+        assemble_m4b(
+            self.temp_m4b_path,
+            self.list_of_contents_path,
+            self.final_m4b_path,
+            getattr(self, "cover_image_path", None),
+        )
 
     def _create_multiple_m4bs(self, chapter_mp3_files: List[Path]) -> None:
         """Create multiple M4B files by splitting chapters into chunks."""
@@ -726,197 +476,44 @@ class EpubSynthesizer(BaseSynthesizer):
                 f"({len(chunk_files)} chapters, {chunk_duration:.2f}h)"
             )
 
-            # Create temporary M4B for this chunk
             chunk_temp_path = self._create_temp_m4b_for_chunk(chunk_files, chunk_index)
-
             if not chunk_temp_path.exists():
                 logger.error(
                     f"Failed to create temporary M4B for chunk {chunk_index + 1}"
                 )
                 continue
 
-            # Create metadata for this chunk
             chunk_metadata_path = self._create_metadata_for_chunk(
                 chunk_files, chunk_index
             )
-
-            # Create final M4B file for this chunk
             chunk_final_path = (
                 self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.m4b"
             )
-
             logger.info(
                 f"Creating final M4B for chunk {chunk_index + 1}: {chunk_final_path}"
             )
-            ffmpeg_command, cover_temp_file = self._build_ffmpeg_command_for_chunk(
-                chunk_temp_path, chunk_metadata_path, chunk_final_path
-            )
-
             try:
-                logger.debug(
-                    f"Running FFmpeg command for chunk {chunk_index + 1}: "
-                    f"{' '.join(ffmpeg_command)}"
+                assemble_m4b(
+                    chunk_temp_path,
+                    chunk_metadata_path,
+                    chunk_final_path,
+                    getattr(self, "cover_image_path", None),
                 )
-                result = subprocess.run(
-                    ffmpeg_command, check=True, capture_output=True, text=True
-                )
-                logger.info(
-                    f"FFmpeg process completed successfully for chunk "
-                    f"{chunk_index + 1}."
-                )
-                logger.debug(f"FFmpeg stdout:\n{result.stdout}")
-                logger.debug(f"FFmpeg stderr:\n{result.stderr}")
-
-                # Clean up temporary files for this chunk
-                chunk_temp_path.unlink(missing_ok=True)
                 chunk_metadata_path.unlink(missing_ok=True)
-
-            except subprocess.CalledProcessError as e:
+            except Exception as e:
                 logger.error(
-                    f"FFmpeg command failed for chunk {chunk_index + 1} "
-                    f"with exit code {e.returncode}"
+                    f"M4B creation failed for chunk {chunk_index + 1}: {e}"
                 )
-                logger.error(f"FFmpeg stdout:\n{e.stdout}")
-                logger.error(f"FFmpeg stderr:\n{e.stderr}")
-                logger.error(f"M4B creation failed for chunk {chunk_index + 1}.")
-            except FileNotFoundError:
-                logger.error(
-                    "FFmpeg command not found. Please ensure FFmpeg is installed and in"
-                    " your system's PATH."
-                )
-            finally:
-                if cover_temp_file:
-                    try:
-                        cover_temp_file.close()
-                        Path(cover_temp_file.name).unlink(missing_ok=True)
-                    except Exception as e_clean:
-                        logger.warning(
-                            f"Error cleaning up temporary cover file: {e_clean}"
-                        )
 
         logger.info(f"Created {len(chunks)} M4B files for long audiobook")
-
-    def _build_ffmpeg_command(
-        self, chapter_files: List[Path]
-    ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
-        """Builds the FFmpeg command for M4B creation."""
-        cover_args = []
-        cover_temp_file = None
-        if isinstance(self.cover_image_path, Path) and self.cover_image_path.exists():
-            cover_temp_file = tempfile.NamedTemporaryFile(
-                suffix=self.cover_image_path.suffix, delete=False
-            )
-            shutil.copy(self.cover_image_path, cover_temp_file.name)
-            logger.info(f"Using cover image: {self.cover_image_path}")
-            cover_args = [
-                "-i",
-                cover_temp_file.name,
-                "-map",
-                "0:a",
-                "-map",
-                "2:v",
-                "-disposition:v",
-                "attached_pic",
-                "-c:v",
-                "copy",
-            ]
-        else:
-            logger.warning("No cover image found or provided.")
-            cover_args = [
-                "-map",
-                "0:a",
-            ]
-
-        command = [
-            "ffmpeg",
-            "-i",
-            str(self.temp_m4b_path),
-            "-i",
-            str(self.list_of_contents_path),
-            *cover_args,
-            "-map_metadata",
-            "1",
-            "-c:a",
-            "copy",
-            "-f",
-            "mp4",
-            "-y",
-            str(self.final_m4b_path),
-        ]
-
-        return command, cover_temp_file
-
-    def _build_ffmpeg_command_for_chunk(
-        self, chunk_temp_path: Path, chunk_metadata_path: Path, chunk_final_path: Path
-    ) -> Tuple[List[str], Optional[tempfile._TemporaryFileWrapper]]:
-        """Builds the FFmpeg command for M4B creation of a specific chunk."""
-        cover_args = []
-        cover_temp_file = None
-        if isinstance(self.cover_image_path, Path) and self.cover_image_path.exists():
-            cover_temp_file = tempfile.NamedTemporaryFile(
-                suffix=self.cover_image_path.suffix, delete=False
-            )
-            shutil.copy(self.cover_image_path, cover_temp_file.name)
-            cover_args = [
-                "-i",
-                cover_temp_file.name,
-                "-map",
-                "0:a",
-                "-map",
-                "2:v",
-                "-disposition:v",
-                "attached_pic",
-                "-c:v",
-                "copy",
-            ]
-        else:
-            cover_args = [
-                "-map",
-                "0:a",
-            ]
-
-        command = [
-            "ffmpeg",
-            "-i",
-            str(chunk_temp_path),
-            "-i",
-            str(chunk_metadata_path),
-            *cover_args,
-            "-map_metadata",
-            "1",
-            "-c:a",
-            "copy",
-            "-f",
-            "mp4",
-            "-y",
-            str(chunk_final_path),
-        ]
-
-        return command, cover_temp_file
 
     def _log_chapter_metadata(
         self, title: str, start_time_ms: int, duration_s: float
     ) -> int:
         """Appends chapter metadata to the FFmpeg metadata file."""
-        end_time_ms = start_time_ms + int(duration_s * 1000)
-        logger.debug(
-            f"Logging metadata for '{title}': Start={start_time_ms}, End={end_time_ms},"
-            f" Duration={duration_s:.2f}s"
+        return append_chapter_metadata(
+            self.list_of_contents_path, title, start_time_ms, duration_s
         )
-        try:
-            with open(self.list_of_contents_path, "a") as f:
-                f.write("[CHAPTER]\n")
-                f.write("TIMEBASE=1/1000\n")
-                f.write(f"START={start_time_ms}\n")
-                f.write(f"END={end_time_ms}\n")
-                cleaned_title = title.replace("\n", " ").replace("\r", "")
-                f.write(f"title={cleaned_title}\n")
-            return end_time_ms
-        except IOError as e:
-            logger.error(
-                f"Failed to write chapter metadata for '{title}': {e}", exc_info=True
-            )
-            return start_time_ms
 
     def _process_single_chapter(
         self, chapter_index: int, chapter_content: str, current_start_time_ms: int
@@ -1207,7 +804,7 @@ class VoiceSamplesSynthesizer:
                 self.tmp_dir / f"sample_{chapter_index:03d}_{model}_{voice}.wav"
             )
 
-            temp_synthesizer._synthesize_kokoro(sentences, output_wav_path)
+            temp_synthesizer._synthesize_sentences(sentences, output_wav_path)
 
             if output_wav_path.exists():
                 # Convert to MP3
@@ -1226,13 +823,10 @@ class VoiceSamplesSynthesizer:
         self, model_voice_combinations: List[Tuple[str, str]]
     ) -> None:
         """Create metadata file for M4B with chapter information."""
+        write_metadata_header(self.metadata_path)
+        # Append extra tags not included in the standard header
         try:
-            with open(self.metadata_path, "w") as f:
-                f.write(";FFMETADATA1\n")
-                f.write("major_brand=M4A\n")
-                f.write("minor_version=512\n")
-                f.write("compatible_brands=M4A isis2\n")
-                f.write("encoder=Lavf61.7.100\n")
+            with open(self.metadata_path, "a") as f:
                 f.write("title=Voice Samples Collection\n")
                 f.write("artist=Audify TTS System\n")
                 f.write("album=Voice Model Samples\n")
@@ -1241,7 +835,6 @@ class VoiceSamplesSynthesizer:
                     "comment=Collection of voice samples for all available "
                     "model-voice combinations\n"
                 )
-
             logger.info(f"Created metadata file: {self.metadata_path}")
         except Exception as e:
             logger.error(f"Error creating metadata file: {e}")
@@ -1319,45 +912,14 @@ class VoiceSamplesSynthesizer:
 
     def _finalize_m4b(self) -> None:
         """Finalize M4B with metadata using FFmpeg."""
-        try:
-            logger.info("Adding metadata using FFmpeg...")
-            ffmpeg_command = [
-                "ffmpeg",
-                "-i",
-                str(self.temp_m4b_path),
-                "-i",
-                str(self.metadata_path),
-                "-map",
-                "0:a",
-                "-map_metadata",
-                "1",
-                "-c:a",
-                "copy",
-                "-f",
-                "mp4",
-                "-y",
-                str(self.final_m4b_path),
-            ]
-
-            result = subprocess.run(
-                ffmpeg_command, check=True, capture_output=True, text=True
-            )
-            logger.info("FFmpeg process completed successfully.")
-            logger.debug(f"FFmpeg stdout: {result.stdout}")
-            logger.debug(f"FFmpeg stderr: {result.stderr}")
-
-            # Clean up temporary file
-            self.temp_m4b_path.unlink(missing_ok=True)
-            logger.info(f"Voice samples M4B created: {self.final_m4b_path}")
-
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg command failed: {e}")
-            logger.error(f"FFmpeg stdout: {e.stdout}")
-            logger.error(f"FFmpeg stderr: {e.stderr}")
-            raise
-        except FileNotFoundError:
-            logger.error("FFmpeg not found. Please ensure FFmpeg is installed.")
-            raise
+        logger.info("Adding metadata using FFmpeg...")
+        assemble_m4b(
+            self.temp_m4b_path,
+            self.metadata_path,
+            self.final_m4b_path,
+            cover_image=None,
+        )
+        logger.info(f"Voice samples M4B created: {self.final_m4b_path}")
 
     def synthesize(self) -> Path:
         """Create voice samples M4B with all available model-voice combinations."""

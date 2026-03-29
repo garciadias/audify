@@ -1,7 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from pydub.exceptions import CouldntDecodeError
 
 from audify.utils.text import (
     break_text_into_sentences,
@@ -60,17 +59,15 @@ def test_break_text_into_sentences():
     assert break_text_into_sentences(text, max_length=50, min_length=10) == expected
 
 
-@patch("audify.utils.text.AudioSegment.from_file")
-def test_get_audio_duration(mock_from_file):
-    mock_audio = MagicMock()
-    mock_audio.__len__.return_value = 10000  # 10 seconds
-    mock_from_file.return_value = mock_audio
+@patch("audify.utils.audio.AudioProcessor.get_duration")
+def test_get_audio_duration(mock_get_duration):
+    mock_get_duration.return_value = 10.0
     assert get_audio_duration("test.wav") == 10.0
 
 
 def test_get_audio_duration_culdnt_decode_error():
     with patch(
-        "audify.utils.text.AudioSegment.from_file", side_effect=CouldntDecodeError
+        "audify.utils.audio.AudioProcessor.get_duration", return_value=0.0
     ):
         assert get_audio_duration("test.wav") == 0.0
 

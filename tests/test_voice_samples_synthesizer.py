@@ -134,10 +134,11 @@ class TestVoiceSamplesSynthesizer:
         with patch("builtins.open", mock_open()) as mock_file:
             synthesizer._create_metadata_file(combinations)
 
-            mock_file.assert_called_once_with(synthesizer.metadata_path, "w")
+            # open() called at least twice: once for "w" (header), once for "a" (tags)
+            assert mock_file.call_count >= 2
             handle = mock_file()
 
-            # Check that metadata was written
+            # Check that metadata was written across all open calls
             written_calls = [call.args[0] for call in handle.write.call_args_list]
             written_content = "".join(written_calls)
 
@@ -181,7 +182,9 @@ class TestVoiceSamplesSynthesizer:
         # Mock file operations
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch.object(mock_synth_instance, "_synthesize_kokoro") as mock_synthesize,
+            patch.object(
+                mock_synth_instance, "_synthesize_sentences"
+            ) as mock_synthesize,
             patch.object(mock_synth_instance, "_convert_to_mp3") as mock_convert,
         ):
             mock_convert.return_value = Path("/tmp/test_sample.mp3")

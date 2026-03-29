@@ -206,6 +206,50 @@ class AudioProcessor:
         return chunks
 
     @staticmethod
+    def combine_wav_segments(
+        temp_audio_files: List[Path],
+        output_wav_path: Path,
+        logger_instance=None,
+    ) -> None:
+        """
+        Combine a list of temporary WAV segment files into a single WAV output.
+
+        Each source file is deleted after being appended. This consolidates the
+        duplicated combining loops that previously existed in both
+        ``_synthesize_kokoro`` and ``_synthesize_with_provider``.
+
+        Args:
+            temp_audio_files: Ordered list of WAV segment paths to combine.
+            output_wav_path: Destination WAV file path.
+            logger_instance: Optional logger; falls back to the module logger.
+        """
+        _log = logger_instance or logger
+        combined_audio = AudioSegment.empty()
+
+        for temp_wav_path in temp_audio_files:
+            if temp_wav_path.exists():
+                try:
+                    segment = AudioSegment.from_wav(temp_wav_path)
+                    combined_audio += segment
+                except CouldntDecodeError:
+                    _log.warning(
+                        f"Could not decode temporary segment: {temp_wav_path}"
+                    )
+                finally:
+                    temp_wav_path.unlink(missing_ok=True)
+            else:
+                _log.warning(f"Temporary segment file not found: {temp_wav_path}")
+
+        if len(combined_audio) == 0:
+            _log.error("Combined WAV segments are empty; nothing to export.")
+            raise ValueError(
+                "Combined WAV segments are empty; no valid segments found."
+            )
+        _log.info(f"Exporting combined audio to {output_wav_path}")
+        output_wav_path.parent.mkdir(parents=True, exist_ok=True)
+        combined_audio.export(output_wav_path, format="wav")
+
+    @staticmethod
     def create_temp_audio_file(
         file_paths: List[Path],
         output_prefix: str,

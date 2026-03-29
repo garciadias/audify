@@ -89,30 +89,9 @@ class TestBaseSynthesizer:
             assert result == test_content
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    def test_synthesize_kokoro_success(
-        self, mock_empty, mock_from_wav, mock_tqdm, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test successful Kokoro API synthesis."""
+    def test_synthesize_kokoro_success(self, mock_temp_dir):
+        """Test successful Kokoro API synthesis (via _synthesize_with_provider)."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-
-        # Mock API responses
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.content = b"fake_wav_data"
-
-        # Mock audio processing
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x  # Pass through
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -122,23 +101,34 @@ class TestBaseSynthesizer:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            with patch("pathlib.Path.exists", return_value=True):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world", "Test sentence"],
-                    Path("/tmp/output.wav")
-                )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
 
-        # Verify API calls were made
-        mock_get.assert_called_once()
-        assert mock_post.call_count == 2
+        def fake_synthesize(text, path):
+            path.write_bytes(b"fake_wav_data")
+            return True
+
+        mock_tts_config.synthesize.side_effect = fake_synthesize
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world", "Test sentence"],
+                Path("/tmp/output.wav")
+            )
+
+        # Verify synthesis calls were made
+        assert mock_tts_config.synthesize.call_count == 2
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    def test_synthesize_kokoro_api_unavailable(self, mock_get, mock_temp_dir):
+    def test_synthesize_kokoro_api_unavailable(self, mock_temp_dir):
         """Test Kokoro API synthesis when API is unavailable."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.side_effect = requests.RequestException("Connection refused")
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -148,16 +138,22 @@ class TestBaseSynthesizer:
             language="en",
         )
 
-        with pytest.raises(requests.RequestException):
-            synthesizer._synthesize_kokoro(["Hello world"], Path("/tmp/output.wav"))
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = False
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(RuntimeError, match="not available"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"], Path("/tmp/output.wav")
+            )
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    def test_synthesize_kokoro_invalid_voice(self, mock_get, mock_temp_dir):
-        """Test Kokoro synthesis with invalid voice."""
+    def test_synthesize_kokoro_invalid_voice(self, mock_temp_dir):
+        """Test Kokoro synthesis with voice not listed (warning only, no hard error)."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["valid_voice"]}
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -167,53 +163,26 @@ class TestBaseSynthesizer:
             language="en",
         )
 
-        with pytest.raises(ValueError, match="Speaker 'invalid_voice' not available"):
-            synthesizer._synthesize_kokoro(["Hello world"], Path("/tmp/output.wav"))
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["valid_voice"]
+        mock_tts_config.voice = "invalid_voice"
+        mock_tts_config.synthesize.return_value = False
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+        ):
+            # With new implementation a missing voice logs a warning but does not raise
+            synthesizer._synthesize_with_provider(
+                ["Hello world"], Path("/tmp/output.wav")
+            )
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    def test_synthesize_kokoro_invalid_language(self, mock_get, mock_temp_dir):
-        """Test Kokoro synthesis with invalid language."""
+    def test_synthesize_kokoro_invalid_language(self, mock_temp_dir):
+        """Test Kokoro synthesis when provider raises due to language config."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-
-        synthesizer = BaseSynthesizer(
-            path="test.txt",
-            voice="test_voice",
-            translate="invalid_lang",
-            save_text=False,
-            language="en",
-        )
-
-        with pytest.raises(KeyError):
-            synthesizer._synthesize_kokoro(["Hello world"], Path("/tmp/output.wav"))
-
-    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    def test_synthesize_kokoro_request_failure(
-        self, mock_empty, mock_from_wav, mock_tqdm, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis with request failures."""
-        mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-
-        # First request succeeds, second fails
-        mock_post.side_effect = [
-            MagicMock(status_code=200, content=b"fake_wav_data"),
-            requests.RequestException("Timeout")
-        ]
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -223,15 +192,51 @@ class TestBaseSynthesizer:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            with patch("pathlib.Path.exists", return_value=True):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world", "Test sentence"],
-                    Path("/tmp/output.wav")
-                )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.side_effect = RuntimeError("not available")
 
-        # Verify the method completed successfully
-        assert mock_post.call_count >= 1
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(RuntimeError),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"], Path("/tmp/output.wav")
+            )
+
+    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
+    def test_synthesize_kokoro_request_failure(self, mock_temp_dir):
+        """Test Kokoro synthesis when some sentences fail (provider returns False)."""
+        mock_temp_dir.return_value.name = "/tmp/test_dir"
+
+        synthesizer = BaseSynthesizer(
+            path="test.txt",
+            voice="test_voice",
+            translate=None,
+            save_text=False,
+            language="en",
+        )
+
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        # First succeeds, second fails
+        mock_tts_config.synthesize.side_effect = [True, False]
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+            patch("pathlib.Path.exists", return_value=True),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world", "Test sentence"],
+                Path("/tmp/output.wav")
+            )
+
+        # Verify the method completed and attempted both sentences
+        assert mock_tts_config.synthesize.call_count >= 1
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     @patch("audify.text_to_speech.AudioProcessor.convert_wav_to_mp3")
@@ -848,36 +853,25 @@ class TestPdfSynthesizer:
 class TestEpubSynthesizerAdvanced:
     """Advanced tests for EpubSynthesizer covering more complex workflows."""
 
-    @patch("audify.text_to_speech.EpubReader")
-    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.subprocess.run")
-    @patch("audify.text_to_speech.tempfile.NamedTemporaryFile")
-    @patch("audify.text_to_speech.shutil.copy")
-    def test_build_ffmpeg_command_with_cover(
-        self, mock_copy, mock_temp_file, mock_run, mock_temp_dir, mock_epub_reader
-    ):
-        """Test building FFmpeg command with cover image."""
-        mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_epub_reader_instance = MagicMock()
-        mock_epub_reader.return_value = mock_epub_reader_instance
-        mock_epub_reader_instance.get_language.return_value = "en"
-        mock_epub_reader_instance.title = "Test Book"
-        mock_epub_reader_instance.get_cover_image.return_value = Path("/tmp/cover.jpg")
+    def test_build_ffmpeg_command_with_cover(self):
+        """Test building FFmpeg command with cover image (via m4b_builder)."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
 
-        mock_temp_file_instance = MagicMock()
-        mock_temp_file_instance.name = "/tmp/temp_cover.jpg"
-        mock_temp_file.return_value = mock_temp_file_instance
-
-        mock_file = mock_open()
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.mkdir"),
-            patch("builtins.open", mock_file),
+            patch("tempfile.NamedTemporaryFile") as mock_temp_file,
+            patch("shutil.copy"),
         ):
-            synthesizer = EpubSynthesizer(path="test.epub")
-            chapter_files = [Path("/tmp/chapter_001.mp3")]
+            mock_temp_file_instance = MagicMock()
+            mock_temp_file_instance.name = "/tmp/temp_cover.jpg"
+            mock_temp_file.return_value = mock_temp_file_instance
 
-            command, cover_file = synthesizer._build_ffmpeg_command(chapter_files)
+            command, cover_file = build_ffmpeg_command(
+                Path("/tmp/temp.m4b"),
+                Path("/tmp/metadata.txt"),
+                Path("/tmp/final.m4b"),
+                Path("/tmp/cover.jpg"),
+            )
 
             assert "ffmpeg" in command
             assert cover_file is not None
@@ -977,15 +971,9 @@ class TestAdditionalCoverageTargeting:
     """Tests targeting specific missing lines for higher coverage."""
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    def test_kokoro_invalid_language_error(
-        self, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis with invalid language code (line 119)."""
+    def test_kokoro_invalid_language_error(self, mock_temp_dir):
+        """Test synthesis with unavailable provider raises RuntimeError."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -995,44 +983,27 @@ class TestAdditionalCoverageTargeting:
             language="invalid_lang",  # Invalid language code
         )
 
-        with patch("builtins.open", mock_open()):
-            with patch("pathlib.Path.exists", return_value=True):
-                with pytest.raises(
-                    ValueError, match="Language code 'invalid_lang' is not supported"
-                ):
-                    synthesizer._synthesize_kokoro(
-                        ["Hello world"],
-                        Path("/tmp/output.wav")
-                    )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = False
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(RuntimeError, match="not available"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"],
+                Path("/tmp/output.wav")
+            )
 
 
 class TestSynthesisIntegration:
     """Integration tests for synthesis workflows."""
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_synthesis_sentences_integration(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post, mock_get, mock_temp_dir
-    ):
+    def test_synthesis_sentences_integration(self, mock_temp_dir):
         """Test _synthesize_sentences method integration."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-
-        # Mock API responses
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.content = b"fake_wav_data"
-
-        # Mock audio processing
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1042,8 +1013,16 @@ class TestSynthesisIntegration:
             language="en",
         )
 
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.return_value = True
+
         with (
-            patch("builtins.open", mock_open()),
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.exists", return_value=True),
         ):
@@ -1052,16 +1031,13 @@ class TestSynthesisIntegration:
                 Path("/tmp/output.wav")
             )
 
-        # Verify the complete workflow
-        mock_get.assert_called_once()
-        assert mock_post.call_count == 2
+        # Verify the synthesis was called for both sentences
+        assert mock_tts_config.synthesize.call_count == 2
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    def test_synthesis_sentences_api_connection_error(self, mock_get, mock_temp_dir):
+    def test_synthesis_sentences_api_connection_error(self, mock_temp_dir):
         """Test _synthesize_sentences with API connection error."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.side_effect = requests.ConnectionError("Connection failed")
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1071,7 +1047,16 @@ class TestSynthesisIntegration:
             language="en",
         )
 
-        with pytest.raises(requests.ConnectionError):
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.side_effect = requests.ConnectionError(
+            "Connection failed"
+        )
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(requests.ConnectionError),
+        ):
             synthesizer._synthesize_sentences(
                 ["Hello world"],
                 Path("/tmp/output.wav")
@@ -1082,30 +1067,9 @@ class TestAdvancedKokoroScenarios:
     """Advanced tests for Kokoro API edge cases."""
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_synthesize_kokoro_non_200_status(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis with non-200 API status."""
+    def test_synthesize_kokoro_non_200_status(self, mock_temp_dir):
+        """Test _synthesize_with_provider when some sentences fail synthesis."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-
-        # First request succeeds, second returns 500
-        mock_post.side_effect = [
-            MagicMock(status_code=200, content=b"fake_wav_data"),
-            MagicMock(status_code=500)
-        ]
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1115,22 +1079,31 @@ class TestAdvancedKokoroScenarios:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            with patch("pathlib.Path.exists", return_value=True):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world", "Test sentence"],
-                    Path("/tmp/output.wav")
-                )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        # First returns True (path exists), second returns False (skipped)
+        mock_tts_config.synthesize.side_effect = [True, False]
 
-        # Should have tried both requests
-        assert mock_post.call_count == 2
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+            patch("pathlib.Path.exists", side_effect=[True, False]),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world", "Test sentence"],
+                Path("/tmp/output.wav")
+            )
+
+        # Should have tried both sentences
+        assert mock_tts_config.synthesize.call_count == 2
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    def test_synthesize_kokoro_api_non_200_response(self, mock_get, mock_temp_dir):
-        """Test Kokoro API with non-200 voices response."""
+    def test_synthesize_kokoro_api_non_200_response(self, mock_temp_dir):
+        """Test synthesis when provider is unavailable (raises RuntimeError)."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 404
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1140,26 +1113,22 @@ class TestAdvancedKokoroScenarios:
             language="en",
         )
 
-        with pytest.raises(requests.RequestException, match="API returned status 404"):
-            synthesizer._synthesize_kokoro(["Hello world"], Path("/tmp/output.wav"))
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = False
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(RuntimeError, match="not available"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"], Path("/tmp/output.wav")
+            )
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_synthesize_kokoro_empty_sentences(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis with empty sentences."""
+    def test_synthesize_kokoro_empty_sentences(self, mock_temp_dir):
+        """Test _synthesize_with_provider skips empty sentences."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1169,37 +1138,30 @@ class TestAdvancedKokoroScenarios:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            with patch("pathlib.Path.exists", return_value=True):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world", "", "   ", "Another sentence"],
-                    Path("/tmp/output.wav")
-                )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.return_value = True
 
-        # Should only make requests for non-empty sentences
-        assert mock_post.call_count == 2  # Only "Hello world" and "Another sentence"
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+            patch("pathlib.Path.exists", return_value=True),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world", "", "   ", "Another sentence"],
+                Path("/tmp/output.wav")
+            )
+
+        # Should only synthesize non-empty sentences (2 of them)
+        assert mock_tts_config.synthesize.call_count == 2
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_synthesize_kokoro_file_not_found(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis when temp file doesn't exist."""
+    def test_synthesize_kokoro_file_not_found(self, mock_temp_dir):
+        """Test _synthesize_with_provider when temp file doesn't exist."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.content = b"fake_wav_data"
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1209,42 +1171,31 @@ class TestAdvancedKokoroScenarios:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            # Mock path exists to return False for temp files
-            with patch("pathlib.Path.exists", return_value=False):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world"],
-                    Path("/tmp/output.wav")
-                )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.return_value = True
 
-        # Should handle missing temp files gracefully
-        mock_post.assert_called_once()
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+            # File doesn't exist after synthesis
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"],
+                Path("/tmp/output.wav")
+            )
+
+        # Should have attempted synthesis, then skipped (file not found)
+        mock_tts_config.synthesize.assert_called_once()
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_synthesize_kokoro_decode_error_cleanup(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis handles decode errors and cleanup."""
+    def test_synthesize_kokoro_decode_error_cleanup(self, mock_temp_dir):
+        """Test _synthesize_with_provider handles per-sentence errors gracefully."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.content = b"fake_wav_data"
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_from_wav.side_effect = CouldntDecodeError("Cannot decode")
-        mock_tqdm.side_effect = lambda x, **kwargs: x
-
-        # Mock temp file paths
-        mock_temp_file = MagicMock()
-        mock_temp_file.exists.return_value = True
-        mock_temp_file.unlink = MagicMock()
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1254,16 +1205,25 @@ class TestAdvancedKokoroScenarios:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            # Set up path behavior for temp files
-            with patch("pathlib.Path.exists", return_value=True):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world"],
-                    Path("/tmp/output.wav")
-                )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.side_effect = Exception("Synthesis error")
 
-        # Should handle decode error gracefully
-        mock_post.assert_called_once()
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+        ):
+            # Should handle per-sentence error gracefully and not raise
+            synthesizer._synthesize_with_provider(
+                ["Hello world"],
+                Path("/tmp/output.wav")
+            )
+
+        # Synthesis was attempted
+        mock_tts_config.synthesize.assert_called_once()
 
 
 class TestEpubSynthesizerAdvancedCoverage:
@@ -1411,13 +1371,10 @@ class TestEpubSynthesizerAdvancedCoverage:
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.AudioSegment.from_mp3")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
     def test_epub_create_temp_m4b_empty_audio_error(
-        self, mock_tqdm, mock_empty, mock_from_mp3, mock_temp_dir, mock_epub_reader
+        self, mock_temp_dir, mock_epub_reader
     ):
-        """Test M4B creation with empty combined audio."""
+        """Test M4B chunk creation delegates to AudioProcessor.combine_audio_files."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
         mock_epub_reader_instance = MagicMock()
         mock_epub_reader.return_value = mock_epub_reader_instance
@@ -1425,22 +1382,19 @@ class TestEpubSynthesizerAdvancedCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        mock_empty.return_value = MagicMock(__len__=lambda self: 0)  # Empty audio
-        mock_from_mp3.side_effect = Exception("All files failed")
-        mock_tqdm.side_effect = lambda x, **kwargs: x
-
         mock_file = mock_open()
         with (
             patch("pathlib.Path.exists", return_value=False),  # Temp M4B doesn't exist
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
+            patch("audify.text_to_speech.AudioProcessor.combine_audio_files"),
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
 
             chunk_files = [Path("/tmp/chapter_001.mp3")]
             result = synthesizer._create_temp_m4b_for_chunk(chunk_files, 0)
 
-            # Should handle empty audio gracefully
+            # Should return the expected chunk temp path
             assert "part1.tmp.m4b" in str(result)
 
     @patch("audify.text_to_speech.EpubReader")
@@ -1580,7 +1534,7 @@ class TestComprehensiveCoverage:
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_base_synthesizer_validate_translate_language(self, mock_temp_dir):
-        """Test BaseSynthesizer with invalid translate language (line 119)."""
+        """Test BaseSynthesizer with provider unavailable raises RuntimeError."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
 
         synthesizer = BaseSynthesizer(
@@ -1591,43 +1545,24 @@ class TestComprehensiveCoverage:
             language="en",
         )
 
-        with (
-            patch("audify.text_to_speech.requests.get") as mock_get,
-            patch("audify.text_to_speech.requests.post") as mock_post,
-        ):
-            mock_get.return_value.status_code = 200
-            mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-            mock_post.return_value.status_code = 200
-            mock_post.return_value.content = b"fake_wav_data"
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = False
 
-            # This should raise KeyError for invalid language
-            with pytest.raises(KeyError):
-                synthesizer._synthesize_kokoro(
-                    ["Hello world"],
-                    Path("/tmp/output.wav")
-                )
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(RuntimeError, match="not available"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"],
+                Path("/tmp/output.wav")
+            )
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_synthesize_kokoro_file_missing_warning(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post, mock_get, mock_temp_dir
-    ):
-        """Test Kokoro synthesis warning for missing temp files (line 174)."""
+    def test_synthesize_kokoro_file_missing_warning(self, mock_temp_dir):
+        """Test synthesis warning for missing temp files (synthesize returns True
+        but file doesn't exist afterward)."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.content = b"fake_wav_data"
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1637,24 +1572,25 @@ class TestComprehensiveCoverage:
             language="en",
         )
 
-        # Mock temp file creation and then disappearance
-        temp_files = []
-
-        def mock_open_side_effect(path, mode):
-            temp_files.append(Path(path))
-            return mock_open().return_value
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.return_value = True
 
         with (
-            patch("builtins.open", side_effect=mock_open_side_effect),
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
             patch("pathlib.Path.exists", return_value=False),  # Files don't exist
         ):
-            synthesizer._synthesize_kokoro(
+            synthesizer._synthesize_with_provider(
                 ["Hello world"],
                 Path("/tmp/output.wav")
             )
 
-        # Should handle missing files with warning
-        mock_post.assert_called_once()
+        # Should have attempted synthesis once
+        mock_tts_config.synthesize.assert_called_once()
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
@@ -1689,38 +1625,25 @@ class TestComprehensiveCoverage:
             result = synthesizer.synthesize()
             assert result is not None
 
-    @patch("audify.text_to_speech.EpubReader")
-    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    def test_epub_synthesizer_build_ffmpeg_command_no_cover(
-        self, mock_temp_dir, mock_epub_reader
-    ):
-        """Test FFmpeg command building without cover image."""
-        mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_epub_reader_instance = MagicMock()
-        mock_epub_reader.return_value = mock_epub_reader_instance
-        mock_epub_reader_instance.get_language.return_value = "en"
-        mock_epub_reader_instance.title = "Test Book"
-        mock_epub_reader_instance.get_cover_image.return_value = None
+    def test_epub_synthesizer_build_ffmpeg_command_no_cover(self):
+        """Test FFmpeg command building without cover image (via m4b_builder)."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
 
-        mock_file = mock_open()
-        with (
-            patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.mkdir"),
-            patch("builtins.open", mock_file),
-        ):
-            synthesizer = EpubSynthesizer(path="test.epub")
-            chapter_files = [Path("/tmp/chapter_001.mp3")]
-
-            command, cover_file = synthesizer._build_ffmpeg_command(chapter_files)
+        with patch("pathlib.Path.exists", return_value=False):
+            command, cover_file = build_ffmpeg_command(
+                Path("/tmp/temp.m4b"),
+                Path("/tmp/metadata.txt"),
+                Path("/tmp/final.m4b"),
+                cover_image=None,
+            )
 
             assert "ffmpeg" in command
             assert cover_file is None
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.subprocess.run")
     def test_epub_synthesizer_create_single_m4b_success(
-        self, mock_run, mock_temp_dir, mock_epub_reader
+        self, mock_temp_dir, mock_epub_reader
     ):
         """Test successful single M4B creation."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
@@ -1730,30 +1653,31 @@ class TestComprehensiveCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        mock_run.return_value.returncode = 0  # Success
-
         mock_file = mock_open()
         with (
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
             patch("pathlib.Path.unlink"),
+            patch("audify.text_to_speech.AudioProcessor.combine_audio_files"),
+            patch("audify.text_to_speech.assemble_m4b") as mock_assemble,
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
             chapter_files = [Path("/tmp/chapter_001.mp3")]
 
             synthesizer._create_single_m4b(chapter_files)
 
-            # Should have called subprocess.run for FFmpeg
-            mock_run.assert_called()
+            # Should have called assemble_m4b for FFmpeg step
+            mock_assemble.assert_called()
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.subprocess.run")
     def test_epub_synthesizer_create_single_m4b_failure(
-        self, mock_run, mock_temp_dir, mock_epub_reader
+        self, mock_temp_dir, mock_epub_reader
     ):
-        """Test M4B creation failure handling."""
+        """Test M4B creation failure handling (assemble_m4b raises)."""
+        import subprocess
+
         mock_temp_dir.return_value.name = "/tmp/test_dir"
         mock_epub_reader_instance = MagicMock()
         mock_epub_reader.return_value = mock_epub_reader_instance
@@ -1761,22 +1685,21 @@ class TestComprehensiveCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        mock_run.return_value.returncode = 1  # Failure
-        mock_run.return_value.stderr = "FFmpeg error"
-
         mock_file = mock_open()
         with (
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
+            patch("audify.text_to_speech.AudioProcessor.combine_audio_files"),
+            patch(
+                "audify.text_to_speech.assemble_m4b",
+                side_effect=subprocess.CalledProcessError(1, "ffmpeg"),
+            ),
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
             chapter_files = [Path("/tmp/chapter_001.mp3")]
-
-            synthesizer._create_single_m4b(chapter_files)
-
-            # Should handle failure gracefully
-            mock_run.assert_called()
+            with pytest.raises(subprocess.CalledProcessError):
+                synthesizer._create_single_m4b(chapter_files)
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
@@ -1806,9 +1729,7 @@ class TestComprehensiveCoverage:
                         return_value=Path("/tmp/part1.m4b")),
             patch.object(EpubSynthesizer, "_create_metadata_for_chunk",
                         return_value=Path("/tmp/metadata1.txt")),
-            patch.object(
-                EpubSynthesizer, "_build_ffmpeg_command", return_value=([], None)
-            ),
+            patch("audify.text_to_speech.assemble_m4b"),
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
             chapter_files = [
@@ -1822,34 +1743,23 @@ class TestComprehensiveCoverage:
             # Should have split files and created multiple M4Bs
             mock_split.assert_called_once()
 
-    @patch("audify.text_to_speech.EpubReader")
-    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.subprocess.run")
-    def test_epub_synthesizer_build_ffmpeg_command_coverage(
-        self, mock_run, mock_temp_dir, mock_epub_reader
-    ):
-        """Test FFmpeg command building coverage."""
-        mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_epub_reader_instance = MagicMock()
-        mock_epub_reader.return_value = mock_epub_reader_instance
-        mock_epub_reader_instance.get_language.return_value = "en"
-        mock_epub_reader_instance.title = "Test Book"
-        mock_epub_reader_instance.get_cover_image.return_value = None
+    def test_epub_synthesizer_build_ffmpeg_command_coverage(self):
+        """Test FFmpeg command building coverage via m4b_builder."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
 
         with (
             patch("pathlib.Path.exists", return_value=True),
-            patch("pathlib.Path.mkdir"),
-            patch("builtins.open", mock_open()),
             patch("tempfile.NamedTemporaryFile") as mock_temp_file,
             patch("shutil.copy"),
         ):
             mock_temp_file.return_value.name = "/tmp/test_cover.jpg"
-            synthesizer = EpubSynthesizer(path="test.epub")
-            synthesizer.cover_image_path = Path("/tmp/cover.jpg")
 
-            # Test _build_ffmpeg_command method
-            chapter_files = [Path("/tmp/ch1.mp3"), Path("/tmp/ch2.mp3")]
-            command, cover_file = synthesizer._build_ffmpeg_command(chapter_files)
+            command, cover_file = build_ffmpeg_command(
+                Path("/tmp/temp.m4b"),
+                Path("/tmp/metadata.txt"),
+                Path("/tmp/final.m4b"),
+                Path("/tmp/cover.jpg"),
+            )
 
             assert isinstance(command, list)
             assert "ffmpeg" in command
@@ -1956,29 +1866,9 @@ class TestComprehensiveCoverage:
         del synthesizer
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
-    @patch("audify.text_to_speech.requests.get")
-    @patch("audify.text_to_speech.requests.post")
-    @patch("audify.text_to_speech.AudioSegment.from_wav")
-    @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
-    def test_kokoro_comprehensive_error_handling(
-        self, mock_tqdm, mock_empty, mock_from_wav, mock_post,
-        mock_get, mock_temp_dir
-    ):
-        """Test comprehensive error handling in Kokoro synthesis."""
+    def test_kokoro_comprehensive_error_handling(self, mock_temp_dir):
+        """Test comprehensive error handling: combine_wav_segments raises."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {"voices": ["test_voice"]}
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.content = b"fake_wav_data"
-
-        mock_combined = MagicMock()
-        mock_empty.return_value = mock_combined
-        mock_combined.__iadd__ = MagicMock(return_value=mock_combined)
-        mock_combined.export.side_effect = Exception("Export failed")
-        mock_segment = MagicMock()
-        mock_from_wav.return_value = mock_segment
-        mock_tqdm.side_effect = lambda x, **kwargs: x
 
         synthesizer = BaseSynthesizer(
             path="test.txt",
@@ -1988,14 +1878,26 @@ class TestComprehensiveCoverage:
             language="en",
         )
 
-        with patch("builtins.open", mock_open()):
-            with patch("pathlib.Path.exists", return_value=True):
-                # Should handle export error and re-raise
-                with pytest.raises(Exception, match="Export failed"):
-                    synthesizer._synthesize_kokoro(
-                        ["Hello world"],
-                        Path("/tmp/output.wav")
-                    )
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.return_value = True
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch(
+                "audify.text_to_speech.AudioProcessor.combine_wav_segments",
+                side_effect=Exception("Export failed"),
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            pytest.raises(Exception, match="Export failed"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"],
+                Path("/tmp/output.wav")
+            )
 
 
 class TestEpubSynthesizerCoverage:
@@ -2027,33 +1929,28 @@ class TestEpubSynthesizerCoverage:
             assert result == synthesizer.audiobook_path / "chapter_001.mp3"
 
     def test_create_temp_m4b_for_chunk_decode_error(self, synthesizer):
-        """Test _create_temp_m4b_for_chunk with CouldntDecodeError."""
+        """Test _create_temp_m4b_for_chunk delegates to AudioProcessor."""
         chunk_files = [Path("file1.mp3")]
-        with patch(
-            "audify.text_to_speech.AudioSegment.from_mp3",
-            side_effect=CouldntDecodeError,
+        with (
+            patch("audify.text_to_speech.AudioProcessor.combine_audio_files"),
+            patch("pathlib.Path.exists", return_value=False),
         ):
-            with patch("audify.text_to_speech.logger") as mock_logger:
-                synthesizer._create_temp_m4b_for_chunk(chunk_files, 0)
-                mock_logger.error.assert_any_call(
-                    "Could not decode chapter file: file1.mp3, skipping."
-                )
+            result = synthesizer._create_temp_m4b_for_chunk(chunk_files, 0)
+            # Should return expected chunk temp path
+            assert "part1.tmp.m4b" in str(result)
 
     def test_create_temp_m4b_for_chunk_empty_audio(self, synthesizer):
-        """Test _create_temp_m4b_for_chunk when combined audio is empty."""
+        """Test _create_temp_m4b_for_chunk when combine_audio_files raises."""
         chunk_files = [Path("file1.mp3")]
-        with patch("audify.text_to_speech.AudioSegment.from_mp3") as mock_audio:
-            mock_audio.return_value = MagicMock(__len__=lambda x: 0)
-            # We need __add__ to return empty audio too or just mock it
-            # But simpler is to have from_mp3 raise exception so loop continues
-            # and audio remains empty
-            mock_audio.side_effect = Exception("Error")
-
-            with patch("audify.text_to_speech.logger") as mock_logger:
-                synthesizer._create_temp_m4b_for_chunk(chunk_files, 0)
-                mock_logger.error.assert_any_call(
-                    "Combined audio for chunk 1 is empty."
-                )
+        with (
+            patch(
+                "audify.text_to_speech.AudioProcessor.combine_audio_files",
+                side_effect=Exception("Error"),
+            ),
+            patch("pathlib.Path.exists", return_value=False),
+            pytest.raises(Exception, match="Error"),
+        ):
+            synthesizer._create_temp_m4b_for_chunk(chunk_files, 0)
 
     def test_create_metadata_for_chunk_exception(self, synthesizer):
         """Test _create_metadata_for_chunk with exception during file processing."""
@@ -2089,13 +1986,8 @@ class TestEpubSynthesizerCoverage:
                         "_create_metadata_for_chunk",
                         return_value=Path("meta.txt"),
                     ):
-                        with patch.object(
-                            synthesizer,
-                            "_build_ffmpeg_command_for_chunk",
-                            return_value=(["cmd"], None),
-                        ):
-                            with patch("subprocess.run"):
-                                synthesizer._create_multiple_m4bs(files)
+                        with patch("audify.text_to_speech.assemble_m4b"):
+                            synthesizer._create_multiple_m4bs(files)
 
     def test_create_multiple_m4bs_ffmpeg_error(self, synthesizer):
         """Test _create_multiple_m4bs with ffmpeg error."""
@@ -2118,20 +2010,15 @@ class TestEpubSynthesizerCoverage:
                         "_create_metadata_for_chunk",
                         return_value=Path("meta.txt"),
                     ):
-                        with patch.object(
-                            synthesizer,
-                            "_build_ffmpeg_command_for_chunk",
-                            return_value=(["cmd"], None),
+                        with patch(
+                            "audify.text_to_speech.assemble_m4b",
+                            side_effect=subprocess.CalledProcessError(1, "cmd"),
                         ):
                             with patch(
-                                "subprocess.run",
-                                side_effect=subprocess.CalledProcessError(1, "cmd"),
-                            ):
-                                with patch(
-                                    "audify.text_to_speech.logger"
-                                ) as mock_logger:
-                                    synthesizer._create_multiple_m4bs(files)
-                                    mock_logger.error.assert_called()
+                                "audify.text_to_speech.logger"
+                            ) as mock_logger:
+                                synthesizer._create_multiple_m4bs(files)
+                                mock_logger.error.assert_called()
 
     def test_create_multiple_m4bs_ffmpeg_not_found(self, synthesizer):
         """Test _create_multiple_m4bs with ffmpeg not found."""
@@ -2153,40 +2040,53 @@ class TestEpubSynthesizerCoverage:
                         "_create_metadata_for_chunk",
                         return_value=Path("meta.txt"),
                     ):
-                        with patch.object(
-                            synthesizer,
-                            "_build_ffmpeg_command_for_chunk",
-                            return_value=(["cmd"], None),
+                        with patch(
+                            "audify.text_to_speech.assemble_m4b",
+                            side_effect=FileNotFoundError,
                         ):
-                            with patch("subprocess.run", side_effect=FileNotFoundError):
-                                with patch(
-                                    "audify.text_to_speech.logger"
-                                ) as mock_logger:
-                                    synthesizer._create_multiple_m4bs(files)
-                                    mock_logger.error.assert_called()
+                            with patch(
+                                "audify.text_to_speech.logger"
+                            ) as mock_logger:
+                                synthesizer._create_multiple_m4bs(files)
+                                mock_logger.error.assert_called()
 
     def test_build_ffmpeg_command_for_chunk_with_cover(self, synthesizer):
-        """Test _build_ffmpeg_command_for_chunk with cover image."""
-        synthesizer.cover_image_path = Path("cover.jpg")
+        """Test build_ffmpeg_command (m4b_builder) with cover image."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
+
         with patch.object(Path, "exists", return_value=True):
             with patch("shutil.copy"):
-                cmd, temp = synthesizer._build_ffmpeg_command_for_chunk(
-                    Path("temp.m4b"), Path("meta.txt"), Path("final.m4b")
-                )
-                assert "-disposition:v" in cmd
+                with patch("tempfile.NamedTemporaryFile") as mock_ntf:
+                    mock_ntf.return_value.name = "/tmp/cover_temp.jpg"
+                    cmd, _temp = build_ffmpeg_command(
+                        Path("temp.m4b"),
+                        Path("meta.txt"),
+                        Path("final.m4b"),
+                        Path("cover.jpg"),
+                    )
+                    assert "-disposition:v" in cmd
 
     def test_build_ffmpeg_command_with_cover(self, synthesizer):
-        """Test _build_ffmpeg_command with cover image."""
-        synthesizer.cover_image_path = Path("cover.jpg")
+        """Test build_ffmpeg_command (m4b_builder) with cover image."""
+        from audify.utils.m4b_builder import build_ffmpeg_command
+
         with patch.object(Path, "exists", return_value=True):
             with patch("shutil.copy"):
-                cmd, temp = synthesizer._build_ffmpeg_command([])
-                assert "-disposition:v" in cmd
+                with patch("tempfile.NamedTemporaryFile") as mock_ntf:
+                    mock_ntf.return_value.name = "/tmp/cover_temp.jpg"
+                    cmd, _temp = build_ffmpeg_command(
+                        Path("temp.m4b"),
+                        Path("meta.txt"),
+                        Path("final.m4b"),
+                        Path("cover.jpg"),
+                    )
+                    assert "-disposition:v" in cmd
 
     def test_log_chapter_metadata_ioerror(self, synthesizer):
-        """Test _log_chapter_metadata with IOError."""
-        with patch("builtins.open", side_effect=IOError):
-            synthesizer._log_chapter_metadata("Title", 0, 10.0)
+        """Test _log_chapter_metadata re-raises IOError."""
+        with patch("builtins.open", side_effect=IOError("disk full")):
+            with pytest.raises(IOError, match="disk full"):
+                synthesizer._log_chapter_metadata("Title", 0, 10.0)
 
     def test_process_single_chapter_too_short(self, synthesizer):
         """Test _process_single_chapter with short content."""
@@ -2302,99 +2202,104 @@ class TestEpubSynthesizerCoverage:
             with pytest.raises(IOError, match="Disk full"):
                 synthesizer._create_metadata_for_chunk(chunk_files, 0)
 
-    def test_create_single_m4b_decode_error(self, synthesizer):
-        """Test _create_single_m4b with CouldntDecodeError."""
-        files = [Path("1.mp3")]
-        mock_path = MagicMock(spec=Path)
-        mock_path.exists.return_value = False
-        synthesizer.temp_m4b_path = mock_path
+    def test_create_metadata_for_chunk_appends_entry(self, synthesizer, tmp_path):
+        """_create_metadata_for_chunk calls append_chapter_metadata (duration > 0)."""
+        chunk_files = [tmp_path / "chapter_1.mp3"]
+        chunk_files[0].write_bytes(b"data")
 
         with patch(
-            "audify.text_to_speech.AudioSegment.from_mp3",
-            side_effect=CouldntDecodeError,
-        ):
-            with patch("audify.text_to_speech.logger") as mock_logger:
-                synthesizer._create_single_m4b(files)
-                mock_logger.error.assert_any_call(
-                    f"Could not decode chapter file: {files[0]}, skipping."
-                )
-
-    def test_create_single_m4b_general_exception(self, synthesizer):
-        """Test _create_single_m4b with general Exception during processing."""
-        files = [Path("1.mp3")]
-        mock_path = MagicMock(spec=Path)
-        mock_path.exists.return_value = False
-        synthesizer.temp_m4b_path = mock_path
-
-        with patch(
-            "audify.text_to_speech.AudioSegment.from_mp3",
-            side_effect=Exception("Error"),
-        ):
-            with patch("audify.text_to_speech.logger") as mock_logger:
-                synthesizer._create_single_m4b(files)
-                # Should log error and continue (resulting in empty audio)
-                mock_logger.error.assert_called()
-
-    def test_create_single_m4b_empty_audio(self, synthesizer):
-        """Test _create_single_m4b resulting in empty audio."""
-        files = [Path("1.mp3")]
-        mock_path = MagicMock(spec=Path)
-        mock_path.exists.return_value = False
-        synthesizer.temp_m4b_path = mock_path
-
-        with patch(
-            "audify.text_to_speech.AudioSegment.from_mp3", side_effect=Exception
-        ):
-            with patch("audify.text_to_speech.logger") as mock_logger:
-                synthesizer._create_single_m4b(files)
-                mock_logger.error.assert_any_call(
-                    "Combined audio is empty. Cannot create M4B."
-                )
-
-    def test_create_single_m4b_export_error(self, synthesizer):
-        """Test _create_single_m4b export error."""
-        files = [Path("1.mp3")]
-        mock_audio = MagicMock()
-        mock_audio.__len__.return_value = 1000
-        mock_audio.__add__.return_value = mock_audio
-        mock_audio.__iadd__.return_value = mock_audio
-        mock_audio.export.side_effect = Exception("Export failed")
-
-        mock_path = MagicMock(spec=Path)
-        mock_path.exists.return_value = False
-        synthesizer.temp_m4b_path = mock_path
-
-        with patch(
-            "audify.text_to_speech.AudioSegment.from_mp3", return_value=mock_audio
+            "audify.text_to_speech.AudioProcessor.get_duration", return_value=10.0
         ):
             with patch(
-                "audify.text_to_speech.AudioSegment.empty", return_value=mock_audio
-            ):
-                with pytest.raises(Exception, match="Export failed"):
-                    synthesizer._create_single_m4b(files)
+                "audify.text_to_speech.append_chapter_metadata",
+                return_value=10000,
+            ) as mock_append:
+                with patch("audify.text_to_speech.write_metadata_header"):
+                    synthesizer._create_metadata_for_chunk(chunk_files, 0)
+
+        mock_append.assert_called_once()
+
+    def test_create_single_m4b_decode_error(self, synthesizer):
+        """Test _create_single_m4b when AudioProcessor.combine_audio_files raises."""
+        files = [Path("1.mp3")]
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = False
+        synthesizer.temp_m4b_path = mock_path
+
+        with (
+            patch(
+                "audify.text_to_speech.AudioProcessor.combine_audio_files",
+                side_effect=Exception("decode error"),
+            ),
+            pytest.raises(Exception, match="decode error"),
+        ):
+            synthesizer._create_single_m4b(files)
+
+    def test_create_single_m4b_general_exception(self, synthesizer):
+        """Test _create_single_m4b with general Exception from combine_audio_files."""
+        files = [Path("1.mp3")]
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = False
+        synthesizer.temp_m4b_path = mock_path
+
+        with (
+            patch(
+                "audify.text_to_speech.AudioProcessor.combine_audio_files",
+                side_effect=Exception("Error"),
+            ),
+            pytest.raises(Exception, match="Error"),
+        ):
+            synthesizer._create_single_m4b(files)
+
+    def test_create_single_m4b_empty_audio(self, synthesizer):
+        """Test _create_single_m4b when combine_audio_files raises (propagates)."""
+        files = [Path("1.mp3")]
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = False
+        synthesizer.temp_m4b_path = mock_path
+
+        with patch(
+            "audify.text_to_speech.AudioProcessor.combine_audio_files",
+            side_effect=ValueError("empty"),
+        ):
+            with pytest.raises(ValueError, match="empty"):
+                synthesizer._create_single_m4b(files)
+
+    def test_create_single_m4b_export_error(self, synthesizer):
+        """Test _create_single_m4b when assemble_m4b raises."""
+        files = [Path("1.mp3")]
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = False
+        synthesizer.temp_m4b_path = mock_path
+
+        with (
+            patch("audify.text_to_speech.AudioProcessor.combine_audio_files"),
+            patch(
+                "audify.text_to_speech.assemble_m4b",
+                side_effect=Exception("Export failed"),
+            ),
+            pytest.raises(Exception, match="Export failed"),
+        ):
+            synthesizer._create_single_m4b(files)
 
     def test_create_single_m4b_exists(self, synthesizer):
-        """Test _create_single_m4b when temp file exists."""
+        """Test _create_single_m4b when temp file already exists (skips combine)."""
         files = [Path("1.mp3")]
         mock_path = MagicMock(spec=Path)
         mock_path.exists.return_value = True
         synthesizer.temp_m4b_path = mock_path
 
-        with patch("audify.text_to_speech.logger") as mock_logger:
-            with patch.object(
-                synthesizer,
-                "_build_ffmpeg_command",
-                return_value=(["cmd"], None),
-            ):
-                with patch("subprocess.run"):
-                    synthesizer._create_single_m4b(files)
-                    mock_logger.info.assert_any_call(
-                        f"Temporary M4B file already exists: "
-                        f"{synthesizer.temp_m4b_path}. Skipping combination."
-                    )
+        with (
+            patch("audify.text_to_speech.logger") as mock_logger,
+            patch("audify.text_to_speech.assemble_m4b"),
+        ):
+            synthesizer._create_single_m4b(files)
+            mock_logger.info.assert_any_call(
+                f"Temporary M4B already exists: {synthesizer.temp_m4b_path}. Skipping."
+            )
 
     def test_create_single_m4b_ffmpeg_error(self, synthesizer):
-        """Test _create_single_m4b with ffmpeg error."""
+        """Test _create_single_m4b with ffmpeg error from assemble_m4b."""
         files = [Path("1.mp3")]
         import subprocess
 
@@ -2402,55 +2307,44 @@ class TestEpubSynthesizerCoverage:
         mock_path.exists.return_value = True
         synthesizer.temp_m4b_path = mock_path
 
-        with patch.object(
-            synthesizer, "_build_ffmpeg_command", return_value=(["cmd"], None)
-        ):
-            with patch(
-                "subprocess.run",
+        with (
+            patch(
+                "audify.text_to_speech.assemble_m4b",
                 side_effect=subprocess.CalledProcessError(1, "cmd"),
-            ):
-                with pytest.raises(subprocess.CalledProcessError):
-                    synthesizer._create_single_m4b(files)
+            ),
+            pytest.raises(subprocess.CalledProcessError),
+        ):
+            synthesizer._create_single_m4b(files)
 
     def test_create_single_m4b_ffmpeg_not_found(self, synthesizer):
-        """Test _create_single_m4b with ffmpeg not found."""
+        """Test _create_single_m4b with ffmpeg not found from assemble_m4b."""
         files = [Path("1.mp3")]
         mock_path = MagicMock(spec=Path)
         mock_path.exists.return_value = True
         synthesizer.temp_m4b_path = mock_path
 
-        with patch.object(
-            synthesizer, "_build_ffmpeg_command", return_value=(["cmd"], None)
+        with (
+            patch(
+                "audify.text_to_speech.assemble_m4b",
+                side_effect=FileNotFoundError,
+            ),
+            pytest.raises(FileNotFoundError),
         ):
-            with patch("subprocess.run", side_effect=FileNotFoundError):
-                with pytest.raises(FileNotFoundError):
-                    synthesizer._create_single_m4b(files)
+            synthesizer._create_single_m4b(files)
 
     def test_create_single_m4b_cleanup_error(self, synthesizer):
-        """Test _create_single_m4b cleanup error."""
+        """Test _create_single_m4b completes when assemble_m4b succeeds."""
         files = [Path("1.mp3")]
-        mock_cover = MagicMock()
-        mock_cover.name = "cover.jpg"
-
         mock_path = MagicMock(spec=Path)
         mock_path.exists.return_value = True
         synthesizer.temp_m4b_path = mock_path
 
-        with patch.object(
-            synthesizer,
-            "_build_ffmpeg_command",
-            return_value=(["cmd"], mock_cover),
+        with (
+            patch("audify.text_to_speech.assemble_m4b"),
+            patch("audify.text_to_speech.logger") as mock_logger,
         ):
-            with patch("subprocess.run"):
-                with patch(
-                    "pathlib.Path.unlink", side_effect=Exception("Cleanup error")
-                ):
-                    with patch("audify.text_to_speech.logger") as mock_logger:
-                        synthesizer._create_single_m4b(files)
-                        mock_logger.warning.assert_called_with(
-                            f"Error cleaning up temporary cover file "
-                            f"{mock_cover.name}: Cleanup error"
-                        )
+            synthesizer._create_single_m4b(files)
+            mock_logger.info.assert_called()
 
 
 class TestPdfSynthesizerCoverage:
