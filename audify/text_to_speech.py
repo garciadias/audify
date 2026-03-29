@@ -4,7 +4,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import requests
 import tqdm
@@ -14,6 +14,8 @@ from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
 from audify.utils.api_config import (
+    CommercialAPIConfig,
+    OllamaAPIConfig,
     TTSAPIConfig,
     get_tts_config,
 )
@@ -244,8 +246,11 @@ class EpubSynthesizer(BaseSynthesizer):
         model_name: str = DEFAULT_MODEL,
         output_dir: Optional[str | Path] = None,
         tts_provider: Optional[str] = None,
+        llm_config: Optional[
+            Union[OllamaAPIConfig, CommercialAPIConfig]
+        ] = None,
     ):
-        self.reader = EpubReader(path)
+        self.reader = EpubReader(path, llm_config=llm_config)
         detected_language = self.reader.get_language()
         language = language or detected_language
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()

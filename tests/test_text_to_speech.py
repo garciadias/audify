@@ -354,7 +354,36 @@ class TestEpubSynthesizer:
 
             assert synthesizer.path.name == "test.epub"
             assert synthesizer.language == "en"
-            mock_epub_reader.assert_called_once()
+            mock_epub_reader.assert_called_once_with(
+                "test.epub", llm_config=None
+            )
+
+    @patch("audify.text_to_speech.EpubReader")
+    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
+    def test_epub_synthesizer_forwards_llm_config(
+        self, mock_temp_dir, mock_epub_reader
+    ):
+        """Test that llm_config is forwarded to EpubReader."""
+        mock_temp_dir.return_value.name = "/tmp/test_dir"
+        mock_epub_reader_instance = MagicMock()
+        mock_epub_reader.return_value = mock_epub_reader_instance
+        mock_epub_reader_instance.get_language.return_value = "en"
+        mock_epub_reader_instance.title = "Test Book"
+        mock_epub_reader_instance.get_cover_image.return_value = None
+
+        mock_llm = MagicMock()
+        mock_file = mock_open()
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.mkdir"),
+            patch("builtins.open", mock_file),
+        ):
+            EpubSynthesizer(
+                path="test.epub", llm_config=mock_llm
+            )
+            mock_epub_reader.assert_called_once_with(
+                "test.epub", llm_config=mock_llm
+            )
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")

@@ -349,6 +349,28 @@ class TestAudiobookCreatorInitialization:
             assert creator.resolved_language == "en"
             assert creator.title == "Test Book"
 
+    @patch("audify.readers.ebook.epub.read_epub")
+    @patch("pathlib.Path.exists", return_value=True)
+    @patch("pathlib.Path.mkdir")
+    def test_init_epub_forwards_llm_config(
+        self, mock_mkdir, mock_exists, mock_read_epub
+    ):
+        """Test that llm_config is forwarded to EpubReader."""
+        mock_book = Mock()
+        mock_book.title = "Test Book"
+        mock_book.get_metadata.return_value = [("en", {})]
+        mock_book.get_items.return_value = []
+        mock_read_epub.return_value = mock_book
+        mock_llm_config = Mock()
+
+        with patch("audify.audiobook_creator.BaseSynthesizer.__init__"):
+            creator = AudiobookCreator(
+                path="test.epub",
+                llm_model="test-model",
+                llm_config=mock_llm_config,
+            )
+            assert creator.reader.llm_config is mock_llm_config
+
     @patch("audify.readers.pdf.PdfReader")
     @patch("audify.readers.ebook.EpubReader")
     @patch("pathlib.Path.exists", return_value=True)
