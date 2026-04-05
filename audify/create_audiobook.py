@@ -8,6 +8,7 @@ This script creates audiobook episodes from ebook chapters or PDF content by:
 3. Converting scripts to speech using TTS
 """
 
+import logging
 import os
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from audify.utils.constants import (
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
 )
+from audify.utils.logging_utils import configure_cli_logging
 from audify.utils.text import get_file_extension
 
 
@@ -194,6 +196,11 @@ def get_creator(
     default=None,
     help="Path to a custom prompt file. Overrides --task prompt.",
 )
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output to terminal (also logs to file).",
+)
 def main(
     path: str,
     language: str,
@@ -209,6 +216,7 @@ def main(
     tts_provider: str,
     task: str | None,
     prompt_file: str | None,
+    verbose: bool = False,
 ):
     """Create audiobook episodes from ebooks or PDFs using LLM and TTS."""
 
@@ -218,24 +226,26 @@ def main(
         terminal_width = 80  # Default width when no terminal is available
     path_obj = Path(path)
 
-    print("=" * terminal_width)
+    # Configure logging based on verbose flag
+    configure_cli_logging(verbose=verbose)
+    logger = logging.getLogger(__name__)
 
     # Check if path is a directory
     if path_obj.is_dir():
-        print("Directory Mode: Processing multiple files".center(terminal_width))
-        print("=" * terminal_width)
-        print(f"Source directory: {path}")
-        print(f"Language: {language}")
-        print(f"LLM Model: {llm_model}")
-        print(f"TTS Provider: {tts_provider}")
+        logger.info("Directory Mode: Processing multiple files".center(terminal_width))
+        logger.info("=" * terminal_width)
+        logger.info(f"Source directory: {path}")
+        logger.info(f"Language: {language}")
+        logger.info(f"LLM Model: {llm_model}")
+        logger.info(f"TTS Provider: {tts_provider}")
         if task:
-            print(f"Task: {task}")
+            logger.info(f"Task: {task}")
         if prompt_file:
-            print(f"Prompt file: {prompt_file}")
+            logger.info(f"Prompt file: {prompt_file}")
         if translate:
-            print(f"Translation: {language} -> {translate}")
+            logger.info(f"Translation: {language} -> {translate}")
 
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
 
         try:
             # Create directory audiobook creator
@@ -257,21 +267,21 @@ def main(
             # Generate the audiobook
             output_path = dir_creator.synthesize()
 
-            print("\n" + "=" * terminal_width)
-            print("Directory audiobook creation complete!")
-            print(f"Output directory: {output_path}")
-            print("=" * terminal_width)
+            logger.info("\n" + "=" * terminal_width)
+            logger.info("Directory audiobook creation complete!")
+            logger.info(f"Output directory: {output_path}")
+            logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
-            print("\n\nDirectory audiobook creation cancelled by user.")
+            logger.info("\n\nDirectory audiobook creation cancelled by user.")
             return
         except Exception as e:
-            print(f"\nError: {e}")
-            print("Please check your configuration and try again.")
+            logger.error(f"\nError: {e}")
+            logger.error("Please check your configuration and try again.")
             if "Could not connect to LLM" in str(e):
-                print("\nTip: Make sure Ollama is running:")
-                print("  ollama serve")
-                print(f"  ollama pull {llm_model}")
+                logger.error("\nTip: Make sure Ollama is running:")
+                logger.error("  ollama serve")
+                logger.error(f"  ollama pull {llm_model}")
             return
 
     else:
@@ -279,20 +289,20 @@ def main(
         file_extension = get_file_extension(path)
 
         # Show configuration
-        print(f"Source file: {path}")
-        print(f"Language: {language}")
-        print(f"LLM Model: {llm_model}")
-        print(f"TTS Provider: {tts_provider}")
+        logger.info(f"Source file: {path}")
+        logger.info(f"Language: {language}")
+        logger.info(f"LLM Model: {llm_model}")
+        logger.info(f"TTS Provider: {tts_provider}")
         if task:
-            print(f"Task: {task}")
+            logger.info(f"Task: {task}")
         if prompt_file:
-            print(f"Prompt file: {prompt_file}")
+            logger.info(f"Prompt file: {prompt_file}")
         if translate:
-            print(f"Translation: {language} -> {translate}")
+            logger.info(f"Translation: {language} -> {translate}")
         if max_chapters:
-            print(f"Max episodes: {max_chapters}")
+            logger.info(f"Max episodes: {max_chapters}")
 
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
 
         try:
             creator = get_creator(
@@ -315,20 +325,20 @@ def main(
             # Generate the audiobook
             output_path = creator.synthesize()
 
-            print("\n" + "=" * terminal_width)
-            print("Audiobook creation complete!")
-            print(f"Output directory: {output_path}")
-            print("=" * terminal_width)
+            logger.info("\n" + "=" * terminal_width)
+            logger.info("Audiobook creation complete!")
+            logger.info(f"Output directory: {output_path}")
+            logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
-            print("\n\nAudiobook creation cancelled by user.")
+            logger.info("\n\nAudiobook creation cancelled by user.")
         except Exception as e:
-            print(f"\nError: {e}")
-            print("Please check your configuration and try again.")
+            logger.error(f"\nError: {e}")
+            logger.error("Please check your configuration and try again.")
             if "Could not connect to LLM" in str(e):
-                print("\nTip: Make sure Ollama is running:")
-                print("  ollama serve")
-                print(f"  ollama pull {llm_model}")
+                logger.error("\nTip: Make sure Ollama is running:")
+                logger.error("  ollama serve")
+                logger.error(f"  ollama pull {llm_model}")
 
 
 if __name__ == "__main__":

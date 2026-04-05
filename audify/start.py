@@ -1,7 +1,5 @@
-import os
-import warnings
 import logging
-import sys
+import os
 
 import click
 import requests
@@ -20,23 +18,14 @@ from audify.utils.constants import (
     KOKORO_API_BASE_URL,
     OLLAMA_API_BASE_URL,
 )
-from audify.utils.text import get_file_extension
 
 # Configure logging
+from audify.utils.logging_utils import configure_cli_logging
+from audify.utils.text import get_file_extension
+
 logger = logging.getLogger("audify")
-logger.setLevel(logging.INFO)
 
-# Create file handler for all logs
-file_handler = logging.FileHandler("audify.log")
-file_handler.setLevel(logging.INFO)
-file_formatter = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-)
-file_handler.setFormatter(file_formatter)
-logger.addHandler(file_handler)
-
-# Add stream handler only when --verbose is enabled
-stream_handler = None
+# Stream handler will be added by configure_cli_logging if verbose flag is set
 
 
 @click.command()
@@ -176,20 +165,16 @@ def main(
     verbose: bool = False,
 ):
     """Basic TTS conversion of EPUB/PDF files to audio (no LLM)."""
-    # Set up stream handler for verbose mode
-    if verbose:
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.INFO)
-        stream_handler.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(stream_handler)
+    # Configure logging based on verbose flag
+    configure_cli_logging(verbose=verbose)
 
     terminal_width = os.get_terminal_size()[0]
     if list_tts_providers:
-        logger.info("=" * terminal_width)
-        logger.info("Available TTS Providers".center(terminal_width))
-        logger.info("=" * terminal_width)
-        logger.info("\nProvider\tStatus\t\tConfiguration")
-        logger.info("-" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo("Available TTS Providers".center(terminal_width))
+        click.echo("=" * terminal_width)
+        click.echo("\nProvider\tStatus\t\tConfiguration")
+        click.echo("-" * terminal_width)
 
         provider_info = {
             "kokoro": {
@@ -219,17 +204,17 @@ def main(
                 status = "Not available"
 
             info = provider_info.get(provider, {"name": provider, "config": "N/A"})
-            logger.info(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
+            click.echo(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
 
-        logger.info("\n" + "=" * terminal_width)
-        logger.info(
+        click.echo("\n" + "=" * terminal_width)
+        click.echo(
             "Set TTS_PROVIDER environment variable or use --tts-provider/-tp flag"
         )
-        logger.info("=" * terminal_width)
+        click.echo("=" * terminal_width)
     elif create_voice_samples:
-        logger.info("=" * terminal_width)
-        logger.info("Creating Voice Samples M4B".center(terminal_width))
-        logger.info("=" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo("Creating Voice Samples M4B".center(terminal_width))
+        click.echo("=" * terminal_width)
         synthesizer = VoiceSamplesSynthesizer(
             language=language,
             translate=translate,
@@ -240,32 +225,32 @@ def main(
         )
         synthesizer.synthesize()
     elif list_languages:
-        logger.info("=" * terminal_width)
-        logger.info("Available languages:".center(terminal_width))
-        logger.info("=" * terminal_width)
-        logger.info("Language\tCode")
-        logger.info("-------\t----")
+        click.echo("=" * terminal_width)
+        click.echo("Available languages:".center(terminal_width))
+        click.echo("=" * terminal_width)
+        click.echo("Language\tCode")
+        click.echo("-------\t----")
         for lang, code in AVAILABLE_LANGUAGES.items():
-            logger.info(f"{lang:<10}\t{code}")
-        logger.info("=" * terminal_width)
+            click.echo(f"{lang:<10}\t{code}")
+        click.echo("=" * terminal_width)
     elif list_models:
-        logger.info("=" * terminal_width)
-        logger.info("Available models:".center(terminal_width))
-        logger.info("=" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo("Available models:".center(terminal_width))
+        click.echo("=" * terminal_width)
         try:
             response = requests.get(f"{KOKORO_API_BASE_URL}/models")
             response.raise_for_status()
             models = response.json().get("data", [])
             model_names = sorted(model.get("id") for model in models if "id" in model)
-            logger.info("\n".join(model_names))
+            click.echo("\n".join(model_names))
         except requests.RequestException as e:
-            logger.info(f"Error fetching models from Kokoro API: {e}")
+            click.echo(f"Error fetching models from Kokoro API: {e}")
     elif list_voices:
-        logger.info("=" * terminal_width)
-        logger.info(
+        click.echo("=" * terminal_width)
+        click.echo(
             f"Available voices for {tts_provider.upper()}:".center(terminal_width)
         )
-        logger.info("=" * terminal_width)
+        click.echo("=" * terminal_width)
         try:
             config = get_tts_config(provider=tts_provider, language=language)
             voices = config.get_available_voices()
@@ -280,18 +265,18 @@ def main(
                         voice_groups[prefix].append(v)
 
                     for prefix in sorted(voice_groups.keys()):
-                        logger.info(f"\n{prefix.upper()} voices:")
+                        click.echo(f"\n{prefix.upper()} voices:")
                         for v in sorted(voice_groups[prefix]):
-                            logger.info(f"  {v}")
+                            click.echo(f"  {v}")
                 else:
                     # For other providers, just list voices
-                    logger.info(f"\nVoices for {tts_provider}:")
+                    click.echo(f"\nVoices for {tts_provider}:")
                     for v in sorted(voices):
-                        logger.info(f"  {v}")
+                        click.echo(f"  {v}")
             else:
-                logger.info(f"No voices found for {tts_provider}.")
+                click.echo(f"No voices found for {tts_provider}.")
         except Exception as e:
-            logger.info(f"Error fetching voices from {tts_provider}: {e}")
+            click.echo(f"Error fetching voices from {tts_provider}: {e}")
     else:
         if get_file_extension(file_path) == ".epub":
             logger.info("=" * terminal_width)

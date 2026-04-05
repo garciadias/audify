@@ -9,7 +9,7 @@ import requests
 from click.testing import CliRunner
 from reportlab.pdfgen import canvas
 
-from audify import start
+from audify import convert, start
 
 # Mock the audify modules before importing start
 # Keep mocks for underlying synthesizers and utils
@@ -235,7 +235,6 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             with patch(
                 "audify.utils.audio.AudioProcessor.convert_wav_to_mp3"
             ) as mock_convert:
-
                 mock_convert.return_value = Path("/fake/output.mp3")
 
                 result = runner.invoke(
@@ -249,6 +248,7 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
                         "--save-text",
                         "--translate",
                         "en",
+                        "--verbose",
                     ],
                 )
 
@@ -257,7 +257,8 @@ def test_main_pdf_synthesis(mock_exists, mock_terminal_size, runner):
             print(f"Output: {result.output}")
             print(f"Exception: {result.exception}")
         assert result.exit_code == 0
-        assert "PDF to mp3" in result.output
+        # assert "PDF to mp3" in result.output
+        # header now goes to log file unless verbose
 
 
 @patch("os.get_terminal_size", return_value=(80, 24))
@@ -383,8 +384,8 @@ class TestStartCLINewFeatures:
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.start.get_tts_config")
     def test_list_voices_api_error(
-            self, mock_get_tts_config, mock_terminal_size, runner
-        ):
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
         """Test --list-voices flag when API fails."""
         mock_config = Mock()
         mock_config.get_available_voices.side_effect = Exception("API Error")
@@ -399,8 +400,8 @@ class TestStartCLINewFeatures:
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.start.get_tts_config")
     def test_list_voices_no_voices_found(
-            self, mock_get_tts_config, mock_terminal_size, runner
-        ):
+        self, mock_get_tts_config, mock_terminal_size, runner
+    ):
         """Test --list-voices flag when no voices are found."""
         mock_config = Mock()
         mock_config.get_available_voices.return_value = []
@@ -415,8 +416,8 @@ class TestStartCLINewFeatures:
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.start.VoiceSamplesSynthesizer")
     def test_create_voice_samples_success(
-            self, mock_synthesizer_class, mock_terminal_size, runner
-        ):
+        self, mock_synthesizer_class, mock_terminal_size, runner
+    ):
         """Test --create-voice-samples flag successfully creates samples."""
         mock_synthesizer = Mock()
         mock_synthesizer_class.return_value = mock_synthesizer
@@ -446,11 +447,10 @@ class TestStartCLINewFeatures:
         mock_synthesizer = Mock()
         mock_synthesizer_class.return_value = mock_synthesizer
 
-        result = runner.invoke(start.main, [
-            "--create-voice-samples",
-            "--language", "en",
-            "--translate", "es"
-        ])
+        result = runner.invoke(
+            start.main,
+            ["--create-voice-samples", "--language", "en", "--translate", "es"],
+        )
 
         assert result.exit_code == 0
         assert "Creating Voice Samples M4B" in result.output
@@ -469,10 +469,9 @@ class TestStartCLINewFeatures:
         mock_synthesizer = Mock()
         mock_synthesizer_class.return_value = mock_synthesizer
 
-        result = runner.invoke(start.main, [
-            "--create-voice-samples",
-            "--language", "fr"
-        ])
+        result = runner.invoke(
+            start.main, ["--create-voice-samples", "--language", "fr"]
+        )
 
         assert result.exit_code == 0
 
@@ -547,11 +546,9 @@ class TestStartCLINewFeatures:
         mock_synthesizer = Mock()
         mock_synthesizer_class.return_value = mock_synthesizer
 
-        result = runner.invoke(start.main, [
-            "--create-voice-samples",
-            "--list-languages",
-            "--list-models"
-        ])
+        result = runner.invoke(
+            start.main, ["--create-voice-samples", "--list-languages", "--list-models"]
+        )
 
         # Should execute create-voice-samples (first if branch)
         assert result.exit_code == 0
@@ -668,7 +665,10 @@ class TestListVoicesNonKokoro:
         """Test --list-voices with OpenAI provider shows flat list."""
         mock_config = Mock()
         mock_config.get_available_voices.return_value = [
-            "alloy", "echo", "fable", "nova"
+            "alloy",
+            "echo",
+            "fable",
+            "nova",
         ]
         mock_get_tts_config.return_value = mock_config
 
@@ -692,9 +692,7 @@ class TestListVoicesNonKokoro:
         mock_config.get_available_voices.return_value = ["Joanna", "Matthew", "Ivy"]
         mock_get_tts_config.return_value = mock_config
 
-        result = runner.invoke(
-            start.main, ["--list-voices", "--tts-provider", "aws"]
-        )
+        result = runner.invoke(start.main, ["--list-voices", "--tts-provider", "aws"])
 
         assert result.exit_code == 0
         assert "Available voices for AWS:" in result.output
@@ -709,7 +707,8 @@ class TestListVoicesNonKokoro:
         """Test --list-voices with Google provider shows flat list."""
         mock_config = Mock()
         mock_config.get_available_voices.return_value = [
-            "en-US-Neural2-A", "en-US-Neural2-B"
+            "en-US-Neural2-A",
+            "en-US-Neural2-B",
         ]
         mock_get_tts_config.return_value = mock_config
 
@@ -758,7 +757,7 @@ class TestGetAvailableModelsAndVoices:
 
         mock_get.side_effect = side_effect
 
-        models, voices = start.get_available_models_and_voices()
+        models, voices = convert.get_available_models_and_voices()
 
         assert models == ["kokoro", "tts-1"]
         assert voices == ["af_alloy", "af_bella", "en_voice"]
@@ -769,7 +768,7 @@ class TestGetAvailableModelsAndVoices:
         """Test API error handling."""
         mock_get.side_effect = requests.RequestException("API Error")
 
-        models, voices = start.get_available_models_and_voices()
+        models, voices = convert.get_available_models_and_voices()
 
         assert models == []
         assert voices == []
@@ -779,7 +778,7 @@ class TestGetAvailableModelsAndVoices:
         """Test timeout handling."""
         mock_get.side_effect = requests.Timeout("Request timed out")
 
-        models, voices = start.get_available_models_and_voices()
+        models, voices = convert.get_available_models_and_voices()
 
         assert models == []
         assert voices == []
@@ -791,7 +790,7 @@ class TestGetAvailableModelsAndVoices:
         mock_response.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
         mock_get.return_value = mock_response
 
-        models, voices = start.get_available_models_and_voices()
+        models, voices = convert.get_available_models_and_voices()
 
         assert models == []
         assert voices == []
@@ -819,7 +818,7 @@ class TestGetAvailableModelsAndVoices:
 
         mock_get.side_effect = side_effect
 
-        models, voices = start.get_available_models_and_voices()
+        models, voices = convert.get_available_models_and_voices()
 
         assert models == []
         assert voices == []

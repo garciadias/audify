@@ -149,6 +149,7 @@ class TestMain:
                     "--max-chapters",
                     "5",
                     "--confirm",
+                    "--verbose",
                 ],
             )
 
@@ -183,6 +184,7 @@ class TestMain:
                     "custom_voice",
                     "--voice-model",
                     "custom_model",
+                    "--verbose",
                 ],
             )
 
@@ -227,7 +229,7 @@ class TestMain:
         mock_get_creator.return_value = mock_creator
 
         with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
-            result = runner.invoke(main, [temp_file.name])
+            result = runner.invoke(main, [temp_file.name, "--verbose"])
 
         assert result.exit_code == 0
         assert "Error: Generic error" in result.output
@@ -252,7 +254,7 @@ class TestMain:
 
         with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
             result = runner.invoke(
-                main, [temp_file.name, "--llm-model", "custom-model"]
+                main, [temp_file.name, "--llm-model", "custom-model", "--verbose"]
             )
 
         assert result.exit_code == 0
@@ -291,6 +293,7 @@ class TestMain:
                     "en",
                     "--max-chapters",
                     "10",
+                    "--verbose",
                 ],
             )
 
