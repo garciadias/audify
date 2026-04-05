@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 MODULE_PATH = Path(__file__).parents[2]
 
@@ -15,7 +18,7 @@ def combine_covers(image_paths, output_path):
 
     # Paginate images to a 5x5 grid
     for page in range(0, len(all_imgs) // 25 + 1):
-        print(f"Combining images {page * 25} to {(page + 1) * 25}...")
+        logger.info(f"Combining images {page * 25} to {(page + 1) * 25}...")
         img_files = all_imgs[page * 25 : (page + 1) * 25]
         # get the maximum height of the images
         height = int(np.median([img.height for img in img_files]))
@@ -35,7 +38,7 @@ def combine_covers(image_paths, output_path):
             new_im.paste(img, (x, y))
 
         # Save the combined image
-        print(f"Saving combined image {page}...")
+        logger.info(f"Saving combined image {page}...")
         new_im.save(output_path / f"combined_covers_{page}.jpg")
 
 
