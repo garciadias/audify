@@ -1,9 +1,21 @@
 [project]
 name = "audify"
 version = "0.1.0"
-description = "Add your description here"
+description = "Convert ebooks and PDFs to audiobooks using AI text-to-speech"
 readme = "README.md"
 requires-python = ">=3.10,<=3.13"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "bs4>=0.0.2",
     "click>=8.1.8",
@@ -48,6 +60,11 @@ dev = [
     "pipreqs>=0.5.0",
 ]
 gpu = ["black>=25.1.0"]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "myst-parser>=3.0",
+]
 
 [tool.coverage.report]
 exclude_lines = ["if __name__ == .__main__.:", "def test_", "ABC"]
