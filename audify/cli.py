@@ -15,6 +15,7 @@ import sys
 
 import click
 
+from audify.convert import convert as convert_command
 from audify.create_audiobook import main as audiobook_command
 
 # Import existing CLI commands
@@ -34,6 +35,7 @@ def cli():
 
 
 # Add subcommands
+cli.add_command(convert_command, name="convert")
 cli.add_command(run_command, name="run")
 cli.add_command(audiobook_command, name="audiobook")
 

@@ -173,9 +173,7 @@ class AudiobookCreator(BaseSynthesizer):
         confirm: bool = True,
         output_dir: Optional[str | Path] = None,
         tts_provider: Optional[str] = None,
-        llm_config: Optional[
-            Union[OllamaAPIConfig, CommercialAPIConfig]
-        ] = None,
+        llm_config: Optional[Union[OllamaAPIConfig, CommercialAPIConfig]] = None,
         task: Optional[str] = None,
         prompt_file: Optional[str | Path] = None,
     ):
@@ -221,6 +219,7 @@ class AudiobookCreator(BaseSynthesizer):
         # Resolve task prompt and LLM parameters
         self.task_name = task or "audiobook"
         self._prompt_file = prompt_file
+        self._requires_llm = True  # Default, will be updated in _resolve_task_prompt
         self._resolve_task_prompt()
 
         # Initialize parent class
@@ -253,22 +252,27 @@ class AudiobookCreator(BaseSynthesizer):
         if self._prompt_file:
             self._task_prompt = manager.load_prompt_file(self._prompt_file)
             self._task_llm_params: dict = dict(_DEFAULT_LLM_PARAMS)
+            self._requires_llm = True  # Custom prompt implies LLM
             logger.info(f"Using custom prompt from: {self._prompt_file}")
         else:
             task_config = TaskRegistry.get(self.task_name)
             if task_config:
                 self._task_prompt = task_config.prompt
                 self._task_llm_params = task_config.get_llm_params()
+                self._requires_llm = task_config.requires_llm
                 logger.info(f"Using task '{self.task_name}' prompt")
             else:
                 # Fallback: try loading as a builtin prompt
                 try:
                     self._task_prompt = manager.get_builtin_prompt(self.task_name)
                     self._task_llm_params = dict(_DEFAULT_LLM_PARAMS)
+                    # Assume requires LLM for builtin prompts except "direct"
+                    self._requires_llm = self.task_name != "direct"
                 except FileNotFoundError:
                     # Default to audiobook prompt
                     self._task_prompt = AUDIOBOOK_PROMPT
                     self._task_llm_params = dict(_DEFAULT_LLM_PARAMS)
+                    self._requires_llm = True
                     logger.warning(
                         f"Unknown task '{self.task_name}', "
                         "falling back to audiobook prompt"
@@ -379,33 +383,39 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"Chapter {chapter_number} title: {chapter_title}")
         self.chapter_titles.append(chapter_title)
 
-        # Generate audiobook script using LLM
-        if len(cleaned_text.split()) < 200:
+        # Determine effective language.
+        # Prefer explicit param, then translate, then file language
+        effective_language = (
+            language
+            if language
+            else (self.translate if self.translate else self.language)
+        )
+
+        # If an explicit translate target was requested,
+        # translate the cleaned text
+        if self.translate:
+            # prefer explicit language attrs; fall back to resolved_language
+            src_lang = getattr(self, "language", None) or getattr(
+                self, "resolved_language", None
+            )
+            cleaned_text = translate_sentence(
+                cleaned_text, src_lang=src_lang, tgt_lang=self.translate
+            )
+
+        # Generate audiobook script using LLM or direct text
+        if getattr(self, "_requires_llm", True) is False:
+            task_name = getattr(self, "task_name", "unknown")
+            logger.info(
+                f"Skipping LLM for task '{task_name}', using cleaned text directly"
+            )
+            audiobook_script = cleaned_text
+        elif len(cleaned_text.split()) < 200:
             logger.warning(
                 f"Chapter {chapter_number} has very little text after cleaning. "
                 "The generated audiobook may be very short."
             )
             audiobook_script = cleaned_text
         else:
-            # Determine effective language.
-            # Prefer explicit param, then translate, then file language
-            effective_language = (
-                language
-                if language
-                else (self.translate if self.translate else self.language)
-            )
-
-            # If an explicit translate target was requested,
-            # translate the cleaned text
-            if self.translate:
-                # prefer explicit language attrs; fall back to resolved_language
-                src_lang = getattr(self, "language", None) or getattr(
-                    self, "resolved_language", None
-                )
-                cleaned_text = translate_sentence(
-                    cleaned_text, src_lang=src_lang, tgt_lang=self.translate
-                )
-
             logger.debug(f"Using language: {effective_language}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
 
