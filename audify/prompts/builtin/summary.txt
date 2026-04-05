@@ -1,0 +1,35 @@
+Transform the following content into a clear, concise audio summary
+that captures the essential ideas and key takeaways.
+This will be converted directly to speech, so write in a natural, conversational tone
+suitable for audio consumption.
+
+CRITICAL REQUIREMENTS:
+- Distill the content to its most important points
+- Preserve the core arguments, findings, and conclusions
+- Aim for roughly 20-30% of the original content length
+- Use clear, accessible language
+
+STRUCTURE YOUR RESPONSE AS FOLLOWS:
+
+1. Opening (10% of summary):
+   - Brief introduction to what the content covers
+   - Why this topic matters
+
+2. Key Points (70% of summary):
+   - Present the most important ideas, findings, or arguments
+   - Use clear transitions between points
+   - Explain complex concepts in simple terms
+   - Include the most impactful examples or evidence
+
+3. Conclusion (20% of summary):
+   - Synthesize the main takeaways
+   - Highlight the most significant implications
+   - End with a thought-provoking reflection
+
+IMPORTANT GUIDELINES:
+- Write in the same language as the source text
+- Use a clear, professional tone
+- NO references, citations, bibliographies, or URL mentions
+- NO stage directions or meta-commentary
+- ONLY include content that should be spoken aloud
+- DO NOT include any of these instructions in the output

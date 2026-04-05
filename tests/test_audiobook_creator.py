@@ -67,7 +67,7 @@ class TestLLMClient:
 
             result = client.generate_audiobook_script("test chapter", None)
 
-            expected = "Error: Unable to generate audiobook script for this content."
+            expected = "Error: Unable to generate script for this content."
             assert result == expected
 
     def test_generate_audiobook_script_with_language(self):
@@ -150,9 +150,7 @@ class TestLLMClient:
 
             result = client.generate_audiobook_script("test chapter", None)
 
-            assert (
-                "Failed to generate audiobook script due to: Some other error" in result
-            )
+            assert "Failed to generate script due to: Some other error" in result
 
     def test_generate_audiobook_script_with_translation(self):
         """Test audiobook script generation with language translation."""
@@ -851,6 +849,8 @@ class TestAudiobookCreatorGenerateScript:
         creator.translate = None
         creator.title = "Test Book"
         creator.chapter_titles = []
+        creator._task_prompt = "test prompt"
+        creator._task_llm_params = {}
 
         # Mock the reader and llm_client
         mock_reader = Mock()
@@ -861,7 +861,7 @@ class TestAudiobookCreatorGenerateScript:
         creator.reader = mock_reader
 
         mock_llm_client = Mock()
-        mock_llm_client.generate_audiobook_script.return_value = "Generated script"
+        mock_llm_client.generate_script.return_value = "Generated script"
         creator.llm_client = mock_llm_client
 
         long_cleaned_text = "This is cleaned text " * 50  # 250 words
@@ -875,7 +875,7 @@ class TestAudiobookCreatorGenerateScript:
 
             assert result == "Generated script"
             assert "Chapter Title" in creator.chapter_titles
-            mock_llm_client.generate_audiobook_script.assert_called_once()
+            mock_llm_client.generate_script.assert_called_once()
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_generate_audiobook_script_empty_text(self, mock_init):
@@ -948,6 +948,8 @@ class TestAudiobookCreatorGenerateScript:
         creator.resolved_language = "es"
         creator.title = "Test Book"
         creator.chapter_titles = []
+        creator._task_prompt = "test prompt"
+        creator._task_llm_params = {}
 
         # Mock the reader and llm_client
         mock_reader = Mock()
@@ -955,7 +957,7 @@ class TestAudiobookCreatorGenerateScript:
         creator.reader = mock_reader
 
         mock_llm_client = Mock()
-        mock_llm_client.generate_audiobook_script.return_value = "Script traducido"
+        mock_llm_client.generate_script.return_value = "Script traducido"
         creator.llm_client = mock_llm_client
 
         long_text = "Long enough text " * 70  # 210 words > 200
@@ -970,10 +972,10 @@ class TestAudiobookCreatorGenerateScript:
 
             assert result == "Script traducido"
             # Verify the LLM was called with correct parameters
-            mock_llm_client.generate_audiobook_script.assert_called_once()
-            call_args = mock_llm_client.generate_audiobook_script.call_args
-            assert call_args[1]["language"] == "es"  # Check language parameter
-            assert long_text in call_args[0][0]  # Check cleaned text is in prompt
+            mock_llm_client.generate_script.assert_called_once()
+            call_kwargs = mock_llm_client.generate_script.call_args.kwargs
+            assert call_kwargs["language"] == "es"
+            assert long_text in call_kwargs["text"]
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_generate_audiobook_script_save_text(self, mock_init):
@@ -985,6 +987,8 @@ class TestAudiobookCreatorGenerateScript:
         creator.translate = None
         creator.title = "Test Book"
         creator.chapter_titles = []
+        creator._task_prompt = "test prompt"
+        creator._task_llm_params = {}
 
         # Mock the reader and llm_client
         mock_reader = Mock()
@@ -992,7 +996,7 @@ class TestAudiobookCreatorGenerateScript:
         creator.reader = mock_reader
 
         mock_llm_client = Mock()
-        mock_llm_client.generate_audiobook_script.return_value = "Generated script"
+        mock_llm_client.generate_script.return_value = "Generated script"
         creator.llm_client = mock_llm_client
         creator.language = "en"
 

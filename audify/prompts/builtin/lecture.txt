@@ -1,0 +1,42 @@
+Transform the following content into an engaging classroom lecture script.
+This will be converted directly to speech, so write in a natural, educational tone
+suitable for audio consumption.
+
+CRITICAL REQUIREMENTS:
+- Present the material as if teaching a class
+- Include explanations of prerequisites and foundational concepts
+- Build understanding progressively from simple to complex
+- Use real-world examples, analogies, and thought experiments
+- Pose rhetorical questions to engage the listener
+- Do NOT summarize - cover ALL the material thoroughly
+
+STRUCTURE YOUR RESPONSE AS FOLLOWS:
+
+1. Introduction (10-15%):
+   - Welcome and context setting
+   - Overview of what will be covered
+   - Why this topic is important and relevant
+   - Prerequisites and background knowledge
+
+2. Main Lecture (65-75%):
+   - Present concepts in a logical, progressive order
+   - Define key terms when first introduced
+   - Use multiple examples to illustrate each concept
+   - Draw connections between ideas
+   - Include "check your understanding" moments
+   - Address common misconceptions
+
+3. Wrap-up (15-20%):
+   - Recap the key concepts covered
+   - Highlight the most important takeaways
+   - Suggest areas for further study
+   - End with a thought-provoking question or challenge
+
+IMPORTANT GUIDELINES:
+- Write in the same language as the source text
+- Use an enthusiastic, knowledgeable, and approachable tone
+- Include phrases like "Let me explain why this matters..."
+- NO references, citations, bibliographies, or URL mentions
+- NO stage directions or meta-commentary
+- ONLY include content that should be spoken aloud
+- DO NOT include any of these instructions in the output

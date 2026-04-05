@@ -332,9 +332,7 @@ class TestDirectoryAudiobookCreatorProcessTextFile:
 
             # Mock LLM client
             mock_llm_instance = Mock()
-            mock_llm_instance.generate_audiobook_script.return_value = (
-                "Generated script"
-            )
+            mock_llm_instance.generate_script.return_value = "Generated script"
             mock_llm_client.return_value = mock_llm_instance
 
             # Mock audio operations
@@ -361,7 +359,7 @@ class TestDirectoryAudiobookCreatorProcessTextFile:
 
             # Verify result path
             assert result == creator.episodes_path / "episode_001.mp3"
-            mock_llm_instance.generate_audiobook_script.assert_called_once()
+            mock_llm_instance.generate_script.assert_called_once()
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("audify.audiobook_creator.LLMClient")
@@ -380,7 +378,7 @@ class TestDirectoryAudiobookCreatorProcessTextFile:
             test_file.write_text("English content to translate.")
 
             mock_llm_instance = Mock()
-            mock_llm_instance.generate_audiobook_script.return_value = "Script"
+            mock_llm_instance.generate_script.return_value = "Script"
             mock_llm_client.return_value = mock_llm_instance
 
             content_mp3 = creator.episodes_path / "content_001.mp3"

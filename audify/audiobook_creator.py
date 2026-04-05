@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import tqdm
 from bs4 import BeautifulSoup
@@ -27,6 +27,17 @@ from audify.utils.m4b_builder import (
 )
 from audify.utils.prompts import AUDIOBOOK_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
+
+# Default LLM parameters for audiobook generation
+_DEFAULT_LLM_PARAMS = {
+    "num_ctx": 8 * 4096,
+    "temperature": 0.8,
+    "top_p": 0.9,
+    "repeat_penalty": 1.05,
+    "seed": 428798,
+    "top_k": 60,
+    "num_predict": 4096,
+}
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -58,17 +69,33 @@ class LLMClient:
             self.config = OllamaAPIConfig(base_url=base_url, model=model)
             logger.info(f"Using Ollama with model: {model}")
 
-    def generate_audiobook_script(
-        self, chapter_text: str, language: Optional[str]
+    def generate_script(
+        self,
+        text: str,
+        prompt: str,
+        language: Optional[str] = None,
+        **llm_params,
     ) -> str:
-        """Generate audiobook script from chapter text using LLM."""
-        # Prepare system prompt (instructions)
-        if language != "en":
-            system_prompt = translate_sentence(
-                AUDIOBOOK_PROMPT, src_lang="en", tgt_lang=language
-            )
+        """Generate a script from text using a custom prompt and LLM.
+
+        Args:
+            text: The source text to transform.
+            prompt: The system prompt/instructions for the LLM.
+            language: Target language code. If not "en", prompt is translated.
+            **llm_params: Override default LLM parameters (temperature, top_p, etc.).
+
+        Returns:
+            The generated script text, or an error message on failure.
+        """
+        # Merge default params with overrides
+        params: dict[str, Any] = dict(_DEFAULT_LLM_PARAMS)
+        params.update(llm_params)
+
+        # Prepare system prompt (translate if needed)
+        if language and language != "en":
+            system_prompt = translate_sentence(prompt, src_lang="en", tgt_lang=language)
         else:
-            system_prompt = AUDIOBOOK_PROMPT
+            system_prompt = prompt
 
         try:
             if self.is_commercial:
@@ -76,18 +103,10 @@ class LLMClient:
             else:
                 logger.info(f"Sending request to LLM at {self.config.base_url}")
 
-            # Generate response using LiteLLM with audiobook-specific parameters
-            # System role: instructions, User role: content to process
             response = self.config.generate(
                 system_prompt=system_prompt,
-                user_prompt=chapter_text,
-                num_ctx=8 * 4096,  # Increased context window
-                temperature=0.8,  # Added creativity
-                top_p=0.9,  # Broader token selection
-                repeat_penalty=1.05,  # Slight penalty for repetition
-                seed=428798,
-                top_k=60,  # Wider token selection
-                num_predict=4096,  # Encourage longer responses
+                user_prompt=text,
+                **params,
             )
 
             # Clean the response
@@ -98,7 +117,7 @@ class LLMClient:
                 return clean_text(response.strip())
             else:
                 logger.error("Empty response from LLM")
-                return "Error: Unable to generate audiobook script for this content."
+                return "Error: Unable to generate script for this content."
 
         except Exception as e:
             logger.error(f"Error communicating with LLM: {e}")
@@ -122,7 +141,19 @@ class LLMClient:
                     "variables."
                 )
             else:
-                return f"Error: Failed to generate audiobook script due to: {str(e)}"
+                return f"Error: Failed to generate script due to: {str(e)}"
+
+    def generate_audiobook_script(
+        self, chapter_text: str, language: Optional[str]
+    ) -> str:
+        """Generate audiobook script from chapter text using LLM.
+
+        Backward-compatible wrapper around generate_script() using
+        the default AUDIOBOOK_PROMPT.
+        """
+        return self.generate_script(
+            text=chapter_text, prompt=AUDIOBOOK_PROMPT, language=language
+        )
 
 
 class AudiobookCreator(BaseSynthesizer):
@@ -145,6 +176,8 @@ class AudiobookCreator(BaseSynthesizer):
         llm_config: Optional[
             Union[OllamaAPIConfig, CommercialAPIConfig]
         ] = None,
+        task: Optional[str] = None,
+        prompt_file: Optional[str | Path] = None,
     ):
         # Initialize file reader based on extension
         self.reader: Union[EpubReader, PdfReader]
@@ -185,6 +218,11 @@ class AudiobookCreator(BaseSynthesizer):
         self.max_chapters = max_chapters
         self.confirm = confirm
 
+        # Resolve task prompt and LLM parameters
+        self.task_name = task or "audiobook"
+        self._prompt_file = prompt_file
+        self._resolve_task_prompt()
+
         # Initialize parent class
         super().__init__(
             path=path,
@@ -204,6 +242,37 @@ class AudiobookCreator(BaseSynthesizer):
         else:
             self.cover_image_path = None
         self.chapter_titles: List[str] = []
+
+    def _resolve_task_prompt(self) -> None:
+        """Resolve the prompt and LLM params from task name or prompt file."""
+        from audify.prompts.manager import PromptManager
+        from audify.prompts.tasks import TaskRegistry
+
+        manager = PromptManager()
+
+        if self._prompt_file:
+            self._task_prompt = manager.load_prompt_file(self._prompt_file)
+            self._task_llm_params: dict = dict(_DEFAULT_LLM_PARAMS)
+            logger.info(f"Using custom prompt from: {self._prompt_file}")
+        else:
+            task_config = TaskRegistry.get(self.task_name)
+            if task_config:
+                self._task_prompt = task_config.prompt
+                self._task_llm_params = task_config.get_llm_params()
+                logger.info(f"Using task '{self.task_name}' prompt")
+            else:
+                # Fallback: try loading as a builtin prompt
+                try:
+                    self._task_prompt = manager.get_builtin_prompt(self.task_name)
+                    self._task_llm_params = dict(_DEFAULT_LLM_PARAMS)
+                except FileNotFoundError:
+                    # Default to audiobook prompt
+                    self._task_prompt = AUDIOBOOK_PROMPT
+                    self._task_llm_params = dict(_DEFAULT_LLM_PARAMS)
+                    logger.warning(
+                        f"Unknown task '{self.task_name}', "
+                        "falling back to audiobook prompt"
+                    )
 
     def _setup_paths(self, file_name_base: Path) -> None:
         """Sets up the necessary output paths for audiobook creation."""
@@ -340,8 +409,11 @@ class AudiobookCreator(BaseSynthesizer):
             logger.debug(f"Using language: {effective_language}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
 
-            audiobook_script = self.llm_client.generate_audiobook_script(
-                cleaned_text, language=effective_language
+            audiobook_script = self.llm_client.generate_script(
+                text=cleaned_text,
+                prompt=self._task_prompt,
+                language=effective_language,
+                **self._task_llm_params,
             )
 
         # Save the script if requested
@@ -713,6 +785,8 @@ class DirectoryAudiobookCreator:
         confirm: bool = True,
         output_dir: Optional[str | Path] = None,
         tts_provider: Optional[str] = None,
+        task: Optional[str] = None,
+        prompt_file: Optional[str | Path] = None,
     ):
         self.directory_path = Path(directory_path)
         if not self.directory_path.is_dir():
@@ -727,6 +801,8 @@ class DirectoryAudiobookCreator:
         self.llm_model = llm_model
         self.confirm = confirm
         self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
+        self.task = task
+        self.prompt_file = prompt_file
 
         # Setup output paths
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
@@ -832,6 +908,8 @@ class DirectoryAudiobookCreator:
                     confirm=False,
                     output_dir=self.audiobook_path / f"temp_{episode_number:03d}",
                     tts_provider=self.tts_provider,
+                    task=self.task,
+                    prompt_file=self.prompt_file,
                 )
             elif file_extension == ".pdf":
                 creator = AudiobookPdfCreator(
@@ -846,6 +924,8 @@ class DirectoryAudiobookCreator:
                     confirm=False,
                     output_dir=self.audiobook_path / f"temp_{episode_number:03d}",
                     tts_provider=self.tts_provider,
+                    task=self.task,
+                    prompt_file=self.prompt_file,
                 )
             elif file_extension in [".txt", ".md"]:
                 # For text files, create a simple episode
@@ -917,8 +997,19 @@ class DirectoryAudiobookCreator:
 
             # Generate script using LLM
             llm_client = LLMClient(self.llm_base_url, self.llm_model)
-            audiobook_script = llm_client.generate_audiobook_script(
-                cleaned_content, language=self.translate or self.language
+
+            # Resolve task prompt
+            from audify.prompts.manager import PromptManager
+
+            manager = PromptManager()
+            prompt = manager.get_prompt(
+                task=self.task or "audiobook",
+                prompt_file=self.prompt_file,
+            )
+            audiobook_script = llm_client.generate_script(
+                text=cleaned_content,
+                prompt=prompt,
+                language=self.translate or self.language,
             )
 
             # Save script if requested

@@ -43,11 +43,15 @@ def get_creator(
     confirm: bool,
     output_dir: str | None = None,
     tts_provider: str | None = None,
+    task: str | None = None,
+    prompt_file: str | None = None,
 ) -> AudiobookCreator:
     """Get the appropriate AudiobookCreator subclass based on file extension.
 
     Args:
         file_extension: The file extension (e.g., '.epub', '.pdf').
+        task: Task name for prompt selection (e.g., 'audiobook', 'podcast').
+        prompt_file: Path to a custom prompt file.
 
     Returns:
         The corresponding AudiobookCreator subclass.
@@ -69,6 +73,8 @@ def get_creator(
             confirm=confirm,
             output_dir=output_dir,
             tts_provider=tts_provider,
+            task=task,
+            prompt_file=prompt_file,
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
@@ -84,6 +90,8 @@ def get_creator(
             confirm=confirm,
             output_dir=output_dir,
             tts_provider=tts_provider,
+            task=task,
+            prompt_file=prompt_file,
         )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")
@@ -171,6 +179,21 @@ def get_creator(
     help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
     "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
 )
+@click.option(
+    "--task",
+    "-T",
+    type=str,
+    default=None,
+    help="Task name for prompt selection (e.g., 'audiobook', 'podcast', "
+    "'summary', 'meditation', 'lecture'). Defaults to 'audiobook'.",
+)
+@click.option(
+    "--prompt-file",
+    "-pf",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to a custom prompt file. Overrides --task prompt.",
+)
 def main(
     path: str,
     language: str,
@@ -184,6 +207,8 @@ def main(
     confirm: bool,
     output: str | None,
     tts_provider: str,
+    task: str | None,
+    prompt_file: str | None,
 ):
     """Create audiobook episodes from ebooks or PDFs using LLM and TTS."""
 
@@ -203,6 +228,10 @@ def main(
         print(f"Language: {language}")
         print(f"LLM Model: {llm_model}")
         print(f"TTS Provider: {tts_provider}")
+        if task:
+            print(f"Task: {task}")
+        if prompt_file:
+            print(f"Prompt file: {prompt_file}")
         if translate:
             print(f"Translation: {language} -> {translate}")
 
@@ -222,6 +251,8 @@ def main(
                 confirm=not confirm,
                 output_dir=output,
                 tts_provider=tts_provider,
+                task=task,
+                prompt_file=prompt_file,
             )
             # Generate the audiobook
             output_path = dir_creator.synthesize()
@@ -252,6 +283,10 @@ def main(
         print(f"Language: {language}")
         print(f"LLM Model: {llm_model}")
         print(f"TTS Provider: {tts_provider}")
+        if task:
+            print(f"Task: {task}")
+        if prompt_file:
+            print(f"Prompt file: {prompt_file}")
         if translate:
             print(f"Translation: {language} -> {translate}")
         if max_chapters:
@@ -274,6 +309,8 @@ def main(
                 confirm=not confirm,
                 output_dir=output,
                 tts_provider=tts_provider,
+                task=task,
+                prompt_file=prompt_file,
             )
             # Generate the audiobook
             output_path = creator.synthesize()

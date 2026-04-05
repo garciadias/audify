@@ -46,9 +46,9 @@ class TestAudiobookCreatorScriptSaveIOError:
         creator.translate = None
         creator.confirm = False
         creator.llm_client = Mock()
-        creator.llm_client.generate_audiobook_script.return_value = (
-            "Generated script"
-        )
+        creator.llm_client.generate_script.return_value = "Generated script"
+        creator._task_prompt = "test prompt"
+        creator._task_llm_params = {}
         creator.chapter_titles = []
         # Use a real EpubReader spec so isinstance works
         creator.reader = Mock(spec=EpubReader)
@@ -310,7 +310,7 @@ class TestDirectoryCreatorTextFileTranslationFallback:
             test_file.write_text("Hello world. This is a test.")
 
             mock_llm_instance = Mock()
-            mock_llm_instance.generate_audiobook_script.return_value = "Script text."
+            mock_llm_instance.generate_script.return_value = "Script text."
             mock_llm_client.return_value = mock_llm_instance
 
             content_mp3 = creator.episodes_path / "content_001.mp3"
@@ -359,7 +359,7 @@ class TestDirectoryCreatorTextFileTitleAudio:
             test_file.write_text("Test content for audiobook creation.")
 
             mock_llm_instance = Mock()
-            mock_llm_instance.generate_audiobook_script.return_value = "Script"
+            mock_llm_instance.generate_script.return_value = "Script"
             mock_llm_client.return_value = mock_llm_instance
 
             content_mp3 = creator.episodes_path / "content_001.mp3"

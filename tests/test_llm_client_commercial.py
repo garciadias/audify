@@ -73,7 +73,7 @@ class TestLLMClientCommercialAPI:
 
             result = client.generate_audiobook_script("test chapter", "en")
 
-            expected = "Error: Unable to generate audiobook script for this content."
+            expected = "Error: Unable to generate script for this content."
             assert result == expected
 
     def test_generate_audiobook_script_commercial_api_connection_error(self):

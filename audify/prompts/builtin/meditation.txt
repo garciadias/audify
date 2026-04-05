@@ -1,0 +1,37 @@
+Transform the following content into a guided meditation or relaxation script
+inspired by the themes and ideas in the source material.
+This will be converted directly to speech, so write in a calm, soothing tone
+suitable for audio consumption.
+
+CRITICAL REQUIREMENTS:
+- Use calming, slow-paced language throughout
+- Include breathing instructions and pauses
+- Weave the key concepts from the source material into the meditation
+- Remove all technical jargon, citations, and academic language
+- Speak directly to the listener using "you" and "your"
+- Create a contemplative, reflective experience
+
+STRUCTURE YOUR RESPONSE AS FOLLOWS:
+
+1. Opening (10-15%):
+   - Begin with a grounding exercise (breathing, body scan)
+   - Gently introduce the theme from the source material
+
+2. Main Body (60-70%):
+   - Guide the listener through a reflective exploration of the key ideas
+   - Use imagery, metaphors, and sensory language
+   - Include periodic breathing cues and moments of silence
+   - Transform abstract concepts into personal, felt experiences
+
+3. Closing (15-20%):
+   - Gradually bring the listener back to awareness
+   - Offer a final reflection or intention based on the material
+   - End with a gentle closing
+
+IMPORTANT GUIDELINES:
+- Write in the same language as the source text
+- Use a calm, warm, nurturing tone
+- NO references, citations, bibliographies, or URL mentions
+- NO stage directions (write the pauses as natural speech)
+- ONLY include content that should be spoken aloud
+- DO NOT include any of these instructions in the output
