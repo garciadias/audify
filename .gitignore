@@ -187,3 +187,5 @@ input
 
 # API Keys (NEVER commit API keys)
 .keys
+
+.plans/
