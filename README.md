@@ -46,6 +46,29 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **OpenAI TTS**: OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 - **AWS Polly**: AWS account with access keys ([AWS setup](https://aws.amazon.com/polly/))
 - **Google Cloud TTS**: Google Cloud project with credentials ([GCP setup](https://cloud.google.com/text-to-speech))
+## 📦 Installation as a command-line tool
+
+You can install Audify as a standalone command-line tool using pip or uv:
+
+```bash
+pip install audify
+```
+
+Or using uv (recommended):
+
+```bash
+uv pip install audify
+```
+
+This will install the `audify` command with subcommands:
+- `audify run`: Basic TTS conversion of EPUB/PDF files
+- `audify audiobook`: LLM-powered audiobook generation
+
+Alternatively, you can use the direct commands:
+- `audify-run`: Alias for `audify run`
+- `audify-audiobook`: Alias for `audify audiobook`
+
+After installation, you can run `audify --help` to see available options.
 
 ## 🐳 Quick Start with Docker (For Kokoro TTS)
 
@@ -453,6 +476,10 @@ task audiobook # Create audiobook from content
 task up        # Start Docker services
 task api       # Start REST API server (dev mode, port 8000)
 ```
+
+You can also use the installed CLI commands directly:
+- `audify run` (or `audify-run`) - equivalent to `task run`
+- `audify audiobook` (or `audify-audiobook`) - equivalent to `task audiobook`
 
 ### Local Development Setup
 

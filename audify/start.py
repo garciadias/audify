@@ -161,6 +161,7 @@ def main(
     tts_provider: str = DEFAULT_TTS_PROVIDER,
     list_tts_providers: bool = False,
 ):
+    """Basic TTS conversion of EPUB/PDF files to audio (no LLM)."""
     terminal_width = os.get_terminal_size()[0]
     if list_tts_providers:
         print("=" * terminal_width)
