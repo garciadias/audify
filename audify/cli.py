@@ -2,12 +2,16 @@
 """
 Audify CLI - Convert ebooks and PDFs to audiobooks using AI text-to-speech.
 
-Provides two main commands:
-- run: Basic TTS conversion of EPUB/PDF files
+Provides commands:
+- run: Basic TTS conversion of EPUB/PDF files (no LLM)
 - audiobook: LLM-powered audiobook generation
+- list-tasks: List available transformation tasks
+- validate-prompt: Validate a custom prompt file
 """
 
 import importlib.metadata
+import os
+import sys
 
 import click
 
@@ -32,6 +36,71 @@ def cli():
 # Add subcommands
 cli.add_command(run_command, name="run")
 cli.add_command(audiobook_command, name="audiobook")
+
+
+@cli.command("list-tasks")
+def list_tasks():
+    """List all available transformation tasks."""
+    from audify.prompts.tasks import TaskRegistry
+
+    try:
+        terminal_width = os.get_terminal_size()[0]
+    except OSError:
+        terminal_width = 80
+
+    tasks = TaskRegistry.get_all()
+
+    print("=" * terminal_width)
+    print("Available Tasks".center(terminal_width))
+    print("=" * terminal_width)
+    print()
+    print(f"{'Task':<15} {'Requires LLM':<15} {'Output':<12} Description")
+    print("-" * terminal_width)
+
+    descriptions = {
+        "direct": "Direct TTS conversion, no LLM processing",
+        "audiobook": "Transform text into an engaging audiobook script",
+        "podcast": "Transform text into a comprehensive talk/podcast",
+        "summary": "Create a concise audio summary",
+        "meditation": "Transform text into a guided meditation script",
+        "lecture": "Transform text into an engaging classroom lecture",
+    }
+
+    for name in sorted(tasks.keys()):
+        task = tasks[name]
+        llm = "Yes" if task.requires_llm else "No"
+        desc = descriptions.get(name, "Custom task")
+        print(f"  {name:<13} {llm:<15} {task.output_structure:<12} {desc}")
+
+    print()
+    print("=" * terminal_width)
+    print("Usage: audify audiobook <input> --task <task-name>")
+    print("       audify audiobook <input> --prompt-file <path>")
+    print("=" * terminal_width)
+
+
+@cli.command("validate-prompt")
+@click.argument("prompt_file", type=click.Path(exists=True))
+def validate_prompt(prompt_file: str):
+    """Validate a custom prompt file."""
+    from audify.prompts.manager import PromptManager
+
+    manager = PromptManager()
+
+    try:
+        prompt = manager.load_prompt_file(prompt_file)
+        is_valid, message = manager.validate_prompt(prompt)
+
+        if is_valid:
+            print(f"Prompt file is valid: {prompt_file}")
+            print(f"  Length: {len(prompt)} characters")
+            print(f"  Preview: {prompt[:100]}...")
+        else:
+            print(f"Prompt file validation failed: {message}")
+            sys.exit(1)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
