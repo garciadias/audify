@@ -1,5 +1,7 @@
 import os
 import warnings
+import logging
+import sys
 
 import click
 import requests
@@ -20,31 +22,21 @@ from audify.utils.constants import (
 )
 from audify.utils.text import get_file_extension
 
-# Ignore UserWarning from pkg_resources about package metadata
-warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
+# Configure logging
+logger = logging.getLogger("audify")
+logger.setLevel(logging.INFO)
 
+# Create file handler for all logs
+file_handler = logging.FileHandler("audify.log")
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter(
+    "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
 
-def get_available_models_and_voices():
-    """Get available models and voices from Kokoro API."""
-    try:
-        # Get models
-        models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
-        models_response.raise_for_status()
-        models_data = models_response.json().get("data", [])
-        models = sorted([model.get("id") for model in models_data if "id" in model])
-
-        # Get voices
-        voices_response = requests.get(
-            f"{KOKORO_API_BASE_URL}/audio/voices", timeout=10
-        )
-        voices_response.raise_for_status()
-        voices_data = voices_response.json().get("voices", [])
-        voices = sorted(voices_data)
-
-        return models, voices
-    except requests.RequestException as e:
-        print(f"Error fetching models and voices from Kokoro API: {e}")
-        return [], []
+# Add stream handler only when --verbose is enabled
+stream_handler = None
 
 
 @click.command()
@@ -158,6 +150,11 @@ def get_available_models_and_voices():
     default=OLLAMA_API_BASE_URL,
     help=f"Base URL for the LLM API (default: {OLLAMA_API_BASE_URL}).",
 )
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Enable verbose output to terminal (also logs to file).",
+)
 def main(
     file_path: str,
     language: str,
@@ -176,15 +173,23 @@ def main(
     list_tts_providers: bool = False,
     llm_model: str | None = None,
     llm_base_url: str = OLLAMA_API_BASE_URL,
+    verbose: bool = False,
 ):
     """Basic TTS conversion of EPUB/PDF files to audio (no LLM)."""
+    # Set up stream handler for verbose mode
+    if verbose:
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(stream_handler)
+
     terminal_width = os.get_terminal_size()[0]
     if list_tts_providers:
-        print("=" * terminal_width)
-        print("Available TTS Providers".center(terminal_width))
-        print("=" * terminal_width)
-        print("\nProvider\tStatus\t\tConfiguration")
-        print("-" * terminal_width)
+        logger.info("=" * terminal_width)
+        logger.info("Available TTS Providers".center(terminal_width))
+        logger.info("=" * terminal_width)
+        logger.info("\nProvider\tStatus\t\tConfiguration")
+        logger.info("-" * terminal_width)
 
         provider_info = {
             "kokoro": {
@@ -214,15 +219,17 @@ def main(
                 status = "Not available"
 
             info = provider_info.get(provider, {"name": provider, "config": "N/A"})
-            print(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
+            logger.info(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
 
-        print("\n" + "=" * terminal_width)
-        print("Set TTS_PROVIDER environment variable or use --tts-provider/-tp flag")
-        print("=" * terminal_width)
+        logger.info("\n" + "=" * terminal_width)
+        logger.info(
+            "Set TTS_PROVIDER environment variable or use --tts-provider/-tp flag"
+        )
+        logger.info("=" * terminal_width)
     elif create_voice_samples:
-        print("=" * terminal_width)
-        print("Creating Voice Samples M4B".center(terminal_width))
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
+        logger.info("Creating Voice Samples M4B".center(terminal_width))
+        logger.info("=" * terminal_width)
         synthesizer = VoiceSamplesSynthesizer(
             language=language,
             translate=translate,
@@ -233,30 +240,32 @@ def main(
         )
         synthesizer.synthesize()
     elif list_languages:
-        print("=" * terminal_width)
-        print("Available languages:".center(terminal_width))
-        print("=" * terminal_width)
-        print("Language\tCode")
-        print("--------\t----")
+        logger.info("=" * terminal_width)
+        logger.info("Available languages:".center(terminal_width))
+        logger.info("=" * terminal_width)
+        logger.info("Language\tCode")
+        logger.info("-------\t----")
         for lang, code in AVAILABLE_LANGUAGES.items():
-            print(f"{lang:<10}\t{code}")
-        print("=" * terminal_width)
+            logger.info(f"{lang:<10}\t{code}")
+        logger.info("=" * terminal_width)
     elif list_models:
-        print("=" * terminal_width)
-        print("Available models:".center(terminal_width))
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
+        logger.info("Available models:".center(terminal_width))
+        logger.info("=" * terminal_width)
         try:
             response = requests.get(f"{KOKORO_API_BASE_URL}/models")
             response.raise_for_status()
             models = response.json().get("data", [])
             model_names = sorted(model.get("id") for model in models if "id" in model)
-            print("\n".join(model_names))
+            logger.info("\n".join(model_names))
         except requests.RequestException as e:
-            print(f"Error fetching models from Kokoro API: {e}")
+            logger.info(f"Error fetching models from Kokoro API: {e}")
     elif list_voices:
-        print("=" * terminal_width)
-        print(f"Available voices for {tts_provider.upper()}:".center(terminal_width))
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
+        logger.info(
+            f"Available voices for {tts_provider.upper()}:".center(terminal_width)
+        )
+        logger.info("=" * terminal_width)
         try:
             config = get_tts_config(provider=tts_provider, language=language)
             voices = config.get_available_voices()
@@ -271,24 +280,24 @@ def main(
                         voice_groups[prefix].append(v)
 
                     for prefix in sorted(voice_groups.keys()):
-                        print(f"\n{prefix.upper()} voices:")
+                        logger.info(f"\n{prefix.upper()} voices:")
                         for v in sorted(voice_groups[prefix]):
-                            print(f"  {v}")
+                            logger.info(f"  {v}")
                 else:
                     # For other providers, just list voices
-                    print(f"\nVoices for {tts_provider}:")
+                    logger.info(f"\nVoices for {tts_provider}:")
                     for v in sorted(voices):
-                        print(f"  {v}")
+                        logger.info(f"  {v}")
             else:
-                print(f"No voices found for {tts_provider}.")
+                logger.info(f"No voices found for {tts_provider}.")
         except Exception as e:
-            print(f"Error fetching voices from {tts_provider}: {e}")
+            logger.info(f"Error fetching voices from {tts_provider}: {e}")
     else:
         if get_file_extension(file_path) == ".epub":
-            print("=" * terminal_width)
-            print("Epub to Audiobook".center(terminal_width))
-            print("=" * terminal_width)
-            print(f"TTS Provider: {tts_provider}")
+            logger.info("=" * terminal_width)
+            logger.info("Epub to Audiobook".center(terminal_width))
+            logger.info("=" * terminal_width)
+            logger.info(f"TTS Provider: {tts_provider}")
             synthesizer = EpubSynthesizer(
                 file_path,
                 language=language,
@@ -304,10 +313,10 @@ def main(
             )  # type: ignore
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
-            print("==========")
-            print("PDF to mp3")
-            print("==========")
-            print(f"TTS Provider: {tts_provider}")
+            logger.info("==========")
+            logger.info("PDF to mp3")
+            logger.info("==========")
+            logger.info(f"TTS Provider: {tts_provider}")
             synthesizer = PdfSynthesizer(
                 file_path,
                 language=language,
