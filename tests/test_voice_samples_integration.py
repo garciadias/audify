@@ -22,6 +22,7 @@ class TestVoiceSamplesIntegration:
     @pytest.fixture
     def mock_api_responses(self):
         """Fixture providing mock API responses."""
+
         def mock_get_side_effect(url, **kwargs):
             if "models" in url:
                 mock_response = Mock()
@@ -33,18 +34,14 @@ class TestVoiceSamplesIntegration:
             elif "voices" in url:
                 mock_response = Mock()
                 mock_response.raise_for_status.return_value = None
-                mock_response.json.return_value = {
-                    "voices": ["af_bella", "af_alloy"]
-                }
+                mock_response.json.return_value = {"voices": ["af_bella", "af_alloy"]}
                 return mock_response
             else:
                 raise ValueError(f"Unexpected URL: {url}")
 
         return mock_get_side_effect
 
-    def test_cli_integration_voice_samples_creation(
-        self, runner, mock_api_responses
-    ):
+    def test_cli_integration_voice_samples_creation(self, runner, mock_api_responses):
         """Test full CLI integration for voice samples creation."""
         with (
             patch("requests.get", side_effect=mock_api_responses),
@@ -77,10 +74,9 @@ class TestVoiceSamplesIntegration:
             mock_synthesizer = Mock()
             mock_synthesizer_class.return_value = mock_synthesizer
 
-            result = runner.invoke(start.main, [
-                "--create-voice-samples",
-                "--translate", "es"
-            ])
+            result = runner.invoke(
+                start.main, ["--create-voice-samples", "--translate", "es"]
+            )
 
             assert result.exit_code == 0
             assert "Creating Voice Samples M4B" in result.output
@@ -117,7 +113,8 @@ class TestVoiceSamplesIntegration:
             patch("tempfile.mkdtemp", return_value="/tmp/test_voice_samples"),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.exists", return_value=True),
-            patch.object(VoiceSamplesSynthesizer, "_get_available_models_and_voices"
+            patch.object(
+                VoiceSamplesSynthesizer, "_get_available_models_and_voices"
             ) as mock_get_models_voices,
         ):
             # Simulate API failure
@@ -145,12 +142,15 @@ class TestVoiceSamplesIntegration:
             mock_synthesize.return_value = Path("/tmp/voice_samples.m4b")
 
             # Even with multiple flags, voice samples should take precedence
-            result = runner.invoke(start.main, [
-                "--create-voice-samples",
-                "--list-languages",
-                "--list-models",
-                "--list-voices"
-            ])
+            result = runner.invoke(
+                start.main,
+                [
+                    "--create-voice-samples",
+                    "--list-languages",
+                    "--list-models",
+                    "--list-voices",
+                ],
+            )
 
             assert result.exit_code == 0
             assert "Creating Voice Samples M4B" in result.output
@@ -179,14 +179,12 @@ class TestVoiceSamplesRegressionTests:
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("requests.get")
     def test_existing_list_models_still_works(
-            self, mock_get, mock_terminal_size, runner
-        ):
+        self, mock_get, mock_terminal_size, runner
+    ):
         """Test that existing --list-models functionality is preserved."""
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {
-            "data": [{"id": "kokoro"}, {"id": "tts-1"}]
-        }
+        mock_response.json.return_value = {"data": [{"id": "kokoro"}, {"id": "tts-1"}]}
         mock_get.return_value = mock_response
 
         result = runner.invoke(start.main, ["--list-models"])
@@ -207,10 +205,11 @@ class TestVoiceSamplesRegressionTests:
         mock_epub_synthesizer.return_value = mock_synth_instance
 
         with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
-            result = runner.invoke(start.main, [temp_file.name])
+            result = runner.invoke(start.main, [temp_file.name, "--verbose"])
 
             # Should not interfere with existing functionality
             assert result.exit_code == 0
+            # Header appears in output when verbose flag is used
             assert "Epub to Audiobook" in result.output
 
             # Verify synthesizer was called
@@ -264,7 +263,7 @@ class TestEdgeCases:
             # Many models and voices to test limiting
             mock_get.return_value = (
                 ["model1", "model2", "model3"],
-                ["voice1", "voice2", "voice3", "voice4"]
+                ["voice1", "voice2", "voice3", "voice4"],
             )
             mock_synthesize.return_value = Path("/tmp/voice_samples.m4b")
 
@@ -296,7 +295,9 @@ class TestEdgeCases:
         """Test voice grouping with edge case voice names."""
         mock_config = Mock()
         mock_config.get_available_voices.return_value = [
-            "voice_without_underscore", "multi_part_voice_name", "single"
+            "voice_without_underscore",
+            "multi_part_voice_name",
+            "single",
         ]
         mock_get_tts_config.return_value = mock_config
 
