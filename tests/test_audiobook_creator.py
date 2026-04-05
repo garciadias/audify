@@ -172,7 +172,11 @@ class TestLLMClient:
                     result = client.generate_audiobook_script("test chapter", "fr")
 
                     mock_translate.assert_called_once_with(
-                        AUDIOBOOK_PROMPT, src_lang="en", tgt_lang="fr"
+                        AUDIOBOOK_PROMPT,
+                        model="magistral:24b",
+                        src_lang="en",
+                        tgt_lang="fr",
+                        base_url="http://localhost:11434",
                     )
                     assert result == "Cleaned script content"
 
@@ -558,6 +562,8 @@ class TestAudiobookCreatorSynthesizeEpisode:
         creator.episodes_path = Path("/fake/episodes")
         creator.translate = "es"
         creator.language = "en"
+        creator.llm_model = None
+        creator.llm_base_url = None
 
         mp3_path = creator.episodes_path / "episode_001.mp3"
         wav_path = creator.episodes_path / "episode_001.wav"
@@ -566,7 +572,7 @@ class TestAudiobookCreatorSynthesizeEpisode:
         # Mock exists to return False for MP3 file
         mock_exists.return_value = False
 
-        def mock_translate(sentence, src_lang, tgt_lang):
+        def mock_translate(sentence, **kwargs):
             if sentence == "First sentence.":
                 return "Primera oración."
             elif sentence == "Second sentence.":
@@ -600,6 +606,8 @@ class TestAudiobookCreatorSynthesizeEpisode:
         creator.episodes_path = Path("/fake/episodes")
         creator.translate = "es"
         creator.language = "en"
+        creator.llm_model = None
+        creator.llm_base_url = None
 
         mp3_path = creator.episodes_path / "episode_001.mp3"
         wav_path = creator.episodes_path / "episode_001.wav"
@@ -950,6 +958,8 @@ class TestAudiobookCreatorGenerateScript:
         creator.chapter_titles = []
         creator._task_prompt = "test prompt"
         creator._task_llm_params = {}
+        creator.llm_model = None
+        creator.llm_base_url = None
 
         # Mock the reader and llm_client
         mock_reader = Mock()

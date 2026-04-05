@@ -423,7 +423,8 @@ class TestEpubSynthesizer:
 
             assert synthesizer.title == "Test Book"
             mock_translate.assert_called_once_with(
-                sentence="Livre de Test", src_lang="fr", tgt_lang="en"
+                sentence="Livre de Test", src_lang="fr", tgt_lang="en",
+                model=None, base_url=None,
             )
 
     @patch("audify.text_to_speech.EpubReader")
@@ -795,7 +796,8 @@ class TestPdfSynthesizer:
 
             assert result == Path("output.mp3")
             mock_translate.assert_called_once_with(
-                "Bonjour le monde.", src_lang="fr", tgt_lang="en"
+                "Bonjour le monde.", src_lang="fr", tgt_lang="en",
+                model=None, base_url=None,
             )
             mock_synth.assert_called_once()
 

@@ -432,6 +432,8 @@ class TestStartCLINewFeatures:
             translate=None,
             max_samples=5,
             output_dir=None,
+            llm_model=None,
+            llm_base_url="http://localhost:11434",
         )
         mock_synthesizer.synthesize.assert_called_once()
 

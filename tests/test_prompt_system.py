@@ -282,7 +282,11 @@ class TestLLMClientGenerateScript:
                     language="fr",
                 )
                 mock_translate.assert_called_once_with(
-                    "My prompt", src_lang="en", tgt_lang="fr"
+                    "My prompt",
+                    model="magistral:24b",
+                    src_lang="en",
+                    tgt_lang="fr",
+                    base_url="http://localhost:11434",
                 )
 
     def test_generate_script_english_no_translation(self):

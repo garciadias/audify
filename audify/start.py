@@ -16,6 +16,7 @@ from audify.utils.constants import (
     DEFAULT_LANGUAGE_LIST,
     DEFAULT_TTS_PROVIDER,
     KOKORO_API_BASE_URL,
+    OLLAMA_API_BASE_URL,
 )
 from audify.utils.text import get_file_extension
 
@@ -144,6 +145,19 @@ def get_available_models_and_voices():
     is_flag=True,
     help="List available TTS providers and their configuration requirements.",
 )
+@click.option(
+    "--llm-model",
+    type=str,
+    default=None,
+    help="LLM model to use for translation. For Ollama: model name. "
+    "For commercial APIs: 'api:model_name' (e.g., 'api:deepseek/deepseek-chat').",
+)
+@click.option(
+    "--llm-base-url",
+    type=str,
+    default=OLLAMA_API_BASE_URL,
+    help=f"Base URL for the LLM API (default: {OLLAMA_API_BASE_URL}).",
+)
 def main(
     file_path: str,
     language: str,
@@ -160,6 +174,8 @@ def main(
     output: str | None = None,
     tts_provider: str = DEFAULT_TTS_PROVIDER,
     list_tts_providers: bool = False,
+    llm_model: str | None = None,
+    llm_base_url: str = OLLAMA_API_BASE_URL,
 ):
     """Basic TTS conversion of EPUB/PDF files to audio (no LLM)."""
     terminal_width = os.get_terminal_size()[0]
@@ -212,6 +228,8 @@ def main(
             translate=translate,
             max_samples=max_samples,
             output_dir=output,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
         synthesizer.synthesize()
     elif list_languages:
@@ -281,6 +299,8 @@ def main(
                 confirm=not y,
                 output_dir=output,
                 tts_provider=tts_provider,
+                llm_model=llm_model,
+                llm_base_url=llm_base_url,
             )  # type: ignore
             synthesizer.synthesize()
         elif get_file_extension(file_path) == ".pdf":
@@ -297,6 +317,8 @@ def main(
                 save_text=save_text,
                 output_dir=output,
                 tts_provider=tts_provider,
+                llm_model=llm_model,
+                llm_base_url=llm_base_url,
             )  # type: ignore
             synthesizer.synthesize()
         else:

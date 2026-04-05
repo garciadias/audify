@@ -94,6 +94,8 @@ class BaseSynthesizer:
         language: str = "en",
         model_name: str = DEFAULT_MODEL,
         tts_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         self.path = Path(path).resolve()
         self.language = language
@@ -102,6 +104,8 @@ class BaseSynthesizer:
         self.model_name = model_name
         self.save_text = save_text
         self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
+        self.llm_model = llm_model
+        self.llm_base_url = llm_base_url
         self.tmp_dir_context = tempfile.TemporaryDirectory(
             prefix=f"audify_{self.path.stem}_"
         )
@@ -249,6 +253,8 @@ class EpubSynthesizer(BaseSynthesizer):
         llm_config: Optional[
             Union[OllamaAPIConfig, CommercialAPIConfig]
         ] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         self.reader = EpubReader(path, llm_config=llm_config)
         detected_language = self.reader.get_language()
@@ -265,7 +271,8 @@ class EpubSynthesizer(BaseSynthesizer):
         if translate:
             logger.info(f"Translating title from {language} to {translate}")
             self.title = translate_sentence(
-                sentence=self.title, src_lang=language, tgt_lang=translate
+                sentence=self.title, src_lang=language, tgt_lang=translate,
+                model=llm_model, base_url=llm_base_url,
             )
 
         self.file_name = get_file_name_title(self.title)
@@ -281,6 +288,8 @@ class EpubSynthesizer(BaseSynthesizer):
             translate=translate,
             save_text=save_text,
             tts_provider=tts_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
 
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -332,7 +341,8 @@ class EpubSynthesizer(BaseSynthesizer):
             try:
                 sentences = [
                     translate_sentence(
-                        sentence, src_lang=self.language, tgt_lang=self.translate
+                        sentence, src_lang=self.language, tgt_lang=self.translate,
+                        model=self.llm_model, base_url=self.llm_base_url,
                     )
                     for sentence in tqdm.tqdm(
                         sentences,
@@ -648,6 +658,8 @@ class PdfSynthesizer(BaseSynthesizer):
         translate: Optional[str] = None,
         save_text: bool = False,
         tts_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
@@ -667,6 +679,8 @@ class PdfSynthesizer(BaseSynthesizer):
             translate=translate,
             save_text=save_text,
             tts_provider=tts_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
 
     def synthesize(self) -> Path:
@@ -691,7 +705,8 @@ class PdfSynthesizer(BaseSynthesizer):
                 try:
                     sentences = [
                         translate_sentence(
-                            sentence, src_lang=self.language, tgt_lang=self.translate
+                            sentence, src_lang=self.language, tgt_lang=self.translate,
+                            model=self.llm_model, base_url=self.llm_base_url,
                         )
                         for sentence in tqdm.tqdm(
                             sentences, desc="Translating PDF", unit="sentence"
@@ -726,9 +741,13 @@ class VoiceSamplesSynthesizer:
         sample_text: Optional[str] = None,
         max_samples: Optional[int] = None,
         output_dir: Optional[str | Path] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         self.language = language
         self.translate = translate
+        self.llm_model = llm_model
+        self.llm_base_url = llm_base_url
         self.max_samples = max_samples
         self.sample_text = sample_text or (
             "Bean on bread is a simple yet delightful snack."
@@ -801,6 +820,8 @@ class VoiceSamplesSynthesizer:
                     sentence=sample_text,
                     src_lang=self.language,
                     tgt_lang=self.translate,
+                    model=self.llm_model,
+                    base_url=self.llm_base_url,
                 )
 
             # Generate audio

@@ -359,6 +359,8 @@ def convert(
             translate=translate,
             max_samples=max_samples,
             output_dir=output,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
         synthesizer.synthesize()
         return
