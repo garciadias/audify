@@ -1,5 +1,6 @@
 """Integration tests for voice samples functionality."""
 
+import logging
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -198,23 +199,31 @@ class TestVoiceSamplesRegressionTests:
     @patch("audify.start.get_file_extension", return_value=".epub")
     @patch("audify.start.EpubSynthesizer")
     def test_existing_epub_synthesis_still_works(
-        self, mock_epub_synthesizer, mock_get_extension, mock_terminal_size, runner
+        self,
+        mock_epub_synthesizer,
+        mock_get_extension,
+        mock_terminal_size,
+        runner,
+        caplog,
     ):
         """Test that existing EPUB synthesis functionality is preserved."""
         mock_synth_instance = Mock()
         mock_epub_synthesizer.return_value = mock_synth_instance
 
-        with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
-            result = runner.invoke(start.main, [temp_file.name, "--verbose"])
+        with caplog.at_level(logging.INFO):
+            with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
+                result = runner.invoke(start.main, [temp_file.name, "--verbose"])
 
-            # Should not interfere with existing functionality
-            assert result.exit_code == 0
-            # Header appears in output when verbose flag is used
-            assert "Epub to Audiobook" in result.output
+                # Should not interfere with existing functionality
+                assert result.exit_code == 0
+                # Header appears in logs when verbose flag is used
+                assert any(
+                    "Epub to Audiobook" in record.message for record in caplog.records
+                )
 
-            # Verify synthesizer was called
-            mock_epub_synthesizer.assert_called_once()
-            mock_synth_instance.synthesize.assert_called_once()
+                # Verify synthesizer was called
+                mock_epub_synthesizer.assert_called_once()
+                mock_synth_instance.synthesize.assert_called_once()
 
     def test_help_output_includes_all_options(self, runner):
         """Test that help output includes both old and new options."""
