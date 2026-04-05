@@ -52,12 +52,12 @@ def list_tasks():
 
     tasks = TaskRegistry.get_all()
 
-    print("=" * terminal_width)
-    print("Available Tasks".center(terminal_width))
-    print("=" * terminal_width)
-    print()
-    print(f"{'Task':<15} {'Requires LLM':<15} {'Output':<12} Description")
-    print("-" * terminal_width)
+    click.echo("=" * terminal_width)
+    click.echo("Available Tasks".center(terminal_width))
+    click.echo("=" * terminal_width)
+    click.echo()
+    click.echo(f"{'Task':<15} {'Requires LLM':<15} {'Output':<12} Description")
+    click.echo("-" * terminal_width)
 
     descriptions = {
         "direct": "Direct TTS conversion, no LLM processing",
@@ -72,13 +72,13 @@ def list_tasks():
         task = tasks[name]
         llm = "Yes" if task.requires_llm else "No"
         desc = descriptions.get(name, "Custom task")
-        print(f"  {name:<13} {llm:<15} {task.output_structure:<12} {desc}")
+        click.echo(f"  {name:<13} {llm:<15} {task.output_structure:<12} {desc}")
 
-    print()
-    print("=" * terminal_width)
-    print("Usage: audify audiobook <input> --task <task-name>")
-    print("       audify audiobook <input> --prompt-file <path>")
-    print("=" * terminal_width)
+    click.echo()
+    click.echo("=" * terminal_width)
+    click.echo("Usage: audify audiobook <input> --task <task-name>")
+    click.echo("       audify audiobook <input> --prompt-file <path>")
+    click.echo("=" * terminal_width)
 
 
 @cli.command("validate-prompt")
@@ -94,14 +94,14 @@ def validate_prompt(prompt_file: str):
         is_valid, message = manager.validate_prompt(prompt)
 
         if is_valid:
-            print(f"Prompt file is valid: {prompt_file}")
-            print(f"  Length: {len(prompt)} characters")
-            print(f"  Preview: {prompt[:100]}...")
+            click.echo(f"Prompt file is valid: {prompt_file}")
+            click.echo(f"  Length: {len(prompt)} characters")
+            click.echo(f"  Preview: {prompt[:100]}...")
         else:
-            print(f"Prompt file validation failed: {message}")
+            click.echo(f"Prompt file validation failed: {message}")
             sys.exit(1)
     except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}")
+        click.echo(f"Error: {e}")
         sys.exit(1)
 
 

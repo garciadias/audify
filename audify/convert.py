@@ -7,6 +7,7 @@ This command merges functionality from both `run` (direct TTS) and `audiobook`
 (LLM-powered) workflows, supporting custom tasks and prompts.
 """
 
+import logging
 import os
 import warnings
 from pathlib import Path
@@ -31,6 +32,7 @@ from audify.utils.constants import (
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
 )
+from audify.utils.logging_utils import configure_cli_logging
 from audify.utils.text import get_file_extension
 
 # Ignore UserWarning from pkg_resources about package metadata
@@ -39,6 +41,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 def get_available_models_and_voices():
     """Get available models and voices from Kokoro API."""
+    logger = logging.getLogger(__name__)
     try:
         # Get models
         models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
@@ -56,7 +59,7 @@ def get_available_models_and_voices():
 
         return models, voices
     except requests.RequestException as e:
-        print(f"Error fetching models and voices from Kokoro API: {e}")
+        logger.error(f"Error fetching models and voices from Kokoro API: {e}")
         return [], []
 
 
@@ -269,6 +272,11 @@ def get_creator(
     default=5,
     help="Maximum number of voice samples to create when using --create-voice-samples.",
 )
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Show detailed log messages in terminal.",
+)
 def convert(
     path: str,
     language: str,
@@ -291,6 +299,7 @@ def convert(
     list_tts_providers: bool,
     create_voice_samples: bool,
     max_samples: int,
+    verbose: bool,
 ):
     """Convert ebooks, PDFs, or directories to audio using TTS and optional LLM.
 
@@ -308,12 +317,16 @@ def convert(
     except OSError:
         terminal_width = 80  # Default width when no terminal is available
 
+    # Configure logging based on verbose flag
+    configure_cli_logging(verbose=verbose)
+    logger = logging.getLogger(__name__)
+
     if list_tts_providers:
-        print("=" * terminal_width)
-        print("Available TTS Providers".center(terminal_width))
-        print("=" * terminal_width)
-        print("\nProvider\tStatus\t\tConfiguration")
-        print("-" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo("Available TTS Providers".center(terminal_width))
+        click.echo("=" * terminal_width)
+        click.echo("\nProvider\tStatus\t\tConfiguration")
+        click.echo("-" * terminal_width)
 
         provider_info = {
             "kokoro": {
@@ -343,17 +356,19 @@ def convert(
                 status = "Not available"
 
             info = provider_info.get(provider, {"name": provider, "config": "N/A"})
-            print(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
+            click.echo(f"{info['name']:<16}\t{status:<16}\t{info['config']}")
 
-        print("\n" + "=" * terminal_width)
-        print("Set TTS_PROVIDER environment variable or use --tts-provider/-tp flag")
-        print("=" * terminal_width)
+        click.echo("\n" + "=" * terminal_width)
+        click.echo(
+            "Set TTS_PROVIDER environment variable or use --tts-provider/-tp flag"
+        )
+        click.echo("=" * terminal_width)
         return
 
     if create_voice_samples:
-        print("=" * terminal_width)
-        print("Creating Voice Samples M4B".center(terminal_width))
-        print("=" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo("Creating Voice Samples M4B".center(terminal_width))
+        click.echo("=" * terminal_width)
         synthesizer = VoiceSamplesSynthesizer(
             language=language,
             translate=translate,
@@ -366,34 +381,36 @@ def convert(
         return
 
     if list_languages:
-        print("=" * terminal_width)
-        print("Available languages:".center(terminal_width))
-        print("=" * terminal_width)
-        print("Language\tCode")
-        print("--------\t----")
+        click.echo("=" * terminal_width)
+        click.echo("Available languages:".center(terminal_width))
+        click.echo("=" * terminal_width)
+        click.echo("Language\tCode")
+        click.echo("--------\t----")
         for lang, code in AVAILABLE_LANGUAGES.items():
-            print(f"{lang:<10}\t{code}")
-        print("=" * terminal_width)
+            click.echo(f"{lang:<10}\t{code}")
+        click.echo("=" * terminal_width)
         return
 
     if list_models:
-        print("=" * terminal_width)
-        print("Available models:".center(terminal_width))
-        print("=" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo("Available models:".center(terminal_width))
+        click.echo("=" * terminal_width)
         try:
             response = requests.get(f"{KOKORO_API_BASE_URL}/models")
             response.raise_for_status()
             models = response.json().get("data", [])
             model_names = sorted(model.get("id") for model in models if "id" in model)
-            print("\n".join(model_names))
+            click.echo("\n".join(model_names))
         except requests.RequestException as e:
-            print(f"Error fetching models from Kokoro API: {e}")
+            click.echo(f"Error fetching models from Kokoro API: {e}")
         return
 
     if list_voices:
-        print("=" * terminal_width)
-        print(f"Available voices for {tts_provider.upper()}:".center(terminal_width))
-        print("=" * terminal_width)
+        click.echo("=" * terminal_width)
+        click.echo(
+            f"Available voices for {tts_provider.upper()}:".center(terminal_width)
+        )
+        click.echo("=" * terminal_width)
         try:
             config = get_tts_config(provider=tts_provider, language=language)
             voices = config.get_available_voices()
@@ -408,40 +425,40 @@ def convert(
                         voice_groups[prefix].append(v)
 
                     for prefix in sorted(voice_groups.keys()):
-                        print(f"\n{prefix.upper()} voices:")
+                        click.echo(f"\n{prefix.upper()} voices:")
                         for v in sorted(voice_groups[prefix]):
-                            print(f"  {v}")
+                            click.echo(f"  {v}")
                 else:
                     # For other providers, just list voices
-                    print(f"\nVoices for {tts_provider}:")
+                    click.echo(f"\nVoices for {tts_provider}:")
                     for v in sorted(voices):
-                        print(f"  {v}")
+                        click.echo(f"  {v}")
             else:
-                print(f"No voices found for {tts_provider}.")
+                click.echo(f"No voices found for {tts_provider}.")
         except Exception as e:
-            print(f"Error fetching voices from {tts_provider}: {e}")
+            click.echo(f"Error fetching voices from {tts_provider}: {e}")
         return
 
     # Normal conversion path
     path_obj = Path(path)
 
-    print("=" * terminal_width)
+    logger.info("=" * terminal_width)
 
     # Check if path is a directory
     if path_obj.is_dir():
-        print("Directory Mode: Processing multiple files".center(terminal_width))
-        print("=" * terminal_width)
-        print(f"Source directory: {path}")
-        print(f"Language: {language}")
-        print(f"LLM Model: {llm_model}")
-        print(f"TTS Provider: {tts_provider}")
-        print(f"Task: {task}")
+        logger.info("Directory Mode: Processing multiple files".center(terminal_width))
+        logger.info("=" * terminal_width)
+        logger.info(f"Source directory: {path}")
+        logger.info(f"Language: {language}")
+        logger.info(f"LLM Model: {llm_model}")
+        logger.info(f"TTS Provider: {tts_provider}")
+        logger.info(f"Task: {task}")
         if prompt_file:
-            print(f"Prompt file: {prompt_file}")
+            logger.info(f"Prompt file: {prompt_file}")
         if translate:
-            print(f"Translation: {language} -> {translate}")
+            logger.info(f"Translation: {language} -> {translate}")
 
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
 
         try:
             # Create directory audiobook creator
@@ -463,21 +480,21 @@ def convert(
             # Generate the audiobook
             output_path = dir_creator.synthesize()
 
-            print("\n" + "=" * terminal_width)
-            print("Directory audiobook creation complete!")
-            print(f"Output directory: {output_path}")
-            print("=" * terminal_width)
+            logger.info("\n" + "=" * terminal_width)
+            logger.info("Directory audiobook creation complete!")
+            logger.info(f"Output directory: {output_path}")
+            logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
-            print("\n\nDirectory audiobook creation cancelled by user.")
+            logger.info("\n\nDirectory audiobook creation cancelled by user.")
             return
         except Exception as e:
-            print(f"\nError: {e}")
-            print("Please check your configuration and try again.")
+            logger.error(f"\nError: {e}")
+            logger.error("Please check your configuration and try again.")
             if "Could not connect to LLM" in str(e):
-                print("\nTip: Make sure Ollama is running:")
-                print("  ollama serve")
-                print(f"  ollama pull {llm_model}")
+                logger.error("\nTip: Make sure Ollama is running:")
+                logger.error("  ollama serve")
+                logger.error(f"  ollama pull {llm_model}")
             return
 
     else:
@@ -485,19 +502,19 @@ def convert(
         file_extension = get_file_extension(path)
 
         # Show configuration
-        print(f"Source file: {path}")
-        print(f"Language: {language}")
-        print(f"LLM Model: {llm_model}")
-        print(f"TTS Provider: {tts_provider}")
-        print(f"Task: {task}")
+        logger.info(f"Source file: {path}")
+        logger.info(f"Language: {language}")
+        logger.info(f"LLM Model: {llm_model}")
+        logger.info(f"TTS Provider: {tts_provider}")
+        logger.info(f"Task: {task}")
         if prompt_file:
-            print(f"Prompt file: {prompt_file}")
+            logger.info(f"Prompt file: {prompt_file}")
         if translate:
-            print(f"Translation: {language} -> {translate}")
+            logger.info(f"Translation: {language} -> {translate}")
         if max_chapters:
-            print(f"Max episodes: {max_chapters}")
+            logger.info(f"Max episodes: {max_chapters}")
 
-        print("=" * terminal_width)
+        logger.info("=" * terminal_width)
 
         try:
             creator = get_creator(
@@ -520,20 +537,20 @@ def convert(
             # Generate the audiobook
             output_path = creator.synthesize()
 
-            print("\n" + "=" * terminal_width)
-            print("Audiobook creation complete!")
-            print(f"Output directory: {output_path}")
-            print("=" * terminal_width)
+            logger.info("\n" + "=" * terminal_width)
+            logger.info("Audiobook creation complete!")
+            logger.info(f"Output directory: {output_path}")
+            logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
-            print("\n\nAudiobook creation cancelled by user.")
+            logger.info("\n\nAudiobook creation cancelled by user.")
         except Exception as e:
-            print(f"\nError: {e}")
-            print("Please check your configuration and try again.")
+            logger.error(f"\nError: {e}")
+            logger.error("Please check your configuration and try again.")
             if "Could not connect to LLM" in str(e):
-                print("\nTip: Make sure Ollama is running:")
-                print("  ollama serve")
-                print(f"  ollama pull {llm_model}")
+                logger.error("\nTip: Make sure Ollama is running:")
+                logger.error("  ollama serve")
+                logger.error(f"  ollama pull {llm_model}")
 
 
 if __name__ == "__main__":
