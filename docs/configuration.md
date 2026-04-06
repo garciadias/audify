@@ -25,7 +25,7 @@ QWEN_TTS_VOICE=Vivian
 
 # OpenAI TTS
 OPENAI_API_KEY=sk-your-key
-OPENAI_TTS_MODEL=gpt-4o-mini-tts-2025-03-20
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
 OPENAI_TTS_VOICE=coral
 
 # AWS Polly

@@ -187,7 +187,6 @@ except importlib.metadata.PackageNotFoundError:
     is_flag=True,
     help="Show detailed log messages in terminal.",
 )
-@click.argument("path", nargs=-1, type=click.Path())
 @click.version_option(__version__, "--version", "-V", message="audify %(version)s")
 @click.pass_context
 def cli(
@@ -212,14 +211,13 @@ def cli(
     create_voice_samples: bool,
     max_samples: int,
     verbose: bool,
-    path: tuple[str, ...],
 ):
     """Audify: Convert ebooks and PDFs to audiobooks using AI text-to-speech."""
     # If a subcommand is invoked, let it handle the logic
     if ctx.invoked_subcommand is not None:
         return
 
-    path_str = path[0] if path else None
+    path_str = ctx.args[0] if ctx.args else None
 
     # Configure logging based on verbose flag
     configure_cli_logging(verbose=verbose)

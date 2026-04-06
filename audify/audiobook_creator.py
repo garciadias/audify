@@ -93,19 +93,18 @@ class LLMClient:
         params: dict[str, Any] = dict(_DEFAULT_LLM_PARAMS)
         params.update(llm_params)
 
-        # Prepare system prompt (translate if needed)
-        if language and language != "en":
-            system_prompt = translate_sentence(
-                prompt,
-                model=self.model_string,
-                src_lang="en",
-                tgt_lang=language,
-                base_url=self.base_url,
-            )
-        else:
-            system_prompt = prompt
+        system_prompt = prompt
 
         try:
+            # Prepare system prompt (translate if needed)
+            if language and language != "en":
+                system_prompt = translate_sentence(
+                    prompt,
+                    model=self.model_string,
+                    src_lang="en",
+                    tgt_lang=language,
+                    base_url=self.base_url,
+                )
             if self.is_commercial:
                 logger.info(f"Sending request to commercial API: {self.config.model}")
             else:
@@ -1021,14 +1020,19 @@ class DirectoryAudiobookCreator:
             # Generate script using LLM
             llm_client = LLMClient(self.llm_base_url, self.llm_model)
 
-            # Resolve task prompt
+            # Resolve task prompt and metadata
             from audify.prompts.manager import PromptManager
+            from audify.prompts.tasks import TaskRegistry
 
             manager = PromptManager()
             prompt = manager.get_prompt(
                 task=self.task or "audiobook",
                 prompt_file=self.prompt_file,
             )
+            # Get task metadata (requires_llm, llm_params) from registry
+            task_config = TaskRegistry.get(self.task or "audiobook")
+            llm_params = task_config.llm_params if task_config else {}
+            
             audiobook_script = llm_client.generate_script(
                 text=cleaned_content,
                 prompt=prompt,

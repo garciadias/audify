@@ -124,16 +124,16 @@ audify list-tasks
 audify validate-prompt my-prompt.txt
 
 # List languages
-audify run --list-languages
+audify --list-languages
 
 # List TTS voices
-audify run --list-voices
+audify --list-voices
 
 # List TTS models
-audify run --list-models
+audify --list-models
 
 # List TTS providers
-audify run --list-tts-providers
+audify --list-tts-providers
 ```
 
 ## Output Structure
