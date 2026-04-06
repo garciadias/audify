@@ -75,9 +75,7 @@ class TestVoiceSamplesIntegration:
             mock_synthesizer = Mock()
             mock_synthesizer_class.return_value = mock_synthesizer
 
-            result = runner.invoke(
-                cli, ["--create-voice-samples", "--translate", "es"]
-            )
+            result = runner.invoke(cli, ["--create-voice-samples", "--translate", "es"])
 
             assert result.exit_code == 0
             assert "Creating Voice Samples M4B" in result.output
@@ -197,18 +195,19 @@ class TestVoiceSamplesRegressionTests:
 
     @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_file_extension", return_value=".epub")
-    @patch("audify.text_to_speech.EpubSynthesizer")
+    @patch("audify.convert.get_creator")
     def test_existing_epub_synthesis_still_works(
         self,
-        mock_epub_synthesizer,
+        mock_get_creator,
         mock_get_extension,
         mock_terminal_size,
         runner,
         caplog,
     ):
-        """Test that existing EPUB synthesis functionality is preserved."""
-        mock_synth_instance = Mock()
-        mock_epub_synthesizer.return_value = mock_synth_instance
+        """Test that the unified EPUB flow still works end to end."""
+        mock_creator = Mock()
+        mock_creator.synthesize.return_value = "/out"
+        mock_get_creator.return_value = mock_creator
 
         with caplog.at_level(logging.INFO):
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
@@ -216,14 +215,15 @@ class TestVoiceSamplesRegressionTests:
 
                 # Should not interfere with existing functionality
                 assert result.exit_code == 0
-                # Header appears in logs when verbose flag is used
+                # Unified CLI logs the audiobook completion message.
                 assert any(
-                    "Epub to Audiobook" in record.message for record in caplog.records
+                    "Audiobook creation complete!" in record.message
+                    for record in caplog.records
                 )
 
-                # Verify synthesizer was called
-                mock_epub_synthesizer.assert_called_once()
-                mock_synth_instance.synthesize.assert_called_once()
+                # Verify the unified creator path was called
+                mock_get_creator.assert_called_once()
+                mock_creator.synthesize.assert_called_once()
 
     def test_help_output_includes_all_options(self, runner):
         """Test that help output includes both old and new options."""

@@ -12,15 +12,14 @@ Unified CLI entry point supporting:
 import importlib.metadata
 import logging
 import os
-import sys
 import warnings
 from pathlib import Path
 
 import click
 import requests
 
+import audify.convert as convert_module
 from audify.audiobook_creator import DirectoryAudiobookCreator
-from audify.convert import get_creator
 from audify.prompts.manager import PromptManager
 from audify.prompts.tasks import TaskRegistry
 from audify.text_to_speech import VoiceSamplesSynthesizer
@@ -46,7 +45,10 @@ except importlib.metadata.PackageNotFoundError:
     __version__ = "0.1.0"
 
 
-@click.group(invoke_without_command=True)
+@click.group(
+    invoke_without_command=True,
+    context_settings={"allow_extra_args": True},
+)
 @click.option(
     "--language",
     "-l",
@@ -89,9 +91,10 @@ except importlib.metadata.PackageNotFoundError:
 )
 @click.option(
     "--llm-model",
+    "-m",
     "-lm",
     type=str,
-    default=OLLAMA_DEFAULT_MODEL,
+    default=None,
     help=f"The LLM model to use. For Ollama: model name "
     f"(default: {OLLAMA_DEFAULT_MODEL}). For commercial APIs: "
     f"'api:model_name' (e.g., 'api:deepseek/deepseek-chat', "
@@ -216,7 +219,6 @@ def cli(
     if ctx.invoked_subcommand is not None:
         return
 
-    # Convert path tuple to single value
     path_str = path[0] if path else None
 
     # Configure logging based on verbose flag
@@ -352,6 +354,8 @@ def cli(
         click.echo(ctx.get_help())
         return
 
+    effective_llm_model = llm_model or OLLAMA_DEFAULT_MODEL
+
     # Normal conversion path
     path_obj = Path(path_str)
 
@@ -366,9 +370,9 @@ def cli(
     if path_obj.is_dir():
         logger.info("Directory Mode: Processing multiple files".center(terminal_width))
         logger.info("=" * terminal_width)
-        logger.info(f"Source directory: {path}")
+        logger.info(f"Source directory: {path_str}")
         logger.info(f"Language: {language}")
-        logger.info(f"LLM Model: {llm_model}")
+        logger.info(f"LLM Model: {effective_llm_model}")
         logger.info(f"TTS Provider: {tts_provider}")
         logger.info(f"Task: {task}")
         if prompt_file:
@@ -381,14 +385,14 @@ def cli(
         try:
             # Create directory audiobook creator
             dir_creator = DirectoryAudiobookCreator(
-                directory_path=path,
+                directory_path=path_str,
                 language=language,
                 voice=voice,
                 model_name=voice_model,
                 translate=translate,
                 save_text=save_text,
                 llm_base_url=llm_base_url,
-                llm_model=llm_model,
+                llm_model=effective_llm_model,
                 confirm=not confirm,
                 output_dir=output,
                 tts_provider=tts_provider,
@@ -412,17 +416,17 @@ def cli(
             if "Could not connect to LLM" in str(e):
                 logger.error("\nTip: Make sure Ollama is running:")
                 logger.error("  ollama serve")
-                logger.error(f"  ollama pull {llm_model}")
+                logger.error(f"  ollama pull {effective_llm_model}")
             return
 
     else:
         # Single file mode
-        file_extension = get_file_extension(path)
+        file_extension = get_file_extension(path_str)
 
         # Show configuration
-        logger.info(f"Source file: {path}")
+        logger.info(f"Source file: {path_str}")
         logger.info(f"Language: {language}")
-        logger.info(f"LLM Model: {llm_model}")
+        logger.info(f"LLM Model: {effective_llm_model}")
         logger.info(f"TTS Provider: {tts_provider}")
         logger.info(f"Task: {task}")
         if prompt_file:
@@ -435,16 +439,16 @@ def cli(
         logger.info("=" * terminal_width)
 
         try:
-            creator = get_creator(
+            creator = convert_module.get_creator(
                 file_extension=file_extension,
-                path=path,
+                path=path_str,
                 language=language,
                 voice=voice,
                 model_name=voice_model,
                 translate=translate,
                 save_text=save_text,
                 llm_base_url=llm_base_url,
-                llm_model=llm_model,
+                llm_model=effective_llm_model,
                 max_chapters=max_chapters,
                 confirm=not confirm,
                 output_dir=output,
@@ -468,7 +472,7 @@ def cli(
             if "Could not connect to LLM" in str(e):
                 logger.error("\nTip: Make sure Ollama is running:")
                 logger.error("  ollama serve")
-                logger.error(f"  ollama pull {llm_model}")
+                logger.error(f"  ollama pull {effective_llm_model}")
 
 
 @cli.command("list-tasks")
@@ -515,21 +519,15 @@ def list_tasks():
 def validate_prompt(prompt_file: str):
     """Validate a custom prompt file."""
     manager = PromptManager()
+    prompt = manager.load_prompt_file(prompt_file)
+    is_valid, message = manager.validate_prompt(prompt)
 
-    try:
-        prompt = manager.load_prompt_file(prompt_file)
-        is_valid, message = manager.validate_prompt(prompt)
-
-        if is_valid:
-            click.echo(f"Prompt file is valid: {prompt_file}")
-            click.echo(f"  Length: {len(prompt)} characters")
-            click.echo(f"  Preview: {prompt[:100]}...")
-        else:
-            click.echo(f"Prompt file validation failed: {message}")
-            sys.exit(1)
-    except (FileNotFoundError, ValueError) as e:
-        click.echo(f"Error: {e}")
-        sys.exit(1)
+    if is_valid:
+        click.echo(f"Prompt file is valid: {prompt_file}")
+        click.echo(f"  Length: {len(prompt)} characters")
+        click.echo(f"  Preview: {prompt[:100]}...")
+    else:
+        raise click.ClickException(f"Prompt validation failed: {message}")
 
 
 if __name__ == "__main__":
