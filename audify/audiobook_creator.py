@@ -1032,11 +1032,12 @@ class DirectoryAudiobookCreator:
             # Get task metadata (requires_llm, llm_params) from registry
             task_config = TaskRegistry.get(self.task or "audiobook")
             llm_params = task_config.llm_params if task_config else {}
-            
+
             audiobook_script = llm_client.generate_script(
                 text=cleaned_content,
                 prompt=prompt,
                 language=self.translate or self.language,
+                **llm_params,
             )
 
             # Save script if requested
