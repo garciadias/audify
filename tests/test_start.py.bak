@@ -32,7 +32,7 @@ def runner():
 # reset_mocks_fixture was removed as it was only used by obsolete tests.
 
 
-@patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+@patch("os.get_terminal_size", return_value=(80, 24))
 def test_main_list_languages(mock_terminal_size, runner):
     """Test main command with --list-languages flag."""
     result = runner.invoke(cli, ["--list-languages"])
@@ -41,7 +41,7 @@ def test_main_list_languages(mock_terminal_size, runner):
 
 
 @patch("pathlib.Path.exists", return_value=True)
-@patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+@patch("os.get_terminal_size", return_value=(80, 24))
 def test_main_list_models(mock_terminal_size, mock_exists, runner):
     """Test main command with --list-models flag."""
     result = runner.invoke(cli, ["--list-models"])
@@ -54,7 +54,7 @@ def test_main_list_models(mock_terminal_size, mock_exists, runner):
 # during consolidation. The new CLI uses AudiobookCreator for all synthesis.
 
 
-@patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+@patch("os.get_terminal_size", return_value=(80, 24))
 @patch("requests.get")
 def test_main_list_models_api_error(mock_get, mock_terminal_size, runner):
     """Test main command with --list-models flag when API fails."""
@@ -68,7 +68,7 @@ def test_main_list_models_api_error(mock_get, mock_terminal_size, runner):
     assert "Error fetching models from Kokoro API" in result.output
 
 
-@patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+@patch("os.get_terminal_size", return_value=(80, 24))
 @patch("requests.get")
 def test_main_list_models_request_exception(mock_get, mock_terminal_size, runner):
     """Test main command with --list-models flag with RequestException."""
@@ -81,7 +81,7 @@ def test_main_list_models_request_exception(mock_get, mock_terminal_size, runner
     assert "Error fetching models from Kokoro API" in result.output
 
 
-@patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+@patch("os.get_terminal_size", return_value=(80, 24))
 @patch("requests.get")
 def test_main_list_models_success(mock_get, mock_terminal_size, runner):
     """Test main command with --list-models flag with successful API response."""
@@ -121,7 +121,7 @@ class TestStartCLINewFeatures:
         """Fixture to provide a CliRunner instance."""
         return CliRunner()
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("requests.get")
     def test_list_voices_success(self, mock_get, mock_terminal_size, runner):
         """Test --list-voices flag with successful API response."""
@@ -162,7 +162,7 @@ class TestStartCLINewFeatures:
         assert "FR voices:" in result.output
         assert "fr_voice" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_voices_api_error(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -178,7 +178,7 @@ class TestStartCLINewFeatures:
         assert "Available voices for KOKORO:" in result.output
         assert "Error fetching voices from kokoro" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_voices_no_voices_found(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -194,7 +194,7 @@ class TestStartCLINewFeatures:
         assert "Available voices for KOKORO:" in result.output
         assert "No voices found for kokoro." in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.VoiceSamplesSynthesizer")
     def test_create_voice_samples_success(
         self, mock_synthesizer_class, mock_terminal_size, runner
@@ -219,7 +219,7 @@ class TestStartCLINewFeatures:
         )
         mock_synthesizer.synthesize.assert_called_once()
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.VoiceSamplesSynthesizer")
     def test_create_voice_samples_with_translation(
         self, mock_synthesizer_class, mock_terminal_size, runner
@@ -241,7 +241,7 @@ class TestStartCLINewFeatures:
         assert call_args.kwargs["language"] == "en"
         assert call_args.kwargs["translate"] == "es"
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.VoiceSamplesSynthesizer")
     def test_create_voice_samples_with_custom_language(
         self, mock_synthesizer_class, mock_terminal_size, runner
@@ -271,7 +271,7 @@ class TestStartCLINewFeatures:
         assert "-cvs" in result.output
         assert "Create a sample M4B audiobook" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     def test_list_voices_short_flag(self, mock_terminal_size, runner):
         """Test --list-voices short flag (-lv)."""
         with patch("audify.cli.get_tts_config") as mock_get_config:
@@ -284,7 +284,7 @@ class TestStartCLINewFeatures:
             assert result.exit_code == 0
             assert "Available voices for KOKORO:" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.VoiceSamplesSynthesizer")
     def test_create_voice_samples_short_flag(
         self, mock_synthesizer_class, mock_terminal_size, runner
@@ -299,7 +299,7 @@ class TestStartCLINewFeatures:
         assert "Creating Voice Samples M4B" in result.output
         mock_synthesizer.synthesize.assert_called_once()
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     def test_mutually_exclusive_options(self, mock_terminal_size, runner):
         """Test that new options work correctly with other flags."""
         # Test that list-models takes precedence over list-voices
@@ -316,7 +316,7 @@ class TestStartCLINewFeatures:
             assert result.exit_code == 0
             assert "Available models:" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.VoiceSamplesSynthesizer")
     def test_voice_samples_takes_precedence(
         self, mock_synthesizer_class, mock_terminal_size, runner
@@ -344,7 +344,7 @@ class TestListTTSProviders:
         """Fixture to provide a CliRunner instance."""
         return CliRunner()
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_tts_providers_all_available(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -364,7 +364,7 @@ class TestListTTSProviders:
         assert "Google Cloud TTS" in result.output
         assert "Available" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_tts_providers_not_configured(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -379,7 +379,7 @@ class TestListTTSProviders:
         assert result.exit_code == 0
         assert "Not configured" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_tts_providers_error(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -392,7 +392,7 @@ class TestListTTSProviders:
         assert result.exit_code == 0
         assert "Not available" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_tts_providers_short_flag(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -407,7 +407,7 @@ class TestListTTSProviders:
         assert result.exit_code == 0
         assert "Available TTS Providers" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_tts_providers_shows_config_info(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -436,7 +436,7 @@ class TestListVoicesNonKokoro:
         """Fixture to provide a CliRunner instance."""
         return CliRunner()
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_voices_openai_provider(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -459,7 +459,7 @@ class TestListVoicesNonKokoro:
         assert "alloy" in result.output
         assert "echo" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_voices_aws_provider(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -476,7 +476,7 @@ class TestListVoicesNonKokoro:
         assert "Voices for aws:" in result.output
         assert "Joanna" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     @patch("audify.cli.get_tts_config")
     def test_list_voices_google_provider(
         self, mock_get_tts_config, mock_terminal_size, runner
@@ -639,7 +639,7 @@ class TestCLISubcommands:
         assert "list-tasks" in cli.commands
         assert "validate-prompt" in cli.commands
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     def test_list_tasks_command(self, mock_terminal_size, runner):
         """Test the list-tasks subcommand."""
         from unittest.mock import Mock
@@ -663,7 +663,7 @@ class TestCLISubcommands:
             assert "direct" in result.output
             assert "audiobook" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     def test_validate_prompt_command_valid(self, mock_terminal_size, runner):
         """Test validate-prompt subcommand with valid prompt file."""
         from unittest.mock import Mock, mock_open
@@ -687,7 +687,7 @@ class TestCLISubcommands:
                 assert "Length:" in result.output
                 assert "Preview:" in result.output
 
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
+    @patch("os.get_terminal_size", return_value=(80, 24))
     def test_validate_prompt_command_invalid(self, mock_terminal_size, runner):
         """Test validate-prompt subcommand with invalid prompt file."""
         from unittest.mock import Mock
@@ -703,6 +703,80 @@ class TestCLISubcommands:
 
             assert result.exit_code == 1
             assert "Prompt validation failed" in result.output
+
+
+def test_list_tasks_function():
+    """Test the list_tasks function directly."""
+    from unittest.mock import Mock, patch
+    from audify.cli import list_tasks
+    from audify.prompts.tasks import TaskRegistry
+
+    # Mock terminal width - need to return an os.terminal_size object
+    import os
+
+    terminal_size = os.terminal_size((80, 24))
+    with patch("os.get_terminal_size", return_value=terminal_size):
+        # Mock TaskRegistry.get_all()
+        mock_tasks = {
+            "direct": Mock(requires_llm=False, output_structure="direct"),
+            "audiobook": Mock(requires_llm=True, output_structure="episodes"),
+        }
+        with patch.object(TaskRegistry, "get_all", return_value=mock_tasks):
+            # Mock click.echo to capture output
+            with patch("click.echo") as mock_echo:
+                list_tasks()
+
+                # Verify some output was echoed
+                assert mock_echo.call_count > 0
+                # Check that "Available Tasks" appears in calls
+                found = False
+                for call in mock_echo.call_args_list:
+                    args = call[0]
+                    if args and "Available Tasks" in args[0]:
+                        found = True
+                        break
+                assert found, "Expected 'Available Tasks' in output"
+
+
+def test_validate_prompt_function():
+    """Test the validate_prompt function directly."""
+    from unittest.mock import Mock, patch
+    from audify.cli import validate_prompt
+
+    # Mock PromptManager
+    mock_manager = Mock()
+    mock_manager.load_prompt_file.return_value = "Test prompt content"
+    mock_manager.validate_prompt.return_value = (True, "Valid")
+
+    with patch("audify.cli.PromptManager", return_value=mock_manager):
+        with patch("click.echo") as mock_echo:
+            validate_prompt("dummy.prompt")
+
+            # Check that success message was echoed
+            assert mock_echo.call_count >= 3
+            # First call: "Prompt file is valid: dummy.prompt"
+            assert "Prompt file is valid" in mock_echo.call_args_list[0][0][0]
+
+
+def test_validate_prompt_function_invalid():
+    """Test validate_prompt with invalid prompt."""
+    from unittest.mock import Mock, patch
+    from audify.cli import validate_prompt
+    import click
+
+    # Mock PromptManager
+    mock_manager = Mock()
+    mock_manager.load_prompt_file.return_value = "Invalid"
+    mock_manager.validate_prompt.return_value = (False, "Prompt too short")
+
+    with patch("audify.cli.PromptManager", return_value=mock_manager):
+        with patch("click.echo"):
+            # Should raise ClickException
+            try:
+                validate_prompt("dummy.prompt")
+                assert False, "Expected ClickException"
+            except click.ClickException as e:
+                assert "Prompt validation failed" in str(e)
 
 
 def test_cli_no_path_shows_help():

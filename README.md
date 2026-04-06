@@ -16,6 +16,7 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **📚 Multiple Formats**: Convert EPUB ebooks, PDF documents, TXT, and MD files
 - **📁 Directory Processing**: Create audiobooks from multiple files in a directory
 - **🎙️ Audiobook Creation**: Generate audiobook-style content from books using LLM
+- **🎛️ Flexible Task System**: Transform content into audiobooks, podcasts, summaries, meditations, or custom styles
 - **🌐 REST API**: HTTP API for programmatic synthesis and audiobook creation
 - **🔒 Multiple TTS Providers**: Choose from Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, or Google Cloud TTS
 - **🌍 Multi-language Support**: Translate content
@@ -242,6 +243,35 @@ task audiobook "book.epub" --voice af_bella --language en
 task audiobook "book.epub" --translate pt
 ```
 
+### Task System (Audiobook Styles)
+
+Choose different transformation styles using the `--task` option or provide custom prompts:
+
+```bash
+# Podcast-style narration
+task audiobook "book.epub" --task podcast
+
+# Concise summary
+task audiobook "book.epub" --task summary
+
+# Guided meditation
+task audiobook "book.epub" --task meditation
+
+# Classroom lecture
+task audiobook "book.epub" --task lecture
+
+# Custom prompt file
+task audiobook "book.epub" --prompt-file my-prompt.txt
+
+# List available tasks
+audify list-tasks
+
+# Validate a custom prompt file
+audify validate-prompt my-prompt.txt
+```
+
+See [Tasks Guide](docs/tasks.md) for details on creating custom prompts.
+
 ### Using Commercial APIs (DeepSeek, Claude, GPT-4, Gemini)
 
 Instead of local Ollama models, you can use commercial APIs for better quality or faster processing:
@@ -260,7 +290,7 @@ task audiobook "book.epub" -m "api:openai/gpt-4-turbo-preview"
 task audiobook "book.epub" -m "api:gemini/gemini-1.5-pro"
 ```
 
-**Setup Required**: Create a `.keys` file with your API keys for the provider(s) you intend to use. See [Commercial APIs Guide](docs/COMMERCIAL_APIS.md) for detailed instructions.
+**Setup Required**: Create a `.keys` file with your API keys for the provider(s) you intend to use. See [Commercial APIs Guide](docs/commercial-apis.md) for detailed instructions.
 
 ```bash
 # Copy example file and add your keys
@@ -319,6 +349,12 @@ task --tts-provider qwen run "book.epub"      # Qwen-TTS (local)
 
 # List available TTS providers
 task --list-tts-providers run
+
+# List available tasks
+audify list-tasks
+
+# Validate a custom prompt file
+audify validate-prompt my-prompt.txt
 ```
 
 ## ⚙️ Configuration
@@ -585,6 +621,7 @@ Audify uses a flexible multi-provider architecture supporting both local and clo
 
 - **Text Extraction**: EPUB/PDF parsing with chapter detection
 - **Translation**: LiteLLM + Commercial/Local LLMs for high-quality translation
+- **Task System**: Flexible prompt management for audiobook, podcast, summary, meditation, and lecture styles
 - **TTS**: Multi-provider support (Kokoro, OpenAI, AWS Polly, Google Cloud TTS)
 - **Audiobook Generation**: LLM-powered script creation with commercial API support
 - **Audio Processing**: Pydub for format conversion and combining
@@ -677,7 +714,7 @@ Check the `examples/` directory for sample usage patterns and configuration file
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](docs/contributing.md) for details.
 
 ### Development Workflow
 

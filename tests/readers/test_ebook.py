@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
+import bs4
 import pytest
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE
 
@@ -339,8 +340,7 @@ class TestEpubReader:
 
         reader = EpubReader(temp_epub_path)
         html_content = (
-            "<html><body><p>Epilogue: Aftermath</p>"
-            "<p>Years later...</p></body></html>"
+            "<html><body><p>Epilogue: Aftermath</p><p>Years later...</p></body></html>"
         )
         assert reader.get_chapter_title(html_content) == "Epilogue: Aftermath"
 
@@ -422,9 +422,7 @@ class TestEpubReader:
 
         mock_llm = Mock()
         reader = EpubReader(temp_epub_path, llm_config=mock_llm)
-        html_content = (
-            "<html><body><h1>Found Title</h1><p>Content</p></body></html>"
-        )
+        html_content = "<html><body><h1>Found Title</h1><p>Content</p></body></html>"
         title = reader.get_chapter_title(html_content)
         assert title == "Found Title"
         mock_llm.generate.assert_not_called()
@@ -518,8 +516,7 @@ class TestEpubReader:
 
         reader = EpubReader(temp_epub_path)
         html_content = (
-            "<html><body><p>IV - The Last Stand</p>"
-            "<p>Content here.</p></body></html>"
+            "<html><body><p>IV - The Last Stand</p><p>Content here.</p></body></html>"
         )
         assert reader.get_chapter_title(html_content) == "IV - The Last Stand"
 
@@ -803,11 +800,7 @@ class TestEpubReader:
         mock_llm = Mock()
         reader = EpubReader(temp_epub_path, llm_config=mock_llm)
         # All paragraphs are empty — LLM should not be called
-        html_content = (
-            "<html><body>"
-            "<p>   </p><p></p>"
-            "</body></html>"
-        )
+        html_content = "<html><body><p>   </p><p></p></body></html>"
         title = reader.get_chapter_title(html_content)
         assert title == "Unknown"
         mock_llm.generate.assert_not_called()
@@ -879,10 +872,7 @@ class TestEpubReader:
 
         reader = EpubReader(temp_epub_path)
         html_content = (
-            "<html><body>"
-            "<h1>   </h1>"
-            "<p>Prologue: The Beginning</p>"
-            "</body></html>"
+            "<html><body><h1>   </h1><p>Prologue: The Beginning</p></body></html>"
         )
         title = reader.get_chapter_title(html_content)
         assert title == "Prologue: The Beginning"
@@ -1007,3 +997,58 @@ class TestEpubReader:
         )
         title = reader.get_chapter_title(html_content)
         assert title == "Unknown"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_extract_from_title_attributes_with_non_tag(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test _extract_from_title_attributes handles non-Tag elements."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        soup = bs4.BeautifulSoup("<html><body>Text</body></html>", "html.parser")
+        # Mock find_all to return a non-Tag
+        non_tag = bs4.element.NavigableString("test")
+        with patch.object(soup, "find_all") as mock_find_all:
+            mock_find_all.return_value = [non_tag]
+            result = reader._extract_from_title_attributes(soup)
+            assert result == ""
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_extract_from_emphasis_tags_with_non_tag(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test _extract_from_emphasis_tags handles non-Tag children."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        # Soup where body has a NavigableString child (text node)
+        soup = bs4.BeautifulSoup("<html><body>Text</body></html>", "html.parser")
+        result = reader._extract_from_emphasis_tags(soup)
+        assert result == ""
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_is_leaf_paragraph_with_non_tag(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test _is_leaf_paragraph returns True for non-Tag."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        non_tag = bs4.element.NavigableString("test")
+        result = reader._is_leaf_paragraph(non_tag)
+        assert result is True
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_extract_short_paragraph_title_with_nested_paragraph(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Test _extract_short_paragraph_title skips nested paragraphs."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        # Create a div containing a p element with long text ending with period
+        soup = bs4.BeautifulSoup(
+            "<html><body><div><p>This is a long paragraph that definitely exceeds "
+            "eighty characters and ends with a period.</p></div></body></html>",
+            "html.parser",
+        )
+        result = reader._extract_short_paragraph_title(soup)
+        # Should skip the div (nested) and the p is too long
+        assert result == ""
