@@ -123,6 +123,30 @@ class TestTaskRegistry:
         # Clean up
         del TaskRegistry._tasks["test_custom_registration"]
 
+    def test_reset_method(self):
+        """Test the _reset method clears all tasks."""
+        # Save original tasks
+        original_tasks = TaskRegistry._tasks.copy()
+        try:
+            # Add a custom task
+            custom = TaskConfig(
+                name="test_reset_task",
+                prompt="Test prompt",
+                requires_llm=True,
+            )
+            TaskRegistry.register(custom)
+            assert TaskRegistry.get("test_reset_task") is not None
+            # Reset the registry
+            TaskRegistry._reset()
+            # Verify custom task is gone
+            assert TaskRegistry.get("test_reset_task") is None
+            # Verify built-in tasks are also gone (registry was cleared)
+            assert "direct" not in TaskRegistry.list_tasks()
+            assert len(TaskRegistry._tasks) == 0
+        finally:
+            # Restore original tasks
+            TaskRegistry._tasks = original_tasks
+
 
 class TestPromptManager:
     """Test cases for PromptManager."""

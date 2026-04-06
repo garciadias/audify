@@ -21,9 +21,7 @@ class TestDirectoryAudiobookCreatorInitialization:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("pathlib.Path.mkdir")
     @patch("pathlib.Path.exists", return_value=True)
-    def test_init_with_valid_directory(
-        self, mock_exists, mock_mkdir, mock_base_synth
-    ):
+    def test_init_with_valid_directory(self, mock_exists, mock_mkdir, mock_base_synth):
         """Test initialization with valid directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             creator = DirectoryAudiobookCreator(directory_path=tmpdir)
@@ -65,9 +63,7 @@ class TestDirectoryAudiobookCreatorSynthesizeTitleAudio:
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("audify.audiobook_creator.AudioProcessor.convert_wav_to_mp3")
-    def test_synthesize_title_audio(
-        self, mock_convert, mock_base_synth
-    ):
+    def test_synthesize_title_audio(self, mock_convert, mock_base_synth):
         """Test synthesizing title audio."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Use the temp directory as output_dir so paths are created there
@@ -143,7 +139,7 @@ class TestDirectoryAudiobookCreatorLogEpisodeMetadata:
                 episode_number=1,
                 start_time_ms=0,
                 duration_s=60.5,
-                chapter_title="Test Chapter"
+                chapter_title="Test Chapter",
             )
 
             assert end_time == 60500
@@ -160,14 +156,10 @@ class TestDirectoryAudiobookCreatorSynthesize:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("pathlib.Path.mkdir")
     @patch("pathlib.Path.exists", return_value=True)
-    def test_synthesize_with_no_files(
-        self, mock_exists, mock_mkdir, mock_base_synth
-    ):
+    def test_synthesize_with_no_files(self, mock_exists, mock_mkdir, mock_base_synth):
         """Test synthesize with no supported files returns early."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, confirm=False
-            )
+            creator = DirectoryAudiobookCreator(directory_path=tmpdir, confirm=False)
 
             result = creator.synthesize()
 
@@ -184,9 +176,7 @@ class TestDirectoryAudiobookCreatorSynthesize:
         with tempfile.TemporaryDirectory() as tmpdir:
             Path(tmpdir, "test.epub").touch()
 
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, confirm=True
-            )
+            creator = DirectoryAudiobookCreator(directory_path=tmpdir, confirm=True)
 
             with patch("builtins.input", return_value="n"):
                 result = creator.synthesize()
@@ -399,7 +389,7 @@ class TestDirectoryAudiobookCreatorProcessTextFile:
                 patch.object(creator, "_synthesize_title_audio", return_value=None),
                 patch(
                     "audify.audiobook_creator.translate_sentence",
-                    return_value="Translated sentence"
+                    return_value="Translated sentence",
                 ),
             ):
                 result = creator._process_text_file(test_file, 1, "Test")
@@ -552,6 +542,7 @@ class TestDirectoryAudiobookCreatorCreateSingleM4b:
             mock_audio_segment.empty.return_value = mock_combined
 
             from pydub.exceptions import CouldntDecodeError
+
             mock_audio_segment.from_mp3.side_effect = CouldntDecodeError("Error")
 
             episode_files = [Path(tmpdir) / "episode_001.mp3"]
@@ -719,9 +710,7 @@ class TestDirectoryAudiobookCreatorSynthesizeTitleAudioExtended:
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("audify.audiobook_creator.AudioProcessor.convert_wav_to_mp3")
-    def test_synthesize_title_audio_already_exists(
-        self, mock_convert, mock_base_synth
-    ):
+    def test_synthesize_title_audio_already_exists(self, mock_convert, mock_base_synth):
         """Test synthesizing title audio when it already exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
             creator = DirectoryAudiobookCreator(

@@ -596,3 +596,10 @@ class TestGetAvailableModelsAndVoices:
 
         assert models == []
         assert voices == []
+
+
+def test_main_module_import():
+    """Test that the main module can be imported."""
+    import audify.__main__
+
+    assert audify.__main__.__name__ == "audify.__main__"

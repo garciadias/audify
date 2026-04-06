@@ -126,6 +126,21 @@ class TestLLMClient:
             assert "Could not connect to local LLM server" in result
             assert "http://localhost:11434" in result
 
+    def test_generate_audiobook_script_connection_error_commercial(self):
+        """Test handling of connection errors with commercial API."""
+        with patch("audify.audiobook_creator.CommercialAPIConfig") as mock_config:
+            mock_config_instance = Mock()
+            mock_config_instance.base_url = "https://api.example.com"
+            mock_config_instance.generate.side_effect = Exception("Connection refused")
+            mock_config.return_value = mock_config_instance
+
+            client = LLMClient(model="api:deepseek/deepseek-chat")
+
+            result = client.generate_audiobook_script("test chapter", None)
+
+            assert "Could not connect to commercial API" in result
+            assert "Please check your API key and internet connection" in result
+
     def test_generate_audiobook_script_timeout_error(self):
         """Test handling of timeout errors."""
         with patch("audify.audiobook_creator.OllamaAPIConfig") as mock_config:
@@ -1658,7 +1673,9 @@ class TestM4bBuilderCoverage:
         with patch("pathlib.Path.exists", return_value=False):
             with patch("audify.utils.m4b_builder.logger") as mock_log:
                 cmd, tmp = build_ffmpeg_command(
-                    Path("in.m4b"), Path("meta.txt"), Path("out.m4b"),
+                    Path("in.m4b"),
+                    Path("meta.txt"),
+                    Path("out.m4b"),
                     cover_image=cover,
                 )
         mock_log.warning.assert_called_with(f"Cover image not found: {cover}")
@@ -1679,8 +1696,10 @@ class TestM4bBuilderCoverage:
         mock_tmp = MagicMock()
         mock_tmp.name = str(tmp_path / "tmp_cover.jpg")
 
-        with patch("audify.utils.m4b_builder.build_ffmpeg_command",
-                   return_value=(["ffmpeg", "-y", str(out_m4b)], mock_tmp)):
+        with patch(
+            "audify.utils.m4b_builder.build_ffmpeg_command",
+            return_value=(["ffmpeg", "-y", str(out_m4b)], mock_tmp),
+        ):
             with patch("audify.utils.m4b_builder.run_ffmpeg"):
                 with patch("pathlib.Path.unlink"):
                     assemble_m4b(in_m4b, meta, out_m4b, cover)
@@ -1700,8 +1719,10 @@ class TestM4bBuilderCoverage:
         mock_tmp = MagicMock()
         mock_tmp.close.side_effect = Exception("close failed")
 
-        with patch("audify.utils.m4b_builder.build_ffmpeg_command",
-                   return_value=(["ffmpeg", "-y", str(out_m4b)], mock_tmp)):
+        with patch(
+            "audify.utils.m4b_builder.build_ffmpeg_command",
+            return_value=(["ffmpeg", "-y", str(out_m4b)], mock_tmp),
+        ):
             with patch("audify.utils.m4b_builder.run_ffmpeg"):
                 with patch("pathlib.Path.unlink"):
                     with patch("audify.utils.m4b_builder.logger") as mock_log:
