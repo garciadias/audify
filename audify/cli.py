@@ -141,7 +141,7 @@ except importlib.metadata.PackageNotFoundError:
 @click.option(
     "--prompt-file",
     "-pf",
-    type=click.Path(exists=True),
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
     default=None,
     help="Path to a custom prompt file. Overrides --task prompt.",
 )
@@ -306,7 +306,7 @@ def cli(
         click.echo("Available models:".center(terminal_width))
         click.echo("=" * terminal_width)
         try:
-            response = requests.get(f"{KOKORO_API_BASE_URL}/models")
+            response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=5)
             response.raise_for_status()
             models = response.json().get("data", [])
             model_names = sorted(model.get("id") for model in models if "id" in model)
@@ -409,7 +409,7 @@ def cli(
 
         except KeyboardInterrupt:
             logger.info("\n\nDirectory audiobook creation cancelled by user.")
-            return
+            raise SystemExit(1)
         except Exception as e:
             logger.error(f"\nError: {e}")
             logger.error("Please check your configuration and try again.")
@@ -417,7 +417,7 @@ def cli(
                 logger.error("\nTip: Make sure Ollama is running:")
                 logger.error("  ollama serve")
                 logger.error(f"  ollama pull {effective_llm_model}")
-            return
+            raise SystemExit(1)
 
     else:
         # Single file mode
@@ -466,6 +466,7 @@ def cli(
 
         except KeyboardInterrupt:
             logger.info("\n\nAudiobook creation cancelled by user.")
+            raise SystemExit(1)
         except Exception as e:
             logger.error(f"\nError: {e}")
             logger.error("Please check your configuration and try again.")
@@ -473,6 +474,7 @@ def cli(
                 logger.error("\nTip: Make sure Ollama is running:")
                 logger.error("  ollama serve")
                 logger.error(f"  ollama pull {effective_llm_model}")
+            raise SystemExit(1)
 
 
 @cli.command("list-tasks")

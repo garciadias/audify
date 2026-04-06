@@ -409,21 +409,6 @@ class AudiobookCreator(BaseSynthesizer):
             else (self.translate if self.translate else self.language)
         )
 
-        # If an explicit translate target was requested,
-        # translate the cleaned text
-        if self.translate:
-            # prefer explicit language attrs; fall back to resolved_language
-            src_lang = getattr(self, "language", None) or getattr(
-                self, "resolved_language", None
-            )
-            cleaned_text = translate_sentence(
-                cleaned_text,
-                model=self.llm_model,
-                src_lang=src_lang,
-                tgt_lang=self.translate,
-                base_url=self.llm_base_url,
-            )
-
         # Generate audiobook script using LLM or direct text
         if getattr(self, "_requires_llm", True) is False:
             task_name = getattr(self, "task_name", "unknown")
