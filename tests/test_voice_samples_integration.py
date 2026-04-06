@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import pytest
 from click.testing import CliRunner
 
-from audify import start
+from audify.cli import cli
 from audify.text_to_speech import VoiceSamplesSynthesizer
 
 
@@ -47,13 +47,13 @@ class TestVoiceSamplesIntegration:
         with (
             patch("requests.get", side_effect=mock_api_responses),
             patch("os.get_terminal_size", return_value=(80, 24)),
-            patch("audify.start.VoiceSamplesSynthesizer") as mock_synthesizer_class,
+            patch("audify.cli.VoiceSamplesSynthesizer") as mock_synthesizer_class,
         ):
             # Setup synthesizer mock
             mock_synthesizer = Mock()
             mock_synthesizer_class.return_value = mock_synthesizer
 
-            result = runner.invoke(start.main, ["--create-voice-samples"])
+            result = runner.invoke(cli, ["--create-voice-samples"])
 
             assert result.exit_code == 0
             assert "Creating Voice Samples M4B" in result.output
@@ -69,14 +69,14 @@ class TestVoiceSamplesIntegration:
         with (
             patch("requests.get", side_effect=mock_api_responses),
             patch("os.get_terminal_size", return_value=(80, 24)),
-            patch("audify.start.VoiceSamplesSynthesizer") as mock_synthesizer_class,
+            patch("audify.cli.VoiceSamplesSynthesizer") as mock_synthesizer_class,
         ):
             # Setup synthesizer mock
             mock_synthesizer = Mock()
             mock_synthesizer_class.return_value = mock_synthesizer
 
             result = runner.invoke(
-                start.main, ["--create-voice-samples", "--translate", "es"]
+                cli, ["--create-voice-samples", "--translate", "es"]
             )
 
             assert result.exit_code == 0
@@ -99,7 +99,7 @@ class TestVoiceSamplesIntegration:
             patch("requests.get", side_effect=mock_api_responses),
             patch("os.get_terminal_size", return_value=(80, 24)),
         ):
-            result = runner.invoke(start.main, ["--list-voices"])
+            result = runner.invoke(cli, ["--list-voices"])
 
             assert result.exit_code == 0
             assert "Available voices for KOKORO:" in result.output
@@ -121,7 +121,7 @@ class TestVoiceSamplesIntegration:
             # Simulate API failure
             mock_get_models_voices.return_value = ([], [])
 
-            result = runner.invoke(start.main, ["--create-voice-samples"])
+            result = runner.invoke(cli, ["--create-voice-samples"])
 
             # Should complete without crashing even with no models/voices
             assert result.exit_code == 0
@@ -144,7 +144,7 @@ class TestVoiceSamplesIntegration:
 
             # Even with multiple flags, voice samples should take precedence
             result = runner.invoke(
-                start.main,
+                cli,
                 [
                     "--create-voice-samples",
                     "--list-languages",
@@ -171,7 +171,7 @@ class TestVoiceSamplesRegressionTests:
     @patch("os.get_terminal_size", return_value=(80, 24))
     def test_existing_list_languages_still_works(self, mock_terminal_size, runner):
         """Test that existing --list-languages functionality is preserved."""
-        result = runner.invoke(start.main, ["--list-languages"])
+        result = runner.invoke(cli, ["--list-languages"])
 
         assert result.exit_code == 0
         assert "Available languages:" in result.output
@@ -188,7 +188,7 @@ class TestVoiceSamplesRegressionTests:
         mock_response.json.return_value = {"data": [{"id": "kokoro"}, {"id": "tts-1"}]}
         mock_get.return_value = mock_response
 
-        result = runner.invoke(start.main, ["--list-models"])
+        result = runner.invoke(cli, ["--list-models"])
 
         assert result.exit_code == 0
         assert "Available models:" in result.output
@@ -196,8 +196,8 @@ class TestVoiceSamplesRegressionTests:
         assert "tts-1" in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
-    @patch("audify.start.get_file_extension", return_value=".epub")
-    @patch("audify.start.EpubSynthesizer")
+    @patch("audify.cli.get_file_extension", return_value=".epub")
+    @patch("audify.text_to_speech.EpubSynthesizer")
     def test_existing_epub_synthesis_still_works(
         self,
         mock_epub_synthesizer,
@@ -212,7 +212,7 @@ class TestVoiceSamplesRegressionTests:
 
         with caplog.at_level(logging.INFO):
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
-                result = runner.invoke(start.main, [temp_file.name, "--verbose"])
+                result = runner.invoke(cli, [temp_file.name, "--verbose"])
 
                 # Should not interfere with existing functionality
                 assert result.exit_code == 0
@@ -227,7 +227,7 @@ class TestVoiceSamplesRegressionTests:
 
     def test_help_output_includes_all_options(self, runner):
         """Test that help output includes both old and new options."""
-        result = runner.invoke(start.main, ["--help"])
+        result = runner.invoke(cli, ["--help"])
 
         assert result.exit_code == 0
 
@@ -276,7 +276,7 @@ class TestEdgeCases:
             )
             mock_synthesize.return_value = Path("/tmp/voice_samples.m4b")
 
-            result = runner.invoke(start.main, ["--create-voice-samples"])
+            result = runner.invoke(cli, ["--create-voice-samples"])
 
             assert result.exit_code == 0
             mock_synthesize.assert_called_once()
@@ -291,13 +291,13 @@ class TestEdgeCases:
         mock_response.json.return_value = {"invalid": "response"}
         mock_get.return_value = mock_response
 
-        result = runner.invoke(start.main, ["--list-voices"])
+        result = runner.invoke(cli, ["--list-voices"])
 
         assert result.exit_code == 0
         assert "No voices found for kokoro." in result.output
 
     @patch("os.get_terminal_size", return_value=(80, 24))
-    @patch("audify.start.get_tts_config")
+    @patch("audify.cli.get_tts_config")
     def test_voice_grouping_edge_cases(
         self, mock_get_tts_config, mock_terminal_size, runner
     ):
@@ -310,7 +310,7 @@ class TestEdgeCases:
         ]
         mock_get_tts_config.return_value = mock_config
 
-        result = runner.invoke(start.main, ["--list-voices"])
+        result = runner.invoke(cli, ["--list-voices"])
 
         assert result.exit_code == 0
         assert "VOICE voices:" in result.output

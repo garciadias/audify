@@ -431,22 +431,22 @@ class TestAudiobookCommandTaskOptions:
     """Test --task and --prompt-file options on the audiobook command."""
 
     def test_audiobook_command_has_task_option(self):
-        from audify.create_audiobook import main
+        from audify.cli import cli
 
         # Check that --task option exists in the command params
-        param_names = [p.name for p in main.params]
+        param_names = [p.name for p in cli.params]
         assert "task" in param_names
 
     def test_audiobook_command_has_prompt_file_option(self):
-        from audify.create_audiobook import main
+        from audify.cli import cli
 
-        param_names = [p.name for p in main.params]
+        param_names = [p.name for p in cli.params]
         assert "prompt_file" in param_names
 
     def test_get_creator_passes_task(self):
-        from audify.create_audiobook import get_creator
+        from audify.convert import get_creator
 
-        with patch("audify.create_audiobook.AudiobookEpubCreator") as mock_creator:
+        with patch("audify.convert.AudiobookEpubCreator") as mock_creator:
             mock_creator.return_value = Mock()
             get_creator(
                 file_extension=".epub",
@@ -468,9 +468,9 @@ class TestAudiobookCommandTaskOptions:
             assert call_kwargs["prompt_file"] is None
 
     def test_get_creator_passes_prompt_file(self):
-        from audify.create_audiobook import get_creator
+        from audify.convert import get_creator
 
-        with patch("audify.create_audiobook.AudiobookPdfCreator") as mock_creator:
+        with patch("audify.convert.AudiobookPdfCreator") as mock_creator:
             mock_creator.return_value = Mock()
             get_creator(
                 file_extension=".pdf",

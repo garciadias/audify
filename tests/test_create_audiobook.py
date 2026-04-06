@@ -10,7 +10,8 @@ from unittest.mock import Mock, patch
 import pytest
 from click.testing import CliRunner
 
-from audify.create_audiobook import get_creator, main
+from audify.cli import cli
+from audify.convert import get_creator
 
 
 class TestGetCreator:
@@ -18,7 +19,7 @@ class TestGetCreator:
 
     def test_get_creator_epub(self):
         """Test get_creator returns AudiobookEpubCreator for .epub files."""
-        with patch("audify.create_audiobook.AudiobookEpubCreator") as mock_epub_creator:
+        with patch("audify.convert.AudiobookEpubCreator") as mock_epub_creator:
             mock_instance = Mock()
             mock_epub_creator.return_value = mock_instance
 
@@ -56,7 +57,7 @@ class TestGetCreator:
 
     def test_get_creator_pdf(self):
         """Test get_creator returns AudiobookPdfCreator for .pdf files."""
-        with patch("audify.create_audiobook.AudiobookPdfCreator") as mock_pdf_creator:
+        with patch("audify.convert.AudiobookPdfCreator") as mock_pdf_creator:
             mock_instance = Mock()
             mock_pdf_creator.return_value = mock_instance
 
@@ -118,8 +119,8 @@ class TestMain:
         """Fixture to provide a CliRunner instance."""
         return CliRunner()
 
-    @patch("audify.create_audiobook.get_creator")
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_epub_success(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner, caplog
@@ -136,9 +137,8 @@ class TestMain:
         with caplog.at_level(logging.INFO):
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
                 result = runner.invoke(
-                    main,
+                    cli,
                     [
-                        temp_file.name,
                         "--language",
                         "en",
                         "--voice",
@@ -147,11 +147,12 @@ class TestMain:
                         "kokoro",
                         "--translate",
                         "es",
-                        "--save-scripts",
+                        "--save-text",
                         "--max-chapters",
                         "5",
                         "--confirm",
                         "--verbose",
+                        temp_file.name,
                     ],
                 )
 
@@ -164,8 +165,8 @@ class TestMain:
         assert any("/path/to/output" in record.message for record in caplog.records)
         mock_creator.synthesize.assert_called_once()
 
-    @patch("audify.create_audiobook.get_creator")
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_pdf_success(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner, caplog
@@ -182,9 +183,8 @@ class TestMain:
         with caplog.at_level(logging.INFO):
             with tempfile.NamedTemporaryFile(suffix=".pdf") as temp_file:
                 result = runner.invoke(
-                    main,
+                    cli,
                     [
-                        temp_file.name,
                         "--language",
                         "fr",
                         "--voice",
@@ -192,6 +192,7 @@ class TestMain:
                         "--voice-model",
                         "custom_model",
                         "--verbose",
+                        temp_file.name,
                     ],
                 )
 
@@ -203,8 +204,8 @@ class TestMain:
         )
         mock_creator.synthesize.assert_called_once()
 
-    @patch("audify.create_audiobook.get_creator")
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_keyboard_interrupt(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner, caplog
@@ -220,7 +221,7 @@ class TestMain:
 
         with caplog.at_level(logging.INFO):
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
-                result = runner.invoke(main, [temp_file.name, "--verbose"])
+                result = runner.invoke(cli, ["--verbose", temp_file.name])
 
         assert result.exit_code == 0
         # Log messages are captured by caplog
@@ -229,8 +230,8 @@ class TestMain:
             for record in caplog.records
         )
 
-    @patch("audify.create_audiobook.get_creator")
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_generic_exception(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner, caplog
@@ -246,7 +247,7 @@ class TestMain:
 
         with caplog.at_level(logging.ERROR):
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
-                result = runner.invoke(main, [temp_file.name, "--verbose"])
+                result = runner.invoke(cli, ["--verbose", temp_file.name])
 
         assert result.exit_code == 0
         # Error messages are captured by caplog
@@ -258,8 +259,8 @@ class TestMain:
             for record in caplog.records
         )
 
-    @patch("audify.create_audiobook.get_creator")
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_llm_connection_error(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner, caplog
@@ -278,7 +279,7 @@ class TestMain:
         with caplog.at_level(logging.ERROR):
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
                 result = runner.invoke(
-                    main, [temp_file.name, "--llm-model", "custom-model", "--verbose"]
+                    cli, ["--llm-model", "custom-model", "--verbose", temp_file.name]
                 )
 
         assert result.exit_code == 0
@@ -295,7 +296,7 @@ class TestMain:
             "ollama pull custom-model" in record.message for record in caplog.records
         )
 
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_configuration_display(
         self, mock_terminal_size, mock_get_extension, runner, caplog
@@ -307,7 +308,7 @@ class TestMain:
 
         with caplog.at_level(logging.INFO):
             with (
-                patch("audify.create_audiobook.get_creator") as mock_get_creator,
+                patch("audify.convert.get_creator") as mock_get_creator,
                 tempfile.NamedTemporaryFile(suffix=".epub") as temp_file,
             ):
                 mock_creator = Mock()
@@ -315,9 +316,8 @@ class TestMain:
                 mock_get_creator.return_value = mock_creator
 
                 result = runner.invoke(
-                    main,
+                    cli,
                     [
-                        temp_file.name,
                         "--language",
                         "fr",
                         "--llm-model",
@@ -327,6 +327,7 @@ class TestMain:
                         "--max-chapters",
                         "10",
                         "--verbose",
+                        temp_file.name,
                     ],
                 )
 
@@ -345,8 +346,8 @@ class TestMain:
         )
         assert any("Max episodes: 10" in record.message for record in caplog.records)
 
-    @patch("audify.create_audiobook.get_creator")
-    @patch("audify.create_audiobook.get_file_extension")
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
     @patch("os.get_terminal_size")
     def test_main_short_flags_model_mapping(
         self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
@@ -361,13 +362,13 @@ class TestMain:
 
         with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
             result = runner.invoke(
-                main,
+                cli,
                 [
-                    temp_file.name,
                     "-m",
                     "my-llm-model",
                     "-vm",
                     "my-tts-model",
+                    temp_file.name,
                 ],
             )
 
