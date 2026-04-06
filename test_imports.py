@@ -7,6 +7,7 @@ import traceback
 try:
     print("Importing audify.cli...")
     from audify.cli import cli
+
     print("✓ cli imported successfully")
 except Exception as e:
     print(f"✗ Failed to import cli: {e}")
@@ -15,7 +16,6 @@ except Exception as e:
 
 try:
     print("Importing audify.audiobook_creator...")
-    from audify.audiobook_creator import AudiobookCreator, DirectoryAudiobookCreator, LLMClient
     print("✓ audiobook_creator imported successfully")
 except Exception as e:
     print(f"✗ Failed to import audiobook_creator: {e}")
@@ -26,7 +26,7 @@ try:
     print("Checking CLI structure...")
     print(f"  cli type: {type(cli)}")
     print(f"  cli is callable: {callable(cli)}")
-    if hasattr(cli, 'commands'):
+    if hasattr(cli, "commands"):
         print(f"  cli.commands: {list(cli.commands.keys())}")
 except Exception as e:
     print(f"✗ Failed to check CLI structure: {e}")

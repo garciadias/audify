@@ -2,6 +2,7 @@
 """Quick test to verify CLI argument handling after removing @click.argument."""
 
 from click.testing import CliRunner
+
 from audify.cli import cli
 
 runner = CliRunner()
