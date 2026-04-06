@@ -352,7 +352,7 @@ AWS_POLLY_ENGINE=neural
 
 # Google Cloud TTS
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
-GOOGLE_TTS_VOICE=en-US-Neural2-F
+GOOGLE_TTS_VOICE=en-US-Chirp-HD-F
 GOOGLE_TTS_LANGUAGE_CODE=en-US
 
 # Qwen-TTS (Local)
@@ -383,7 +383,7 @@ export AWS_POLLY_ENGINE="neural"    # "standard" or "neural"
 
 # Google Cloud TTS
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
-export GOOGLE_TTS_VOICE="en-US-Neural2-F"
+export GOOGLE_TTS_VOICE="en-US-Chirp-HD-F"
 export GOOGLE_TTS_LANGUAGE_CODE="en-US"
 
 # Qwen-TTS (Local)
