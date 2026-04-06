@@ -223,7 +223,7 @@ class TestMain:
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
                 result = runner.invoke(cli, ["--verbose", temp_file.name])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         # Log messages are captured by caplog
         assert any(
             "Audiobook creation cancelled by user." in record.message
@@ -249,7 +249,7 @@ class TestMain:
             with tempfile.NamedTemporaryFile(suffix=".epub") as temp_file:
                 result = runner.invoke(cli, ["--verbose", temp_file.name])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         # Error messages are captured by caplog
         assert any(
             "Error: Generic error" in record.message for record in caplog.records
@@ -282,7 +282,7 @@ class TestMain:
                     cli, ["--llm-model", "custom-model", "--verbose", temp_file.name]
                 )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         # Error messages are captured by caplog
         assert any(
             "Could not connect to LLM" in record.message for record in caplog.records

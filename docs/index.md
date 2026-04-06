@@ -52,16 +52,16 @@ Audify is a pipeline and CLI tool that transforms written content (EPUB, PDF, TX
 pip install audify
 
 # Convert an EPUB to audiobook (direct TTS)
-audify run book.epub
+audify book.epub --task direct
 
 # Generate an LLM-enhanced audiobook
-audify audiobook book.epub
+audify book.epub --task audiobook
 
 # Use a different task (podcast-style)
-audify audiobook book.epub --task podcast
+audify book.epub --task podcast
 
 # Use a custom prompt
-audify audiobook book.epub --prompt-file my-prompt.txt
+audify book.epub --prompt-file my-prompt.txt
 ```
 
 ## Indices and tables

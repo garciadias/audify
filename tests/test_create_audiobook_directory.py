@@ -77,7 +77,7 @@ class TestMainDirectoryMode:
             with tempfile.TemporaryDirectory() as tmpdir:
                 result = self.runner.invoke(cli, ["--verbose", tmpdir])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert any(
             "Directory audiobook creation cancelled by user." in record.message
             for record in caplog.records
@@ -98,7 +98,7 @@ class TestMainDirectoryMode:
             with tempfile.TemporaryDirectory() as tmpdir:
                 result = self.runner.invoke(cli, ["--verbose", tmpdir])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert any(
             "Error: Something failed" in record.message for record in caplog.records
         )
@@ -126,7 +126,7 @@ class TestMainDirectoryMode:
                     cli, ["--llm-model", "my-model", "--verbose", tmpdir]
                 )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert any(
             "Could not connect to LLM" in record.message for record in caplog.records
         )
