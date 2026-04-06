@@ -6,7 +6,6 @@ This script shows how to use commercial APIs (DeepSeek, Claude, GPT-4, etc.)
 instead of local Ollama models for audiobook generation.
 """
 
-
 from audify.audiobook_creator import LLMClient
 
 
@@ -108,7 +107,7 @@ if __name__ == "__main__":
         show_keys_file_format()
 
         print("\n\n✓ Commercial API integration is working correctly!")
-        print("See docs/COMMERCIAL_APIS.md for more detailed information.")
+        print("See docs/commercial-apis.md for more detailed information.")
 
     except Exception as e:
         print(f"\n✗ Error: {e}")

@@ -187,7 +187,7 @@ except importlib.metadata.PackageNotFoundError:
     is_flag=True,
     help="Show detailed log messages in terminal.",
 )
-@click.argument("path", nargs=-1, type=click.Path())
+@click.argument("path", nargs=1, required=False, type=click.Path())
 @click.version_option(__version__, "--version", "-V", message="audify %(version)s")
 @click.pass_context
 def cli(
