@@ -1,9 +1,21 @@
 [project]
 name = "audify"
 version = "0.1.0"
-description = "Add your description here"
+description = "Convert ebooks and PDFs to audiobooks using AI text-to-speech"
 readme = "README.md"
 requires-python = ">=3.10,<=3.13"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "bs4>=0.0.2",
     "click>=8.1.8",
@@ -27,8 +39,6 @@ dependencies = [
 
 [project.scripts]
 audify = "audify.cli:cli"
-audify-run = "audify.start:main"
-audify-audiobook = "audify.create_audiobook:main"
 
 [build-system]
 requires = ["poetry-core>=1.0.0", "setuptools>=44.1.0", "wheel>=0.34.2"]
@@ -48,6 +58,11 @@ dev = [
     "pipreqs>=0.5.0",
 ]
 gpu = ["black>=25.1.0"]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "myst-parser>=3.0",
+]
 
 [tool.coverage.report]
 exclude_lines = ["if __name__ == .__main__.:", "def test_", "ABC"]
@@ -93,7 +108,8 @@ test = "uv run pytest --cov=audify --cov-report=term-missing --cov-report=xml"
 format = "ruff check ./audify ./tests --fix"
 pre_test = "task format && mypy ./audify ./tests --ignore-missing-imports"
 post_test = "uv run coverage html"
-run = "uv run python -m audify.start"
-audiobook = "uv run python -m audify.create_audiobook"
+run = "uv run audify book.epub --task direct"
+audiobook = "uv run audify book.epub --task audiobook"
 api = "uv run uvicorn audify.api.app:app --reload --host 0.0.0.0 --port 8000"
 up = "docker compose up"
+docs = "uv run --group docs sphinx-build -W -b html docs docs/_build/html && echo 'Docs built: docs/_build/html/index.html'"

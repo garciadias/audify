@@ -56,6 +56,8 @@ class LLMClient:
             model: Model name. Use 'api:model_name' for commercial APIs
                 (e.g., 'api:deepseek/deepseek-chat')
         """
+        self.model_string = model  # Keep original for passing to translate
+        self.base_url = base_url
         # Check if using commercial API (format: api:model_name)
         if model.startswith("api:"):
             self.is_commercial = True
@@ -93,7 +95,13 @@ class LLMClient:
 
         # Prepare system prompt (translate if needed)
         if language and language != "en":
-            system_prompt = translate_sentence(prompt, src_lang="en", tgt_lang=language)
+            system_prompt = translate_sentence(
+                prompt,
+                model=self.model_string,
+                src_lang="en",
+                tgt_lang=language,
+                base_url=self.base_url,
+            )
         else:
             system_prompt = prompt
 
@@ -180,6 +188,12 @@ class AudiobookCreator(BaseSynthesizer):
         # Initialize file reader based on extension
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
+        # Build llm_config for the reader from the user's model if not provided
+        if llm_config is None and llm_model:
+            if llm_model.startswith("api:"):
+                llm_config = CommercialAPIConfig(model=llm_model[4:])
+            else:
+                llm_config = OllamaAPIConfig(base_url=llm_base_url, model=llm_model)
         if file_path.suffix.lower() == ".epub":
             self.reader = EpubReader(path, llm_config=llm_config)
             detected_language = self.reader.get_language()
@@ -213,6 +227,8 @@ class AudiobookCreator(BaseSynthesizer):
 
         # Initialize LLM client
         self.llm_client = LLMClient(llm_base_url, llm_model)
+        self.llm_model = llm_model
+        self.llm_base_url = llm_base_url
         self.max_chapters = max_chapters
         self.confirm = confirm
 
@@ -231,6 +247,8 @@ class AudiobookCreator(BaseSynthesizer):
             translate=translate,
             save_text=save_text,
             tts_provider=tts_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
 
         # Setup cover image if available
@@ -399,7 +417,11 @@ class AudiobookCreator(BaseSynthesizer):
                 self, "resolved_language", None
             )
             cleaned_text = translate_sentence(
-                cleaned_text, src_lang=src_lang, tgt_lang=self.translate
+                cleaned_text,
+                model=self.llm_model,
+                src_lang=src_lang,
+                tgt_lang=self.translate,
+                base_url=self.llm_base_url,
             )
 
         # Generate audiobook script using LLM or direct text
@@ -473,7 +495,11 @@ class AudiobookCreator(BaseSynthesizer):
                 try:
                     translated_sentences.append(
                         translate_sentence(
-                            s, src_lang=src_lang, tgt_lang=self.translate
+                            s,
+                            model=self.llm_model,
+                            src_lang=src_lang,
+                            tgt_lang=self.translate,
+                            base_url=self.llm_base_url,
                         )
                     )
                 except Exception:
@@ -835,6 +861,8 @@ class DirectoryAudiobookCreator:
             translate=self.translate,
             save_text=False,
             tts_provider=self.tts_provider,
+            llm_model=self.llm_model,
+            llm_base_url=self.llm_base_url,
         )
 
         self.chapter_titles: List[str] = []
@@ -1044,7 +1072,11 @@ class DirectoryAudiobookCreator:
                     try:
                         translated_sentences.append(
                             translate_sentence(
-                                s, src_lang=self.language, tgt_lang=self.translate
+                                s,
+                                model=self.llm_model,
+                                src_lang=self.language,
+                                tgt_lang=self.translate,
+                                base_url=self.llm_base_url,
                             )
                         )
                     except Exception:

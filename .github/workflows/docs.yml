@@ -1,0 +1,89 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "audify/**"
+      - ".readthedocs.yaml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "audify/**"
+      - ".readthedocs.yaml"
+  release:
+    types: [published]
+
+jobs:
+  build-docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install documentation dependencies
+        run: pip install -r docs/requirements.txt
+
+      - name: Build documentation
+        run: sphinx-build -W -b html docs docs/_build/html
+
+      - name: Upload docs artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-html
+          path: docs/_build/html/
+
+  trigger-rtd-build:
+    name: Trigger ReadTheDocs build for release
+    if: github.event_name == 'release'
+    needs: build-docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ReadTheDocs build
+        # ReadTheDocs automatically builds on GitHub webhook events
+        # (push, tag, release). This step documents the flow and can
+        # be extended to use the RTD API for custom version activation.
+        #
+        # ReadTheDocs webhook setup:
+        #   1. Go to https://readthedocs.org/dashboard/audify/integrations/
+        #   2. Add a GitHub incoming webhook
+        #   3. Copy the webhook URL to GitHub repo settings
+        #
+        # RTD automatically:
+        #   - Builds "latest" on every push to main
+        #   - Builds a versioned doc for each git tag (e.g., v0.1.0)
+        #   - The version name matches the git tag
+        #
+        # To activate a version via API (optional, if not auto-activated):
+        #   curl -X PATCH \
+        #     -H "Authorization: Token $RTD_TOKEN" \
+        #     -H "Content-Type: application/json" \
+        #     -d '{"active": true, "hidden": false}' \
+        #     "https://readthedocs.org/api/v3/projects/audify/versions/$TAG/"
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Release tag: $TAG"
+          echo "ReadTheDocs will automatically build version: $TAG"
+          echo ""
+          echo "If RTD API token is configured, activate the version:"
+          if [ -n "$RTD_TOKEN" ]; then
+            curl -s -X PATCH \
+              -H "Authorization: Token $RTD_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"active": true, "hidden": false}' \
+              "https://readthedocs.org/api/v3/projects/audify/versions/$TAG/" \
+              && echo "Version $TAG activated on ReadTheDocs" \
+              || echo "Note: RTD API call failed. Version may need manual activation."
+          else
+            echo "RTD_TOKEN not set. Version will be built by webhook but may need manual activation."
+          fi
+        env:
+          RTD_TOKEN: ${{ secrets.RTD_TOKEN }}

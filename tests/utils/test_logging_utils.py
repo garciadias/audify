@@ -6,10 +6,11 @@ and different logging configurations to achieve maximum code coverage.
 """
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from audify.utils.logging_utils import (
     LoggerMixin,
+    configure_cli_logging,
     configure_module_logging,
     get_logger,
     setup_logging,
@@ -21,12 +22,17 @@ class TestSetupLogging:
 
     def test_setup_logging_default_parameters(self):
         """Test setup_logging with default parameters."""
-        with patch("logging.basicConfig") as mock_basic_config, patch(
-            "logging.getLogger"
-        ) as mock_get_logger:
+        with (
+            patch("logging.basicConfig") as mock_basic_config,
+            patch("logging.getLogger") as mock_get_logger,
+            patch("logging.FileHandler") as mock_file_handler,
+            patch("logging.StreamHandler") as mock_stream_handler,
+            patch.dict("os.environ", {}, clear=True),
+        ):
             # Mock the root logger to have no handlers
             mock_root_logger = MagicMock()
             mock_root_logger.handlers = []
+            mock_root_logger.level = logging.NOTSET
             mock_get_logger.return_value = mock_root_logger
 
             # Mock the call chain
@@ -36,56 +42,103 @@ class TestSetupLogging:
                 return MagicMock()
 
             mock_get_logger.side_effect = mock_get_logger_func
+            # Mock file handler instance
+            mock_file_handler_instance = MagicMock()
+            mock_file_handler.return_value = mock_file_handler_instance
 
             setup_logging()
 
-            mock_basic_config.assert_called_once()
-            args, kwargs = mock_basic_config.call_args
-            assert kwargs["level"] == logging.INFO
-            expected_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            assert kwargs["format"] == expected_format
-            assert len(kwargs["handlers"]) == 1
-            assert isinstance(kwargs["handlers"][0], logging.StreamHandler)
+            # basicConfig should NOT be called because we add handlers directly
+            mock_basic_config.assert_not_called()
+            # FileHandler should be created with default log file
+            mock_file_handler.assert_called_once_with(ANY)
+            # Check that the argument is a Path with the correct name
+            from pathlib import Path
+
+            call_arg = mock_file_handler.call_args[0][0]
+            assert isinstance(call_arg, Path)
+            assert str(call_arg) == "audify.log"
+            # StreamHandler should NOT be created because AUDIFY_VERBOSE not set
+            mock_stream_handler.assert_not_called()
+            # Ensure root logger level is set to INFO
+            mock_root_logger.setLevel.assert_called_once_with(logging.INFO)
+            # Ensure file handler is added to root logger
+            mock_root_logger.addHandler.assert_called_once_with(
+                mock_file_handler_instance
+            )
 
     def test_setup_logging_custom_level(self):
         """Test setup_logging with custom logging level."""
-        with patch("logging.basicConfig") as mock_basic_config, patch(
-            "logging.getLogger"
-        ) as mock_get_logger:
+        with (
+            patch("logging.basicConfig") as mock_basic_config,
+            patch("logging.getLogger") as mock_get_logger,
+            patch("logging.FileHandler") as mock_file_handler,
+            patch.dict("os.environ", {}, clear=True),
+        ):
             # Mock the root logger to have no handlers
             mock_root_logger = MagicMock()
             mock_root_logger.handlers = []
+            mock_root_logger.level = logging.NOTSET
             mock_get_logger.return_value = mock_root_logger
+            mock_file_handler_instance = MagicMock()
+            mock_file_handler.return_value = mock_file_handler_instance
 
             setup_logging(level=logging.DEBUG)
 
-            mock_basic_config.assert_called_once()
-            args, kwargs = mock_basic_config.call_args
-            assert kwargs["level"] == logging.DEBUG
+            mock_basic_config.assert_not_called()
+            mock_root_logger.setLevel.assert_called_once_with(logging.DEBUG)
+            mock_file_handler.assert_called_once_with(ANY)
+            # Check that the argument is a Path with the correct name
+            from pathlib import Path
+
+            call_arg = mock_file_handler.call_args[0][0]
+            assert isinstance(call_arg, Path)
+            assert str(call_arg) == "audify.log"
+            mock_root_logger.addHandler.assert_called_once_with(
+                mock_file_handler_instance
+            )
 
     def test_setup_logging_custom_format(self):
         """Test setup_logging with custom format string."""
         custom_format = "%(levelname)s: %(message)s"
-        with patch("logging.basicConfig") as mock_basic_config, patch(
-            "logging.getLogger"
-        ) as mock_get_logger:
+        with (
+            patch("logging.basicConfig") as mock_basic_config,
+            patch("logging.getLogger") as mock_get_logger,
+            patch("logging.FileHandler") as mock_file_handler,
+            patch("logging.Formatter") as mock_formatter,
+            patch.dict("os.environ", {}, clear=True),
+        ):
             # Mock the root logger to have no handlers
             mock_root_logger = MagicMock()
             mock_root_logger.handlers = []
+            mock_root_logger.level = logging.NOTSET
             mock_get_logger.return_value = mock_root_logger
+            mock_file_handler_instance = MagicMock()
+            mock_file_handler.return_value = mock_file_handler_instance
+            mock_formatter_instance = MagicMock()
+            mock_formatter.return_value = mock_formatter_instance
 
             setup_logging(format_string=custom_format)
 
-            mock_basic_config.assert_called_once()
-            args, kwargs = mock_basic_config.call_args
-            assert kwargs["format"] == custom_format
+            mock_basic_config.assert_not_called()
+            # Formatter should be created with custom format
+            mock_formatter.assert_called_once_with(
+                custom_format, datefmt="%Y-%m-%d %H:%M:%S"
+            )
+            mock_file_handler_instance.setFormatter.assert_called_once_with(
+                mock_formatter_instance
+            )
+            mock_root_logger.addHandler.assert_called_once_with(
+                mock_file_handler_instance
+            )
 
     def test_setup_logging_custom_module_name(self):
         """Test setup_logging with custom module name."""
         module_name = "test.module"
-        with patch("logging.basicConfig"), patch(
-            "logging.getLogger"
-        ) as mock_get_logger:
+        with (
+            patch("logging.basicConfig"),
+            patch("logging.getLogger") as mock_get_logger,
+        ):
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
@@ -96,9 +149,10 @@ class TestSetupLogging:
 
     def test_setup_logging_already_configured(self):
         """Test setup_logging when logging is already configured."""
-        with patch("logging.basicConfig") as mock_basic_config, patch(
-            "logging.getLogger"
-        ) as mock_get_logger:
+        with (
+            patch("logging.basicConfig") as mock_basic_config,
+            patch("logging.getLogger") as mock_get_logger,
+        ):
             # Mock root logger with existing handlers
             mock_root_logger = MagicMock()
             mock_root_logger.handlers = [MagicMock()]  # Has handlers
@@ -111,9 +165,11 @@ class TestSetupLogging:
 
     def test_setup_logging_caller_detection_success(self):
         """Test setup_logging caller detection when frame is available."""
-        with patch("logging.basicConfig"), patch(
-            "logging.getLogger"
-        ) as mock_get_logger, patch("inspect.currentframe") as mock_frame:
+        with (
+            patch("logging.basicConfig"),
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             # Mock frame structure
             mock_back_frame = MagicMock()
             mock_back_frame.f_globals = {"__name__": "test.caller.module"}
@@ -127,9 +183,11 @@ class TestSetupLogging:
 
     def test_setup_logging_caller_detection_no_frame(self):
         """Test setup_logging caller detection when no frame is available."""
-        with patch("logging.basicConfig"), patch(
-            "logging.getLogger"
-        ) as mock_get_logger, patch("inspect.currentframe") as mock_frame:
+        with (
+            patch("logging.basicConfig"),
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             mock_frame.return_value = None
 
             setup_logging()
@@ -138,9 +196,11 @@ class TestSetupLogging:
 
     def test_setup_logging_caller_detection_no_back_frame(self):
         """Test setup_logging caller detection when no back frame is available."""
-        with patch("logging.basicConfig"), patch(
-            "logging.getLogger"
-        ) as mock_get_logger, patch("inspect.currentframe") as mock_frame:
+        with (
+            patch("logging.basicConfig"),
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             mock_current_frame = MagicMock()
             mock_current_frame.f_back = None
             mock_frame.return_value = mock_current_frame
@@ -148,6 +208,36 @@ class TestSetupLogging:
             setup_logging()
 
             mock_get_logger.assert_called_with("audify")
+
+    def test_setup_logging_adds_stream_handler_when_verbose(self):
+        """Test setup_logging adds a stream handler when verbose is enabled."""
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch("logging.FileHandler") as mock_file_handler,
+            patch("logging.StreamHandler") as mock_stream_handler,
+            patch.dict("os.environ", {"AUDIFY_VERBOSE": "true"}, clear=True),
+        ):
+            mock_root_logger = MagicMock()
+            mock_root_logger.handlers = []
+            mock_root_logger.level = logging.NOTSET
+
+            def mock_get_logger_func(name=None):
+                if name is None or name == "":
+                    return mock_root_logger
+                return MagicMock()
+
+            mock_get_logger.side_effect = mock_get_logger_func
+
+            mock_file_handler_instance = MagicMock()
+            mock_stream_handler_instance = MagicMock()
+            mock_file_handler.return_value = mock_file_handler_instance
+            mock_stream_handler.return_value = mock_stream_handler_instance
+
+            setup_logging()
+
+            mock_stream_handler.assert_called_once()
+            mock_stream_handler_instance.setFormatter.assert_called_once()
+            mock_root_logger.addHandler.assert_any_call(mock_stream_handler_instance)
 
 
 class TestGetLogger:
@@ -166,9 +256,10 @@ class TestGetLogger:
 
     def test_get_logger_caller_detection_success(self):
         """Test get_logger caller detection when frame is available."""
-        with patch("logging.getLogger") as mock_get_logger, patch(
-            "inspect.currentframe"
-        ) as mock_frame:
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             # Mock frame structure
             mock_back_frame = MagicMock()
             mock_back_frame.f_globals = {"__name__": "calling.module"}
@@ -182,9 +273,10 @@ class TestGetLogger:
 
     def test_get_logger_caller_detection_no_frame(self):
         """Test get_logger caller detection when no frame is available."""
-        with patch("logging.getLogger") as mock_get_logger, patch(
-            "inspect.currentframe"
-        ) as mock_frame:
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             mock_frame.return_value = None
 
             get_logger()
@@ -193,9 +285,10 @@ class TestGetLogger:
 
     def test_get_logger_caller_detection_no_back_frame(self):
         """Test get_logger caller detection when no back frame is available."""
-        with patch("logging.getLogger") as mock_get_logger, patch(
-            "inspect.currentframe"
-        ) as mock_frame:
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             mock_current_frame = MagicMock()
             mock_current_frame.f_back = None
             mock_frame.return_value = mock_current_frame
@@ -206,9 +299,10 @@ class TestGetLogger:
 
     def test_get_logger_caller_detection_no_name_in_globals(self):
         """Test get_logger when __name__ is not in caller's globals."""
-        with patch("logging.getLogger") as mock_get_logger, patch(
-            "inspect.currentframe"
-        ) as mock_frame:
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch("inspect.currentframe") as mock_frame,
+        ):
             # Mock frame structure without __name__
             mock_back_frame = MagicMock()
             mock_back_frame.f_globals = {}  # No __name__ key
@@ -226,9 +320,7 @@ class TestConfigureModuleLogging:
 
     def test_configure_module_logging_default_parameters(self):
         """Test configure_module_logging with default parameters."""
-        with patch(
-            "audify.utils.logging_utils.setup_logging"
-        ) as mock_setup_logging:
+        with patch("audify.utils.logging_utils.setup_logging") as mock_setup_logging:
             mock_logger = MagicMock()
             mock_setup_logging.return_value = mock_logger
 
@@ -242,9 +334,7 @@ class TestConfigureModuleLogging:
     def test_configure_module_logging_custom_parameters(self):
         """Test configure_module_logging with custom parameters."""
         custom_format = "%(name)s - %(message)s"
-        with patch(
-            "audify.utils.logging_utils.setup_logging"
-        ) as mock_setup_logging:
+        with patch("audify.utils.logging_utils.setup_logging") as mock_setup_logging:
             mock_logger = MagicMock()
             mock_setup_logging.return_value = mock_logger
 
@@ -256,6 +346,75 @@ class TestConfigureModuleLogging:
                 logging.DEBUG, custom_format, "test.module"
             )
             assert logger == mock_logger
+
+
+class TestConfigureCliLogging:
+    """Test cases for configure_cli_logging function."""
+
+    def test_configure_cli_logging_verbose_adds_stream_and_file_handlers(self):
+        """Test verbose CLI logging adds stdout/file handlers and sets env."""
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch("logging.FileHandler") as mock_file_handler,
+            patch("logging.StreamHandler") as mock_stream_handler,
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            mock_root_logger = MagicMock()
+            mock_root_logger.handlers = []
+            mock_root_logger.level = logging.NOTSET
+            mock_get_logger.return_value = mock_root_logger
+
+            mock_file_handler_instance = MagicMock()
+            mock_stream_handler_instance = MagicMock()
+            mock_file_handler.return_value = mock_file_handler_instance
+            mock_stream_handler.return_value = mock_stream_handler_instance
+
+            configure_cli_logging(verbose=True, log_file="custom.log")
+
+            assert "AUDIFY_VERBOSE" in __import__("os").environ
+            assert __import__("os").environ["AUDIFY_VERBOSE"] == "true"
+            mock_stream_handler.assert_called_once()
+            mock_file_handler.assert_called_once_with("custom.log")
+            mock_root_logger.addHandler.assert_any_call(mock_stream_handler_instance)
+            mock_root_logger.addHandler.assert_any_call(mock_file_handler_instance)
+            mock_root_logger.setLevel.assert_called_once_with(logging.INFO)
+
+    def test_configure_cli_logging_removes_existing_stdout_handler(self):
+        """Test existing stdout stream handlers are removed before reconfiguring."""
+        existing_stdout_handler = logging.StreamHandler(__import__("sys").stdout)
+        with (
+            patch("logging.getLogger") as mock_get_logger,
+            patch.dict("os.environ", {"AUDIFY_VERBOSE": "true"}, clear=True),
+        ):
+            mock_root_logger = MagicMock()
+            mock_root_logger.handlers = [existing_stdout_handler]
+            mock_root_logger.level = logging.INFO
+            mock_get_logger.return_value = mock_root_logger
+
+            configure_cli_logging(verbose=False)
+
+            mock_root_logger.removeHandler.assert_called_once_with(
+                existing_stdout_handler
+            )
+
+    def test_configure_cli_logging_skips_file_handler_when_present(self):
+        """Test file handler is not re-added when one already exists."""
+        existing_file_handler = logging.FileHandler("/tmp/existing_audify.log")
+        try:
+            with (
+                patch("logging.getLogger") as mock_get_logger,
+                patch.dict("os.environ", {}, clear=True),
+            ):
+                mock_root_logger = MagicMock()
+                mock_root_logger.handlers = [existing_file_handler]
+                mock_root_logger.level = logging.INFO
+                mock_get_logger.return_value = mock_root_logger
+
+                configure_cli_logging(verbose=False)
+
+                mock_root_logger.addHandler.assert_not_called()
+        finally:
+            existing_file_handler.close()
 
 
 class TestLoggerMixin:
