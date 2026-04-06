@@ -282,7 +282,7 @@ class TestMain:
                     cli, ["--llm-model", "custom-model", "--verbose", temp_file.name]
                 )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         # Error messages are captured by caplog
         assert any(
             "Could not connect to LLM" in record.message for record in caplog.records

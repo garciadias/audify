@@ -126,7 +126,7 @@ class TestMainDirectoryMode:
                     cli, ["--llm-model", "my-model", "--verbose", tmpdir]
                 )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert any(
             "Could not connect to LLM" in record.message for record in caplog.records
         )
