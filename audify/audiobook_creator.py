@@ -360,12 +360,6 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"Chapter {chapter_number} title: {chapter_title}")
         self.chapter_titles.append(chapter_title)
 
-        effective_language = (
-            language
-            if language
-            else (self.translate if self.translate else self.language)
-        )
-
         if getattr(self, "_requires_llm", True) is False:
             task_name = getattr(self, "task_name", "unknown")
             logger.info(
@@ -379,13 +373,14 @@ class AudiobookCreator(BaseSynthesizer):
             )
             audiobook_script = cleaned_text
         else:
-            logger.debug(f"Using language: {effective_language}")
+            source_lang = language or getattr(self, "language", "en")
+            logger.debug(f"Using language: {source_lang}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
 
             audiobook_script = self.llm_client.generate_script(
                 text=cleaned_text,
                 prompt=self._task_prompt,
-                language=effective_language,
+                language=source_lang,
                 **self._task_llm_params,
             )
 
@@ -1078,7 +1073,7 @@ class DirectoryAudiobookCreator:
             audiobook_script = llm_client.generate_script(
                 text=cleaned_content,
                 prompt=prompt,
-                language=self.translate or self.language,
+                language=self.language,
                 **llm_params,
             )
 

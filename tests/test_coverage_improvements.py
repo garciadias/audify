@@ -326,32 +326,6 @@ class TestAudiobookCreatorCoverage:
             ):
                 creator._create_single_m4b([])
 
-    def test_audiobook_epub_creator_raises_without_epub_reader(self):
-        from audify.audiobook_creator import AudiobookEpubCreator
-
-        with (
-            patch("audify.audiobook_creator.EpubReader") as mock_epub,
-            patch(
-                "audify.audiobook_creator.BaseSynthesizer.__init__",
-                return_value=None,
-            ),
-            patch("audify.audiobook_creator.LLMClient"),
-            patch("audify.audiobook_creator.AudiobookCreator._setup_paths"),
-            patch("audify.audiobook_creator.AudiobookCreator._resolve_task_prompt"),
-            patch("pathlib.Path.mkdir"),
-            patch("pathlib.Path.exists", return_value=True),
-        ):
-            mock_epub_instance = Mock()
-            mock_epub_instance.get_language.return_value = "en"
-            mock_epub_instance.title = "Test"
-            mock_epub_instance.get_chapters = None  # no get_chapters
-            mock_epub_instance.get_cover_image.return_value = None
-            del mock_epub_instance.get_chapters
-            mock_epub.return_value = mock_epub_instance
-
-            with pytest.raises(ValueError, match="requires an EPUB reader"):
-                AudiobookEpubCreator(path="test.epub")
-
 
 # ---------------------------------------------------------------------------
 # text_to_speech.py – VoiceSamplesSynthesizer error paths

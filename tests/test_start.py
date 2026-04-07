@@ -873,6 +873,6 @@ def test_cli_single_file_mode_with_prompt_file():
 
 def test_main_module_import():
     """Test that the main module can be imported."""
-    import audify.__main__
+    import audify.__main__ as main_module
 
-    assert audify.__main__.__name__ == "audify.__main__"
+    assert main_module.__name__ == "audify.__main__"
