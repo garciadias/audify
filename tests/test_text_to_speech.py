@@ -118,8 +118,7 @@ class TestBaseSynthesizer:
             patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world", "Test sentence"],
-                Path("/tmp/output.wav")
+                ["Hello world", "Test sentence"], Path("/tmp/output.wav")
             )
 
         # Verify synthesis calls were made
@@ -231,8 +230,7 @@ class TestBaseSynthesizer:
             patch("pathlib.Path.exists", return_value=True),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world", "Test sentence"],
-                Path("/tmp/output.wav")
+                ["Hello world", "Test sentence"], Path("/tmp/output.wav")
             )
 
         # Verify the method completed and attempted both sentences
@@ -354,9 +352,7 @@ class TestEpubSynthesizer:
 
             assert synthesizer.path.name == "test.epub"
             assert synthesizer.language == "en"
-            mock_epub_reader.assert_called_once_with(
-                "test.epub", llm_config=None
-            )
+            mock_epub_reader.assert_called_once_with("test.epub", llm_config=None)
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
@@ -378,12 +374,8 @@ class TestEpubSynthesizer:
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
         ):
-            EpubSynthesizer(
-                path="test.epub", llm_config=mock_llm
-            )
-            mock_epub_reader.assert_called_once_with(
-                "test.epub", llm_config=mock_llm
-            )
+            EpubSynthesizer(path="test.epub", llm_config=mock_llm)
+            mock_epub_reader.assert_called_once_with("test.epub", llm_config=mock_llm)
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
@@ -423,8 +415,11 @@ class TestEpubSynthesizer:
 
             assert synthesizer.title == "Test Book"
             mock_translate.assert_called_once_with(
-                sentence="Livre de Test", src_lang="fr", tgt_lang="en",
-                model=None, base_url=None,
+                sentence="Livre de Test",
+                src_lang="fr",
+                tgt_lang="en",
+                model=None,
+                base_url=None,
             )
 
     @patch("audify.text_to_speech.EpubReader")
@@ -796,8 +791,11 @@ class TestPdfSynthesizer:
 
             assert result == Path("output.mp3")
             mock_translate.assert_called_once_with(
-                "Bonjour le monde.", src_lang="fr", tgt_lang="en",
-                model=None, base_url=None,
+                "Bonjour le monde.",
+                src_lang="fr",
+                tgt_lang="en",
+                model=None,
+                base_url=None,
             )
             mock_synth.assert_called_once()
 
@@ -931,9 +929,7 @@ class TestEpubSynthesizerAdvanced:
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
 
-            next_start = synthesizer._log_chapter_metadata(
-                "Chapter 1", 0, 120.5
-            )
+            next_start = synthesizer._log_chapter_metadata("Chapter 1", 0, 120.5)
 
             assert next_start == 120500  # milliseconds
 
@@ -961,10 +957,7 @@ class TestPdfSynthesizerAdvanced:
             mock_break.return_value = ["Test sentence."]
             mock_convert.return_value = Path("output.mp3")
 
-            synthesizer = PdfSynthesizer(
-                pdf_path="test.pdf",
-                save_text=True
-            )
+            synthesizer = PdfSynthesizer(pdf_path="test.pdf", save_text=True)
             synthesizer.synthesize()
 
             # Verify synthesis completed successfully
@@ -988,9 +981,7 @@ class TestTextSynthesizer:
                 patch("pathlib.Path.mkdir"),
             ):
                 synthesizer = TextSynthesizer(
-                    text_path="test.txt",
-                    language="en",
-                    speaker="test_voice"
+                    text_path="test.txt", language="en", speaker="test_voice"
                 )
                 assert synthesizer.path.name == "test.txt"
         except ImportError:
@@ -1023,8 +1014,7 @@ class TestAdditionalCoverageTargeting:
             pytest.raises(RuntimeError, match="not available"),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world"],
-                Path("/tmp/output.wav")
+                ["Hello world"], Path("/tmp/output.wav")
             )
 
 
@@ -1058,8 +1048,7 @@ class TestSynthesisIntegration:
             patch("pathlib.Path.exists", return_value=True),
         ):
             synthesizer._synthesize_sentences(
-                ["Hello world", "Test sentence"],
-                Path("/tmp/output.wav")
+                ["Hello world", "Test sentence"], Path("/tmp/output.wav")
             )
 
         # Verify the synthesis was called for both sentences
@@ -1088,10 +1077,7 @@ class TestSynthesisIntegration:
             patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
             pytest.raises(requests.ConnectionError),
         ):
-            synthesizer._synthesize_sentences(
-                ["Hello world"],
-                Path("/tmp/output.wav")
-            )
+            synthesizer._synthesize_sentences(["Hello world"], Path("/tmp/output.wav"))
 
 
 class TestAdvancedKokoroScenarios:
@@ -1124,8 +1110,7 @@ class TestAdvancedKokoroScenarios:
             patch("pathlib.Path.exists", side_effect=[True, False]),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world", "Test sentence"],
-                Path("/tmp/output.wav")
+                ["Hello world", "Test sentence"], Path("/tmp/output.wav")
             )
 
         # Should have tried both sentences
@@ -1182,8 +1167,7 @@ class TestAdvancedKokoroScenarios:
             patch("pathlib.Path.exists", return_value=True),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world", "", "   ", "Another sentence"],
-                Path("/tmp/output.wav")
+                ["Hello world", "", "   ", "Another sentence"], Path("/tmp/output.wav")
             )
 
         # Should only synthesize non-empty sentences (2 of them)
@@ -1216,8 +1200,7 @@ class TestAdvancedKokoroScenarios:
             patch("pathlib.Path.exists", return_value=False),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world"],
-                Path("/tmp/output.wav")
+                ["Hello world"], Path("/tmp/output.wav")
             )
 
         # Should have attempted synthesis, then skipped (file not found)
@@ -1249,8 +1232,7 @@ class TestAdvancedKokoroScenarios:
         ):
             # Should handle per-sentence error gracefully and not raise
             synthesizer._synthesize_with_provider(
-                ["Hello world"],
-                Path("/tmp/output.wav")
+                ["Hello world"], Path("/tmp/output.wav")
             )
 
         # Synthesis was attempted
@@ -1329,15 +1311,16 @@ class TestEpubSynthesizerAdvancedCoverage:
             patch("builtins.open", mock_file),
             patch.object(EpubSynthesizer, "_synthesize_sentences"),
             patch.object(EpubSynthesizer, "_convert_to_mp3") as mock_convert,
-            patch("audify.text_to_speech.tqdm.tqdm",
-                  side_effect=lambda x, **kwargs: x),
+            patch("audify.text_to_speech.tqdm.tqdm", side_effect=lambda x, **kwargs: x),
         ):
             mock_convert.return_value = Path("/tmp/chapter_001.mp3")
 
             synthesizer = EpubSynthesizer(path="test.epub", language="fr")
             # Test translation error during chapter synthesis
-            with patch("audify.text_to_speech.translate_sentence",
-                      side_effect=Exception("Translation failed")):
+            with patch(
+                "audify.text_to_speech.translate_sentence",
+                side_effect=Exception("Translation failed"),
+            ):
                 synthesizer.translate = "en"  # Set after init to avoid title error
                 result = synthesizer.synthesize_chapter("chapter content", 1)
 
@@ -1377,7 +1360,8 @@ class TestEpubSynthesizerAdvancedCoverage:
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_epub_create_metadata_for_chunk_io_error(
-        self, mock_temp_dir, mock_epub_reader):
+        self, mock_temp_dir, mock_epub_reader
+    ):
         """Test metadata creation with IO error during chunk metadata creation."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
         mock_epub_reader_instance = MagicMock()
@@ -1503,7 +1487,7 @@ class TestEpubSynthesizerAdvancedCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        # Mock long duration that requires splitting (over 15 hours)
+        # Mock long duration that requires splitting (over 6 hours)
         mock_get_duration.return_value = 30000.0  # 8.3 hours per file
 
         mock_file = mock_open()
@@ -1512,10 +1496,15 @@ class TestEpubSynthesizerAdvancedCoverage:
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
             patch(
-                "pathlib.Path.glob", return_value=[
-                    Path("/tmp/chapter_001.mp3"), Path("/tmp/chapter_002.mp3")]),
+                "pathlib.Path.glob",
+                return_value=[
+                    Path("/tmp/chapter_001.mp3"),
+                    Path("/tmp/chapter_002.mp3"),
+                ],
+            ),
             patch.object(
-                EpubSynthesizer, "_create_multiple_m4bs") as mock_create_multiple,
+                EpubSynthesizer, "_create_multiple_m4bs"
+            ) as mock_create_multiple,
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
             synthesizer.create_m4b()
@@ -1537,7 +1526,7 @@ class TestEpubSynthesizerAdvancedCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        # Mock short duration (under 15 hours)
+        # Mock short duration (under 6 hours)
         mock_get_duration.return_value = 7200.0  # 2 hours per file
 
         mock_file = mock_open()
@@ -1549,8 +1538,9 @@ class TestEpubSynthesizerAdvancedCoverage:
                 "pathlib.Path.glob",
                 return_value=[
                     Path("/tmp/chapter_001.mp3"),
-                    Path("/tmp/chapter_002.mp3")
-            ]),
+                    Path("/tmp/chapter_002.mp3"),
+                ],
+            ),
             patch.object(EpubSynthesizer, "_create_single_m4b") as mock_create_single,
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
@@ -1585,8 +1575,7 @@ class TestComprehensiveCoverage:
             pytest.raises(RuntimeError, match="not available"),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world"],
-                Path("/tmp/output.wav")
+                ["Hello world"], Path("/tmp/output.wav")
             )
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
@@ -1616,8 +1605,7 @@ class TestComprehensiveCoverage:
             patch("pathlib.Path.exists", return_value=False),  # Files don't exist
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world"],
-                Path("/tmp/output.wav")
+                ["Hello world"], Path("/tmp/output.wav")
             )
 
         # Should have attempted synthesis once
@@ -1640,15 +1628,22 @@ class TestComprehensiveCoverage:
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
-            patch("pathlib.Path.glob", return_value=[
-                Path("/tmp/chapter_001.mp3"),
-                Path("/tmp/chapter_002.mp3")
-            ]),
-            patch.object(EpubSynthesizer, "synthesize_chapter",
-                        return_value=Path("/tmp/chapter_001.mp3")),
+            patch(
+                "pathlib.Path.glob",
+                return_value=[
+                    Path("/tmp/chapter_001.mp3"),
+                    Path("/tmp/chapter_002.mp3"),
+                ],
+            ),
+            patch.object(
+                EpubSynthesizer,
+                "synthesize_chapter",
+                return_value=Path("/tmp/chapter_001.mp3"),
+            ),
             patch.object(EpubSynthesizer, "_create_single_m4b"),
-            patch("audify.text_to_speech.AudioProcessor.get_duration",
-                  return_value=3600.0),  # 1 hour each
+            patch(
+                "audify.text_to_speech.AudioProcessor.get_duration", return_value=3600.0
+            ),  # 1 hour each
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
 
@@ -1756,10 +1751,16 @@ class TestComprehensiveCoverage:
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
-            patch.object(EpubSynthesizer, "_create_temp_m4b_for_chunk",
-                        return_value=Path("/tmp/part1.m4b")),
-            patch.object(EpubSynthesizer, "_create_metadata_for_chunk",
-                        return_value=Path("/tmp/metadata1.txt")),
+            patch.object(
+                EpubSynthesizer,
+                "_create_temp_m4b_for_chunk",
+                return_value=Path("/tmp/part1.m4b"),
+            ),
+            patch.object(
+                EpubSynthesizer,
+                "_create_metadata_for_chunk",
+                return_value=Path("/tmp/metadata1.txt"),
+            ),
             patch("audify.text_to_speech.assemble_m4b"),
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
@@ -1839,11 +1840,13 @@ class TestComprehensiveCoverage:
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
-            patch.object(EpubSynthesizer, "synthesize_chapter",
-                        return_value=Path("/tmp/chapter_001.mp3")),
+            patch.object(
+                EpubSynthesizer,
+                "synthesize_chapter",
+                return_value=Path("/tmp/chapter_001.mp3"),
+            ),
             patch.object(EpubSynthesizer, "create_m4b"),
-            patch("audify.text_to_speech.tqdm.tqdm",
-                  side_effect=lambda x, **kwargs: x),
+            patch("audify.text_to_speech.tqdm.tqdm", side_effect=lambda x, **kwargs: x),
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
 
@@ -1863,11 +1866,14 @@ class TestComprehensiveCoverage:
         with (
             patch("pathlib.Path.exists", return_value=True),
             patch("pathlib.Path.mkdir"),
-            patch("audify.text_to_speech.break_text_into_sentences",
-                  return_value=["This is test PDF content."]),
+            patch(
+                "audify.text_to_speech.break_text_into_sentences",
+                return_value=["This is test PDF content."],
+            ),
             patch.object(PdfSynthesizer, "_synthesize_sentences"),
-            patch.object(PdfSynthesizer, "_convert_to_mp3",
-                        return_value=Path("/tmp/output.mp3")),
+            patch.object(
+                PdfSynthesizer, "_convert_to_mp3", return_value=Path("/tmp/output.mp3")
+            ),
             patch("builtins.open", mock_open()),
         ):
             synthesizer = PdfSynthesizer(pdf_path="test.pdf", save_text=True)
@@ -1926,8 +1932,7 @@ class TestComprehensiveCoverage:
             pytest.raises(Exception, match="Export failed"),
         ):
             synthesizer._synthesize_with_provider(
-                ["Hello world"],
-                Path("/tmp/output.wav")
+                ["Hello world"], Path("/tmp/output.wav")
             )
 
 
@@ -1945,11 +1950,7 @@ class TestEpubSynthesizerCoverage:
     @pytest.fixture
     def synthesizer(self, mock_reader, tmp_path):
         with patch("audify.text_to_speech.OUTPUT_BASE_DIR", str(tmp_path)):
-            synth = EpubSynthesizer(
-                path="test.epub",
-                language="en",
-                save_text=False
-            )
+            synth = EpubSynthesizer(path="test.epub", language="en", save_text=False)
             return synth
 
     def test_synthesize_chapter_no_sentences(self, synthesizer):
@@ -2045,9 +2046,7 @@ class TestEpubSynthesizerCoverage:
                             "audify.text_to_speech.assemble_m4b",
                             side_effect=subprocess.CalledProcessError(1, "cmd"),
                         ):
-                            with patch(
-                                "audify.text_to_speech.logger"
-                            ) as mock_logger:
+                            with patch("audify.text_to_speech.logger") as mock_logger:
                                 synthesizer._create_multiple_m4bs(files)
                                 mock_logger.error.assert_called()
 
@@ -2075,9 +2074,7 @@ class TestEpubSynthesizerCoverage:
                             "audify.text_to_speech.assemble_m4b",
                             side_effect=FileNotFoundError,
                         ):
-                            with patch(
-                                "audify.text_to_speech.logger"
-                            ) as mock_logger:
+                            with patch("audify.text_to_speech.logger") as mock_logger:
                                 synthesizer._create_multiple_m4bs(files)
                                 mock_logger.error.assert_called()
 
@@ -2180,9 +2177,7 @@ class TestEpubSynthesizerCoverage:
                 synthesizer, "synthesize_chapter", return_value=Path("ch.mp3")
             ):
                 with patch("audify.text_to_speech.logger") as mock_logger:
-                    result = synthesizer._process_single_chapter(
-                        1, "content" * 20, 0
-                    )
+                    result = synthesizer._process_single_chapter(1, "content" * 20, 0)
                     mock_logger.warning.assert_called()
                     assert result == 0
 
@@ -2195,9 +2190,7 @@ class TestEpubSynthesizerCoverage:
                 side_effect=Exception("Synth error"),
             ):
                 with patch("audify.text_to_speech.logger") as mock_logger:
-                    result = synthesizer._process_single_chapter(
-                        1, "content" * 20, 0
-                    )
+                    result = synthesizer._process_single_chapter(1, "content" * 20, 0)
                     mock_logger.error.assert_called()
                     assert result == 0
 

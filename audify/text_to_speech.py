@@ -250,9 +250,7 @@ class EpubSynthesizer(BaseSynthesizer):
         model_name: str = DEFAULT_MODEL,
         output_dir: Optional[str | Path] = None,
         tts_provider: Optional[str] = None,
-        llm_config: Optional[
-            Union[OllamaAPIConfig, CommercialAPIConfig]
-        ] = None,
+        llm_config: Optional[Union[OllamaAPIConfig, CommercialAPIConfig]] = None,
         llm_model: Optional[str] = None,
         llm_base_url: Optional[str] = None,
     ):
@@ -271,8 +269,11 @@ class EpubSynthesizer(BaseSynthesizer):
         if translate:
             logger.info(f"Translating title from {language} to {translate}")
             self.title = translate_sentence(
-                sentence=self.title, src_lang=language, tgt_lang=translate,
-                model=llm_model, base_url=llm_base_url,
+                sentence=self.title,
+                src_lang=language,
+                tgt_lang=translate,
+                model=llm_model,
+                base_url=llm_base_url,
             )
 
         self.file_name = get_file_name_title(self.title)
@@ -341,8 +342,11 @@ class EpubSynthesizer(BaseSynthesizer):
             try:
                 sentences = [
                     translate_sentence(
-                        sentence, src_lang=self.language, tgt_lang=self.translate,
-                        model=self.llm_model, base_url=self.llm_base_url,
+                        sentence,
+                        src_lang=self.language,
+                        tgt_lang=self.translate,
+                        model=self.llm_model,
+                        base_url=self.llm_base_url,
                     )
                     for sentence in tqdm.tqdm(
                         sentences,
@@ -373,7 +377,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return total_duration
 
     def _split_chapters_by_duration(
-        self, chapter_mp3_files: List[Path], max_hours: float = 15.0
+        self, chapter_mp3_files: List[Path], max_hours: float = 6.0
     ) -> List[List[Path]]:
         """Split chapter MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(chapter_mp3_files, max_hours)
@@ -445,14 +449,15 @@ class EpubSynthesizer(BaseSynthesizer):
         total_duration_hours = self._calculate_total_duration(chapter_mp3_files) / 3600
         logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        # If duration is less than 15 hours, create a single M4B
-        if total_duration_hours <= 15.0:
-            logger.info("Creating single M4B file (duration <= 15 hours)")
+        # If duration is less than 6 hours, create a single M4B
+        # Using 6 hours as a safe limit to avoid WAV 4GB file size issues
+        if total_duration_hours <= 6.0:
+            logger.info("Creating single M4B file (duration <= 6 hours)")
             self._create_single_m4b(chapter_mp3_files)
         else:
             logger.info(
-                f"Duration ({total_duration_hours:.2f}h) exceeds 15 hours, "
-                f"splitting into multiple M4B files"
+                f"Duration ({total_duration_hours:.2f}h) exceeds 6 hours, "
+                f"splitting into multiple M4B files to avoid WAV file size limits"
             )
             self._create_multiple_m4bs(chapter_mp3_files)
 
@@ -481,7 +486,7 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _create_multiple_m4bs(self, chapter_mp3_files: List[Path]) -> None:
         """Create multiple M4B files by splitting chapters into chunks."""
-        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=15.0)
+        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=6.0)
         logger.info(f"Split into {len(chunks)} chunks")
 
         for chunk_index, chunk_files in enumerate(chunks):
@@ -516,9 +521,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 )
                 chunk_metadata_path.unlink(missing_ok=True)
             except Exception as e:
-                logger.error(
-                    f"M4B creation failed for chunk {chunk_index + 1}: {e}"
-                )
+                logger.error(f"M4B creation failed for chunk {chunk_index + 1}: {e}")
 
         logger.info(f"Created {len(chunks)} M4B files for long audiobook")
 
@@ -705,8 +708,11 @@ class PdfSynthesizer(BaseSynthesizer):
                 try:
                     sentences = [
                         translate_sentence(
-                            sentence, src_lang=self.language, tgt_lang=self.translate,
-                            model=self.llm_model, base_url=self.llm_base_url,
+                            sentence,
+                            src_lang=self.language,
+                            tgt_lang=self.translate,
+                            model=self.llm_model,
+                            base_url=self.llm_base_url,
                         )
                         for sentence in tqdm.tqdm(
                             sentences, desc="Translating PDF", unit="sentence"
