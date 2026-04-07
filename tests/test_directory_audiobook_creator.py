@@ -476,6 +476,106 @@ class TestDirectoryAudiobookCreatorCreateM4b:
             mock_subprocess.assert_called_once()
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
+    @patch("pathlib.Path.glob")
+    def test_create_m4b_with_splitting(self, mock_glob, mock_base_synth):
+        """Test create_m4b with duration >6 hours triggers splitting."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator = DirectoryAudiobookCreator(
+                directory_path=tmpdir, output_dir=tmpdir
+            )
+            creator.chapter_titles = [
+                "Chapter 1",
+                "Chapter 2",
+                "Chapter 3",
+                "Chapter 4",
+            ]
+
+            # Mock episode files (4 episodes)
+            episode_files = [
+                creator.episodes_path / "episode_001.mp3",
+                creator.episodes_path / "episode_002.mp3",
+                creator.episodes_path / "episode_003.mp3",
+                creator.episodes_path / "episode_004.mp3",
+            ]
+            mock_glob.return_value = episode_files
+
+            # Mock chunks: split into 2 chunks of 2 episodes each
+            chunk1 = episode_files[:2]
+            chunk2 = episode_files[2:]
+
+            with (
+                patch.object(
+                    creator, "_calculate_total_duration"
+                ) as mock_calc_duration,
+                patch.object(
+                    creator,
+                    "_split_episodes_by_duration",
+                    return_value=[chunk1, chunk2],
+                ),
+                patch.object(creator, "_create_temp_m4b_for_chunk") as mock_create_temp,
+                patch.object(creator, "_create_metadata_for_chunk") as mock_create_meta,
+                patch("audify.audiobook_creator.assemble_m4b") as mock_assemble,
+                patch(
+                    "pathlib.Path.exists", return_value=True
+                ),  # Make temp paths exist
+            ):
+                # Mock calculate_total_duration to return 7 hours for total,
+                # 3.5 hours per chunk
+                mock_calc_duration.side_effect = [
+                    7 * 3600,  # total duration
+                    3.5 * 3600,  # chunk1 duration
+                    3.5 * 3600,  # chunk2 duration
+                ]
+
+                # Mock temporary M4B paths
+                temp_path1 = creator.audiobook_path / "test_part1.tmp.m4b"
+                temp_path2 = creator.audiobook_path / "test_part2.tmp.m4b"
+                mock_create_temp.side_effect = [temp_path1, temp_path2]
+
+                # Mock metadata paths
+                meta_path1 = creator.audiobook_path / "chapters_part1.txt"
+                meta_path2 = creator.audiobook_path / "chapters_part2.txt"
+                mock_create_meta.side_effect = [meta_path1, meta_path2]
+
+                creator.create_m4b()
+
+                # Verify splitting was triggered - first call with all episodes
+                mock_calc_duration.assert_any_call(episode_files)
+                creator._split_episodes_by_duration.assert_called_once_with(
+                    episode_files, max_hours=6.0
+                )
+
+                # Verify chunk processing
+                assert mock_create_temp.call_count == 2
+                mock_create_temp.assert_any_call(chunk1, 0)
+                mock_create_temp.assert_any_call(chunk2, 1)
+
+                assert mock_create_meta.call_count == 2
+                mock_create_meta.assert_any_call(chunk1, 0)
+                mock_create_meta.assert_any_call(chunk2, 1)
+
+                # Verify assemble_m4b calls
+                assert mock_assemble.call_count == 2
+                expected_final_path1 = (
+                    creator.audiobook_path / f"{creator.file_name}_part1.m4b"
+                )
+                expected_final_path2 = (
+                    creator.audiobook_path / f"{creator.file_name}_part2.m4b"
+                )
+                mock_assemble.assert_any_call(
+                    temp_path1,
+                    meta_path1,
+                    expected_final_path1,
+                    None,
+                )
+                mock_assemble.assert_any_call(
+                    temp_path2,
+                    meta_path2,
+                    expected_final_path2,
+                    None,
+                )
+
+    @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("subprocess.run")
     @patch("audify.audiobook_creator.AudioSegment")
     @patch("audify.audiobook_creator.tqdm.tqdm")
@@ -513,6 +613,136 @@ class TestDirectoryAudiobookCreatorCreateM4b:
 
             with pytest.raises(sp.CalledProcessError):
                 creator.create_m4b()
+
+    @patch("audify.audiobook_creator.BaseSynthesizer")
+    def test_split_episodes_by_duration(self, mock_base_synth):
+        """Test _split_episodes_by_duration delegates to AudioProcessor."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator = DirectoryAudiobookCreator(
+                directory_path=tmpdir, output_dir=tmpdir
+            )
+            episode_files = [
+                creator.episodes_path / "episode_001.mp3",
+                creator.episodes_path / "episode_002.mp3",
+            ]
+
+            with patch(
+                "audify.audiobook_creator.AudioProcessor.split_audio_by_duration"
+            ) as mock_split:
+                mock_split.return_value = [[episode_files[0]], [episode_files[1]]]
+
+                result = creator._split_episodes_by_duration(
+                    episode_files, max_hours=5.0
+                )
+
+                mock_split.assert_called_once_with(episode_files, 5.0)
+                assert result == [[episode_files[0]], [episode_files[1]]]
+
+    @patch("audify.audiobook_creator.BaseSynthesizer")
+    def test_create_temp_m4b_for_chunk_exists(self, mock_base_synth):
+        """Test _create_temp_m4b_for_chunk when temp file already exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator = DirectoryAudiobookCreator(
+                directory_path=tmpdir, output_dir=tmpdir
+            )
+            creator.file_name = "test"
+
+            chunk_files = [creator.episodes_path / "episode_001.mp3"]
+            chunk_temp_path = creator.audiobook_path / "test_part1.tmp.m4b"
+
+            with (
+                patch.object(Path, "exists", return_value=True),
+                patch("audify.audiobook_creator.logger.info") as mock_logger,
+            ):
+                result = creator._create_temp_m4b_for_chunk(chunk_files, 0)
+
+                assert result == chunk_temp_path
+                mock_logger.assert_called()
+
+    @patch("audify.audiobook_creator.BaseSynthesizer")
+    def test_create_temp_m4b_for_chunk_create_new(self, mock_base_synth):
+        """Test _create_temp_m4b_for_chunk creates new temp file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator = DirectoryAudiobookCreator(
+                directory_path=tmpdir, output_dir=tmpdir
+            )
+            creator.file_name = "test"
+
+            chunk_files = [creator.episodes_path / "episode_001.mp3"]
+            chunk_temp_path = creator.audiobook_path / "test_part1.tmp.m4b"
+
+            with (
+                patch.object(Path, "exists", return_value=False),
+                patch(
+                    "audify.audiobook_creator.AudioProcessor.combine_audio_files"
+                ) as mock_combine,
+                patch("audify.audiobook_creator.logger.info") as mock_logger,
+            ):
+                result = creator._create_temp_m4b_for_chunk(chunk_files, 0)
+
+                assert result == chunk_temp_path
+                mock_combine.assert_called_once_with(
+                    chunk_files,
+                    chunk_temp_path,
+                    output_format="mp4",
+                    description="Combining Chunk 1",
+                )
+                mock_logger.assert_called()
+
+    @patch("audify.audiobook_creator.BaseSynthesizer")
+    def test_create_metadata_for_chunk(self, mock_base_synth):
+        """Test _create_metadata_for_chunk creates metadata file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator = DirectoryAudiobookCreator(
+                directory_path=tmpdir, output_dir=tmpdir
+            )
+            creator.chapter_titles = ["Chapter 1", "Chapter 2"]
+
+            chunk_files = [
+                creator.episodes_path / "episode_001.mp3",
+                creator.episodes_path / "episode_002.mp3",
+            ]
+
+            with (
+                patch(
+                    "audify.audiobook_creator.write_metadata_header"
+                ) as mock_write_header,
+                patch(
+                    "audify.audiobook_creator.AudioProcessor.get_duration"
+                ) as mock_get_duration,
+                patch(
+                    "audify.audiobook_creator.append_chapter_metadata"
+                ) as mock_append,
+                patch("audify.audiobook_creator.logger.info") as mock_logger,
+                patch("audify.audiobook_creator.logger.warning") as mock_warning,
+            ):
+                mock_get_duration.side_effect = [100.0, 200.0]  # durations in seconds
+                mock_append.side_effect = [
+                    100000,
+                    300000,
+                ]  # new start times after each chapter
+
+                result = creator._create_metadata_for_chunk(chunk_files, 0)
+
+                # Verify metadata file path
+                expected_path = creator.audiobook_path / "chapters_part1.txt"
+                assert result == expected_path
+
+                # Verify header written
+                mock_write_header.assert_called_once_with(expected_path)
+
+                # Verify durations fetched
+                assert mock_get_duration.call_count == 2
+                mock_get_duration.assert_any_call(str(chunk_files[0]))
+                mock_get_duration.assert_any_call(str(chunk_files[1]))
+
+                # Verify metadata appended
+                assert mock_append.call_count == 2
+                mock_append.assert_any_call(expected_path, "Chapter 1", 0, 100.0)
+                mock_append.assert_any_call(expected_path, "Chapter 2", 100000, 200.0)
+
+                mock_logger.assert_called()
+                mock_warning.assert_not_called()
 
 
 class TestDirectoryAudiobookCreatorCreateSingleM4b:
