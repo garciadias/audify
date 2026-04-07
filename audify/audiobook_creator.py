@@ -630,6 +630,73 @@ class AudiobookCreator(BaseSynthesizer):
             self.metadata_path, title, start_time_ms, duration_s
         )
 
+    def _split_episodes_by_duration(
+        self, episode_mp3_files: List[Path], max_hours: float = 6.0
+    ) -> List[List[Path]]:
+        """Split episode MP3 files into chunks with maximum duration in hours."""
+        return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
+
+    def _create_temp_m4b_for_chunk(
+        self, chunk_files: List[Path], chunk_index: int
+    ) -> Path:
+        """Create a temporary M4B file for a specific chunk of episodes."""
+        chunk_temp_path = (
+            self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.tmp.m4b"
+        )
+
+        if chunk_temp_path.exists():
+            logger.info(
+                f"Temporary M4B for chunk {chunk_index + 1} already exists: "
+                f"{chunk_temp_path}"
+            )
+            return chunk_temp_path
+
+        logger.info(
+            f"Combining {len(chunk_files)} episode MP3s for chunk {chunk_index + 1}..."
+        )
+        AudioProcessor.combine_audio_files(
+            chunk_files,
+            chunk_temp_path,
+            output_format="mp4",
+            description=f"Combining Chunk {chunk_index + 1}",
+        )
+        return chunk_temp_path
+
+    def _create_metadata_for_chunk(
+        self, chunk_files: List[Path], chunk_index: int
+    ) -> Path:
+        """Create a metadata file for a specific chunk."""
+        chunk_metadata_path = (
+            self.audiobook_path / f"chapters_part{chunk_index + 1}.txt"
+        )
+        logger.info(
+            f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
+        )
+        write_metadata_header(chunk_metadata_path)
+        current_start_ms = 0
+        for mp3_file in chunk_files:
+            try:
+                # Extract episode number from filename: episode_<number>.mp3
+                episode_num = int(mp3_file.stem.split("_")[1])
+                duration = AudioProcessor.get_duration(str(mp3_file))
+                if duration > 0:
+                    # Use chapter title if available, otherwise "Episode X"
+                    chapter_title = (
+                        self.chapter_titles[episode_num - 1]
+                        if (episode_num - 1) < len(self.chapter_titles)
+                        else None
+                    )
+                    title = chapter_title or f"Episode {episode_num}"
+                    current_start_ms = append_chapter_metadata(
+                        chunk_metadata_path,
+                        title,
+                        current_start_ms,
+                        duration,
+                    )
+            except Exception as e:
+                logger.warning(f"Could not process metadata for {mp3_file}: {e}")
+        return chunk_metadata_path
+
     def create_m4b(self) -> None:
         """Combines audiobook episodes into M4B audiobook file."""
         logger.info("Starting M4B creation process for audiobook...")
@@ -642,13 +709,63 @@ class AudiobookCreator(BaseSynthesizer):
         self.temp_m4b_path = self.audiobook_path / f"{self.file_name}.tmp.m4b"
         self.final_m4b_path = self.audiobook_path / f"{self.file_name}.m4b"
 
-        self._initialize_metadata_file()
-
         total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
         logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        logger.info("Creating M4B audiobook from audiobook episodes...")
-        self._create_single_m4b(episode_mp3_files)
+        # If duration is less than 6 hours, create a single M4B
+        # Using 6 hours as a safe limit to avoid WAV file size issues
+        if total_duration_hours <= 6.0:
+            logger.info("Creating single M4B file (duration <= 6 hours)")
+            self._initialize_metadata_file()
+            self._create_single_m4b(episode_mp3_files)
+        else:
+            logger.info(
+                f"Duration ({total_duration_hours:.2f}h) exceeds 6 hours, "
+                f"splitting into multiple M4B files to avoid WAV file size limits"
+            )
+            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=6.0)
+            logger.info(f"Split into {len(chunks)} chunks")
+
+            for chunk_index, chunk_files in enumerate(chunks):
+                chunk_duration = self._calculate_total_duration(chunk_files) / 3600
+                logger.info(
+                    f"Processing chunk {chunk_index + 1}/{len(chunks)} "
+                    f"({len(chunk_files)} episodes, {chunk_duration:.2f}h)"
+                )
+
+                chunk_temp_path = self._create_temp_m4b_for_chunk(
+                    chunk_files, chunk_index
+                )
+                if not chunk_temp_path.exists():
+                    logger.error(
+                        f"Failed to create temporary M4B for chunk {chunk_index + 1}"
+                    )
+                    continue
+
+                chunk_metadata_path = self._create_metadata_for_chunk(
+                    chunk_files, chunk_index
+                )
+                chunk_final_path = (
+                    self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.m4b"
+                )
+                logger.info(
+                    f"Creating final M4B for chunk {chunk_index + 1}: "
+                    f"{chunk_final_path}"
+                )
+                try:
+                    assemble_m4b(
+                        chunk_temp_path,
+                        chunk_metadata_path,
+                        chunk_final_path,
+                        getattr(self, "cover_image_path", None),
+                    )
+                    chunk_metadata_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.error(
+                        f"M4B creation failed for chunk {chunk_index + 1}: {e}"
+                    )
+
+            logger.info(f"Created {len(chunks)} M4B files for long audiobook")
 
     def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
         """Create a single M4B file from all audiobook episodes."""
@@ -1137,6 +1254,84 @@ class DirectoryAudiobookCreator:
             self.metadata_path, title, start_time_ms, duration_s
         )
 
+    def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
+        """Calculate total duration of MP3 files in seconds."""
+        total_duration = 0.0
+        for mp3_file in mp3_files:
+            try:
+                duration = AudioProcessor.get_duration(str(mp3_file))
+                total_duration += duration
+            except Exception as e:
+                logger.warning(f"Could not get duration for {mp3_file}: {e}")
+        return total_duration
+
+    def _split_episodes_by_duration(
+        self, episode_mp3_files: List[Path], max_hours: float = 6.0
+    ) -> List[List[Path]]:
+        """Split episode MP3 files into chunks with maximum duration in hours."""
+        return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
+
+    def _create_temp_m4b_for_chunk(
+        self, chunk_files: List[Path], chunk_index: int
+    ) -> Path:
+        """Create a temporary M4B file for a specific chunk of episodes."""
+        chunk_temp_path = (
+            self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.tmp.m4b"
+        )
+
+        if chunk_temp_path.exists():
+            logger.info(
+                f"Temporary M4B for chunk {chunk_index + 1} already exists: "
+                f"{chunk_temp_path}"
+            )
+            return chunk_temp_path
+
+        logger.info(
+            f"Combining {len(chunk_files)} episode MP3s for chunk {chunk_index + 1}..."
+        )
+        AudioProcessor.combine_audio_files(
+            chunk_files,
+            chunk_temp_path,
+            output_format="mp4",
+            description=f"Combining Chunk {chunk_index + 1}",
+        )
+        return chunk_temp_path
+
+    def _create_metadata_for_chunk(
+        self, chunk_files: List[Path], chunk_index: int
+    ) -> Path:
+        """Create a metadata file for a specific chunk."""
+        chunk_metadata_path = (
+            self.audiobook_path / f"chapters_part{chunk_index + 1}.txt"
+        )
+        logger.info(
+            f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
+        )
+        write_metadata_header(chunk_metadata_path)
+        current_start_ms = 0
+        for mp3_file in chunk_files:
+            try:
+                # Extract episode number from filename: episode_<number>.mp3
+                episode_num = int(mp3_file.stem.split("_")[1])
+                duration = AudioProcessor.get_duration(str(mp3_file))
+                if duration > 0:
+                    # Use chapter title if available, otherwise "Episode X"
+                    chapter_title = (
+                        self.chapter_titles[episode_num - 1]
+                        if (episode_num - 1) < len(self.chapter_titles)
+                        else None
+                    )
+                    title = chapter_title or f"Episode {episode_num}"
+                    current_start_ms = append_chapter_metadata(
+                        chunk_metadata_path,
+                        title,
+                        current_start_ms,
+                        duration,
+                    )
+            except Exception as e:
+                logger.warning(f"Could not process metadata for {mp3_file}: {e}")
+        return chunk_metadata_path
+
     def create_m4b(self) -> None:
         """Combines episodes into M4B audiobook file."""
         logger.info("Starting M4B creation process for directory audiobook...")
@@ -1148,15 +1343,67 @@ class DirectoryAudiobookCreator:
             logger.error("No episode MP3 files found to create M4B.")
             return
 
-        # Set up paths for M4B creation
+        # Set up paths for M4B creation (used for single M4B case)
         self.temp_m4b_path = self.audiobook_path / f"{self.file_name}.tmp.m4b"
         self.final_m4b_path = self.audiobook_path / f"{self.file_name}.m4b"
 
-        # Initialize metadata file
-        self._initialize_metadata_file()
+        total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
+        logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        logger.info(f"Creating M4B audiobook from {len(episode_mp3_files)} episodes...")
-        self._create_single_m4b(episode_mp3_files)
+        # If duration is less than 6 hours, create a single M4B
+        # Using 6 hours as a safe limit to avoid WAV file size issues
+        if total_duration_hours <= 6.0:
+            logger.info("Creating single M4B file (duration <= 6 hours)")
+            self._initialize_metadata_file()
+            self._create_single_m4b(episode_mp3_files)
+        else:
+            logger.info(
+                f"Duration ({total_duration_hours:.2f}h) exceeds 6 hours, "
+                f"splitting into multiple M4B files to avoid WAV file size limits"
+            )
+            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=6.0)
+            logger.info(f"Split into {len(chunks)} chunks")
+
+            for chunk_index, chunk_files in enumerate(chunks):
+                chunk_duration = self._calculate_total_duration(chunk_files) / 3600
+                logger.info(
+                    f"Processing chunk {chunk_index + 1}/{len(chunks)} "
+                    f"({len(chunk_files)} episodes, {chunk_duration:.2f}h)"
+                )
+
+                chunk_temp_path = self._create_temp_m4b_for_chunk(
+                    chunk_files, chunk_index
+                )
+                if not chunk_temp_path.exists():
+                    logger.error(
+                        f"Failed to create temporary M4B for chunk {chunk_index + 1}"
+                    )
+                    continue
+
+                chunk_metadata_path = self._create_metadata_for_chunk(
+                    chunk_files, chunk_index
+                )
+                chunk_final_path = (
+                    self.audiobook_path / f"{self.file_name}_part{chunk_index + 1}.m4b"
+                )
+                logger.info(
+                    f"Creating final M4B for chunk {chunk_index + 1}: "
+                    f"{chunk_final_path}"
+                )
+                try:
+                    assemble_m4b(
+                        chunk_temp_path,
+                        chunk_metadata_path,
+                        chunk_final_path,
+                        None,  # No cover image for directory audiobooks
+                    )
+                    chunk_metadata_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.error(
+                        f"M4B creation failed for chunk {chunk_index + 1}: {e}"
+                    )
+
+            logger.info(f"Created {len(chunks)} M4B files for long audiobook")
 
     def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
         """Create a single M4B file from all episodes."""
