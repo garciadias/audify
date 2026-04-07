@@ -806,6 +806,9 @@ class CommercialAPIConfig(APIConfig):
         self.model = self.MODEL_MAPPINGS.get(model, model)
         self.api_key = api_key
 
+        # Also load any additional keys from .keys file
+        self._load_api_keys_to_env()
+
         # If no API key provided, try to load from api_keys module
         if not self.api_key:
             try:
@@ -839,9 +842,6 @@ class CommercialAPIConfig(APIConfig):
                 os.environ["OPENAI_API_KEY"] = self.api_key
             elif "gemini" in original_model.lower():
                 os.environ["GOOGLE_API_KEY"] = self.api_key
-
-        # Also load any additional keys from .keys file
-        self._load_api_keys_to_env()
 
     def _load_api_keys_to_env(self) -> None:
         """Load API keys from .keys file into environment variables."""
