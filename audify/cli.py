@@ -215,17 +215,14 @@ def cli(
     path: tuple[str, ...],
 ):
     """Audify: Convert ebooks and PDFs to audiobooks using AI text-to-speech."""
-    # If a subcommand is invoked, let it handle the logic
     if ctx.invoked_subcommand is not None:
         return
 
     path_str = path[0] if path else None
 
-    # Configure logging based on verbose flag
     configure_cli_logging(verbose=verbose)
     logger = logging.getLogger(__name__)
 
-    # Handle early-exit listing flags
     try:
         terminal_width = os.get_terminal_size()[0]
     except OSError:
@@ -326,7 +323,6 @@ def cli(
             voices = config.get_available_voices()
             if voices:
                 if tts_provider == "kokoro":
-                    # Group Kokoro voices by prefix for better organization
                     voice_groups: dict[str, list[str]] = {}
                     for v in voices:
                         prefix = v.split("_")[0] if "_" in v else "other"
@@ -339,7 +335,6 @@ def cli(
                         for v in sorted(voice_groups[prefix]):
                             click.echo(f"  {v}")
                 else:
-                    # For other providers, just list voices
                     click.echo(f"\nVoices for {tts_provider}:")
                     for v in sorted(voices):
                         click.echo(f"  {v}")
@@ -349,24 +344,19 @@ def cli(
             click.echo(f"Error fetching voices from {tts_provider}: {e}")
         return
 
-    # If no path provided and no listing flag, show help
     if path_str is None:
         click.echo(ctx.get_help())
         return
 
     effective_llm_model = llm_model or OLLAMA_DEFAULT_MODEL
-
-    # Normal conversion path
     path_obj = Path(path_str)
 
-    # Validate path exists
     if not path_obj.exists():
         click.echo(f"Error: Path '{path_str}' does not exist.", err=True)
         ctx.exit(1)
 
     logger.info("=" * terminal_width)
 
-    # Check if path is a directory
     if path_obj.is_dir():
         logger.info("Directory Mode: Processing multiple files".center(terminal_width))
         logger.info("=" * terminal_width)
@@ -383,7 +373,6 @@ def cli(
         logger.info("=" * terminal_width)
 
         try:
-            # Create directory audiobook creator
             dir_creator = DirectoryAudiobookCreator(
                 directory_path=path_str,
                 language=language,
@@ -399,7 +388,6 @@ def cli(
                 task=task,
                 prompt_file=prompt_file,
             )
-            # Generate the audiobook
             output_path = dir_creator.synthesize()
 
             logger.info("\n" + "=" * terminal_width)
@@ -408,22 +396,19 @@ def cli(
             logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
-            logger.info("\n\nDirectory audiobook creation cancelled by user.")
+            logger.info("Directory audiobook creation cancelled by user.")
             raise SystemExit(1)
         except Exception as e:
-            logger.error(f"\nError: {e}")
+            logger.error(f"Error: {e}")
             logger.error("Please check your configuration and try again.")
             if "Could not connect to LLM" in str(e):
-                logger.error("\nTip: Make sure Ollama is running:")
-                logger.error("  ollama serve")
+                logger.error("Tip: Make sure Ollama is running: ollama serve")
                 logger.error(f"  ollama pull {effective_llm_model}")
             raise SystemExit(1)
 
     else:
-        # Single file mode
         file_extension = get_file_extension(path_str)
 
-        # Show configuration
         logger.info(f"Source file: {path_str}")
         logger.info(f"Language: {language}")
         logger.info(f"LLM Model: {effective_llm_model}")
@@ -456,7 +441,6 @@ def cli(
                 task=task,
                 prompt_file=prompt_file,
             )
-            # Generate the audiobook
             output_path = creator.synthesize()
 
             logger.info("\n" + "=" * terminal_width)
@@ -465,14 +449,13 @@ def cli(
             logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
-            logger.info("\n\nAudiobook creation cancelled by user.")
+            logger.info("Audiobook creation cancelled by user.")
             raise SystemExit(1)
         except Exception as e:
-            logger.error(f"\nError: {e}")
+            logger.error(f"Error: {e}")
             logger.error("Please check your configuration and try again.")
             if "Could not connect to LLM" in str(e):
-                logger.error("\nTip: Make sure Ollama is running:")
-                logger.error("  ollama serve")
+                logger.error("Tip: Make sure Ollama is running: ollama serve")
                 logger.error(f"  ollama pull {effective_llm_model}")
             raise SystemExit(1)
 
