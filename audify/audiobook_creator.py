@@ -28,7 +28,6 @@ from audify.utils.m4b_builder import (
 from audify.utils.prompts import AUDIOBOOK_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
 
-# Default LLM parameters for audiobook generation
 _DEFAULT_LLM_PARAMS = {
     "num_ctx": 8 * 4096,
     "temperature": 0.8,
@@ -39,8 +38,32 @@ _DEFAULT_LLM_PARAMS = {
     "num_predict": 4096,
 }
 
-# Configure logging
 logger = setup_logging(module_name=__name__)
+
+
+def _clean_text_for_audiobook(text: str) -> str:
+    """Remove references, citations, and academic formatting from text."""
+    text = str(text)
+    if re.search(r"<[^>]+>", text):
+        text = BeautifulSoup(text, "html.parser").get_text()
+    text = re.sub(r"\[\d+\]", "", text)
+    text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
+    text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
+    text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
+    text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
+    text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
+    for pattern in [
+        r"(?i)references?\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+        r"(?i)bibliography\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+        r"(?i)works?\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+        r"(?i)literature\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+    ]:
+        text = re.sub(pattern, "", text, flags=re.DOTALL)
+    text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
+    text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return text.strip()
 
 
 class LLMClient:
@@ -184,10 +207,8 @@ class AudiobookCreator(BaseSynthesizer):
         task: Optional[str] = None,
         prompt_file: Optional[str | Path] = None,
     ):
-        # Initialize file reader based on extension
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
-        # Build llm_config for the reader from the user's model if not provided
         if llm_config is None and llm_model:
             if llm_model.startswith("api:"):
                 llm_config = CommercialAPIConfig(model=llm_model[4:])
@@ -199,32 +220,26 @@ class AudiobookCreator(BaseSynthesizer):
             self.title = self.reader.title
         elif file_path.suffix.lower() == ".pdf":
             self.reader = PdfReader(path)
-            detected_language = "en"  # PDF reader will not detect language on metadata
+            detected_language = "en"
             self.title = file_path.stem
         else:
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
         self.language = language if language else detected_language
-        # Keep resolved_language for callers/tests that expect this attribute
         self.resolved_language = self.language
         if not self.language:
             raise ValueError(
                 "Language must be provided or detectable from the file metadata."
             )
 
-        # Setup output paths
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create audiobook-specific title
         self.audiobook_title = f"Audiobook - {self.title}"
-        # Use file_name as the audiobook file_name
-        # Clean file name to remove invalid characters
         self.file_name = Path(get_file_name_title(file_path.stem))
         self._setup_paths(self.file_name)
 
-        # Initialize LLM client
         self.llm_client = LLMClient(llm_base_url, llm_model)
         self.llm_model = llm_model
         self.llm_base_url = llm_base_url
@@ -234,10 +249,9 @@ class AudiobookCreator(BaseSynthesizer):
         # Resolve task prompt and LLM parameters
         self.task_name = task or "audiobook"
         self._prompt_file = prompt_file
-        self._requires_llm = True  # Default, will be updated in _resolve_task_prompt
+        self._requires_llm = True
         self._resolve_task_prompt()
 
-        # Initialize parent class
         super().__init__(
             path=path,
             language=self.language,
@@ -250,7 +264,6 @@ class AudiobookCreator(BaseSynthesizer):
             llm_base_url=llm_base_url,
         )
 
-        # Setup cover image if available
         if isinstance(self.reader, EpubReader):
             self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
                 self.audiobook_path
@@ -269,7 +282,7 @@ class AudiobookCreator(BaseSynthesizer):
         if self._prompt_file:
             self._task_prompt = manager.load_prompt_file(self._prompt_file)
             self._task_llm_params: dict = dict(_DEFAULT_LLM_PARAMS)
-            self._requires_llm = True  # Custom prompt implies LLM
+            self._requires_llm = True
             logger.info(f"Using custom prompt from: {self._prompt_file}")
         else:
             task_config = TaskRegistry.get(self.task_name)
@@ -279,14 +292,11 @@ class AudiobookCreator(BaseSynthesizer):
                 self._requires_llm = task_config.requires_llm
                 logger.info(f"Using task '{self.task_name}' prompt")
             else:
-                # Fallback: try loading as a builtin prompt
                 try:
                     self._task_prompt = manager.get_builtin_prompt(self.task_name)
                     self._task_llm_params = dict(_DEFAULT_LLM_PARAMS)
-                    # Assume requires LLM for builtin prompts except "direct"
                     self._requires_llm = self.task_name != "direct"
                 except FileNotFoundError:
-                    # Default to audiobook prompt
                     self._task_prompt = AUDIOBOOK_PROMPT
                     self._task_llm_params = dict(_DEFAULT_LLM_PARAMS)
                     self._requires_llm = True
@@ -312,54 +322,7 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"Audiobook output directory set to: {self.audiobook_path}")
 
     def _clean_text_for_audiobook(self, text: str) -> str:
-        """
-        Clean text by removing references, citations, and other non-content elements.
-        """
-        text = str(text)  # Ensure text is a string
-        # If there are html tags, use bs4 to extract text
-        if re.search(r"<[^>]+>", text):
-            text = BeautifulSoup(text, "html.parser").get_text()
-        # Remove common reference patterns
-        # Remove numbered references like [1], [2], etc.
-        text = re.sub(r"\[\d+\]", "", text)
-
-        # Remove references with author-year format like (Smith, 2020)
-        text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
-
-        # Remove standalone citations like "Smith et al. (2020)"
-        text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
-
-        # Remove DOI patterns
-        text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
-
-        # Remove URL patterns
-        text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
-        text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
-
-        # Remove common reference section headers and content
-        # Match "References", "Bibliography", "Works Cited" and similar
-        reference_patterns = [
-            r"(?i)references?\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-            r"(?i)bibliography\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-            r"(?i)works?\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-            r"(?i)literature\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        ]
-
-        for pattern in reference_patterns:
-            text = re.sub(pattern, "", text, flags=re.DOTALL)
-
-        # Remove common academic formatting
-        # Remove figure/table references like "Figure 1", "Table 2", etc.
-        text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
-
-        # Remove page numbers and similar formatting
-        text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
-
-        # Clean up multiple spaces and normalize whitespace
-        text = re.sub(r"\s+", " ", text)
-        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
-
-        return text.strip()
+        return _clean_text_for_audiobook(text)
 
     def generate_audiobook_script(
         self, chapter_text: str, chapter_number: int, language: Optional[str] = None
@@ -368,9 +331,7 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
-        # Save script path
         script_path = self.scripts_path / f"episode_{chapter_number:03d}_script.txt"
-        # Check if script already exists
         if script_path.exists() and not self.confirm:
             logger.info(
                 f"Script for Episode {chapter_number} already exists, loading..."
@@ -382,7 +343,6 @@ class AudiobookCreator(BaseSynthesizer):
             logger.warning(f"No text found in Chapter {chapter_number}")
             return "This chapter contains no readable text content."
 
-        # Clean text to remove references and citations
         cleaned_text = self._clean_text_for_audiobook(chapter_text)
         logger.info(
             f"Cleaned text for Episode {chapter_number}:"
@@ -400,15 +360,6 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"Chapter {chapter_number} title: {chapter_title}")
         self.chapter_titles.append(chapter_title)
 
-        # Determine effective language.
-        # Prefer explicit param, then translate, then file language
-        effective_language = (
-            language
-            if language
-            else (self.translate if self.translate else self.language)
-        )
-
-        # Generate audiobook script using LLM or direct text
         if getattr(self, "_requires_llm", True) is False:
             task_name = getattr(self, "task_name", "unknown")
             logger.info(
@@ -422,13 +373,14 @@ class AudiobookCreator(BaseSynthesizer):
             )
             audiobook_script = cleaned_text
         else:
-            logger.debug(f"Using language: {effective_language}")
+            source_lang = language or getattr(self, "language", "en")
+            logger.debug(f"Using language: {source_lang}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
 
             audiobook_script = self.llm_client.generate_script(
                 text=cleaned_text,
                 prompt=self._task_prompt,
-                language=effective_language,
+                language=source_lang,
                 **self._task_llm_params,
             )
 
@@ -497,48 +449,31 @@ class AudiobookCreator(BaseSynthesizer):
             )
             return episode_mp3_path
 
-        # Synthesize audio
         self._synthesize_sentences(sentences, episode_wav_path)
         return self._convert_to_mp3(episode_wav_path)
 
     def _break_script_into_segments(self, script: str) -> List[str]:
-        """Break audiobook script into segments suitable for TTS."""
-
-        # First break into sentences
+        """Break script into ≤200-char segments for better TTS chunking."""
         sentences = break_text_into_sentences(script)
-
-        # For audiobook content, we might want longer segments
-        # Combine short sentences into longer segments
-        segments = []
-        current_segment = ""
-
+        segments: list[str] = []
+        current = ""
         for sentence in sentences:
-            # If adding this sentence would make segment too long,
-            # finalize current segment
-            if current_segment and len(current_segment + " " + sentence) > 200:
-                segments.append(current_segment.strip())
-                current_segment = sentence
+            if current and len(current + " " + sentence) > 200:
+                segments.append(current.strip())
+                current = sentence
             else:
-                if current_segment:
-                    current_segment += " " + sentence
-                else:
-                    current_segment = sentence
-
-        # Add the last segment
-        if current_segment.strip():
-            segments.append(current_segment.strip())
-
-        return [seg for seg in segments if seg.strip()]
+                current = (current + " " + sentence) if current else sentence
+        if current.strip():
+            segments.append(current.strip())
+        return [s for s in segments if s.strip()]
 
     def create_audiobook_series(self) -> List[Path]:
         """Create audiobook series from all chapters."""
         logger.info("Starting audiobook series creation...")
 
-        # Get chapters based on file type
         if isinstance(self.reader, EpubReader):
             chapters = self.reader.get_chapters()
         else:
-            # For PDF, treat the whole document as one episode
             chapters = [self.reader.cleaned_text]
 
         num_chapters = len(chapters)
@@ -562,17 +497,10 @@ class AudiobookCreator(BaseSynthesizer):
             episode_number = i + 1
 
             try:
-                # Generate audiobook script
                 audiobook_script = self.generate_audiobook_script(
                     chapter_content,
                     episode_number,
                 )
-                logger.debug(
-                    f"Audiobook Script for Episode {episode_number}:"
-                    f"\n{audiobook_script[:500]}..."
-                )
-
-                # Synthesize episode
                 episode_path = self.synthesize_episode(audiobook_script, episode_number)
 
                 if episode_path.exists():
@@ -884,19 +812,12 @@ class AudiobookPdfCreator(AudiobookCreator):
                     "The generated audiobook may be very short."
                 )
 
-            # Generate audiobook script (now uses system/user role pattern)
-            audiobook_script = self.generate_audiobook_script(
-                pdf_text,
-                1,
-            )
-
-            # Synthesize episode
+            audiobook_script = self.generate_audiobook_script(pdf_text, 1)
             episode_path = self.synthesize_episode(audiobook_script, 1)
 
             if episode_path.exists():
                 logger.info(f"Successfully created audiobook episode: {episode_path}")
-                episode_paths = [episode_path]
-                return episode_paths
+                return [episode_path]
             else:
                 logger.warning("Failed to create audiobook episode")
                 return []
@@ -1146,30 +1067,27 @@ class DirectoryAudiobookCreator:
                 task=self.task or "audiobook",
                 prompt_file=self.prompt_file,
             )
-            # Get task metadata (requires_llm, llm_params) from registry
             task_config = TaskRegistry.get(self.task or "audiobook")
             llm_params = task_config.llm_params if task_config else {}
 
             audiobook_script = llm_client.generate_script(
                 text=cleaned_content,
                 prompt=prompt,
-                language=self.translate or self.language,
+                language=self.language,
                 **llm_params,
             )
 
-            # Save script if requested
             if self.save_text:
-                script_filename = f"episode_{episode_number:03d}_script.txt"
-                script_path = self.scripts_path / script_filename
+                script_path = (
+                    self.scripts_path / f"episode_{episode_number:03d}_script.txt"
+                )
                 with open(script_path, "w", encoding="utf-8") as f:
                     f.write(audiobook_script)
 
-            # Synthesize title audio
             title_audio_path = self._synthesize_title_audio(
                 article_title, episode_number
             )
 
-            # Synthesize content audio
             content_wav_path = self.episodes_path / f"content_{episode_number:03d}.wav"
             sentences = break_text_into_sentences(audiobook_script)
 
@@ -1193,19 +1111,16 @@ class DirectoryAudiobookCreator:
             self.tts_synthesizer._synthesize_sentences(sentences, content_wav_path)
             content_mp3_path = AudioProcessor.convert_wav_to_mp3(content_wav_path)
 
-            # Combine title and content
             combined_audio = AudioSegment.empty()
             if title_audio_path and title_audio_path.exists():
-                title_audio = AudioSegment.from_mp3(title_audio_path)
-                combined_audio += title_audio
+                combined_audio += AudioSegment.from_mp3(title_audio_path)
                 combined_audio += AudioSegment.silent(duration=1000)
 
-            content_audio = AudioSegment.from_mp3(content_mp3_path)
-            combined_audio += content_audio
+            combined_audio += AudioSegment.from_mp3(content_mp3_path)
 
-            # Export final episode
-            episode_filename = f"episode_{episode_number:03d}.mp3"
-            final_episode_path = self.episodes_path / episode_filename
+            final_episode_path = (
+                self.episodes_path / f"episode_{episode_number:03d}.mp3"
+            )
             combined_audio.export(final_episode_path, format="mp3", bitrate="128k")
 
             logger.info(f"Created episode from text file: {final_episode_path}")
@@ -1218,23 +1133,7 @@ class DirectoryAudiobookCreator:
             return None
 
     def _clean_text_for_audiobook(self, text: str) -> str:
-        """Clean text by removing references and non-content elements."""
-        text = str(text)
-        if re.search(r"<[^>]+>", text):
-            text = BeautifulSoup(text, "html.parser").get_text()
-
-        text = re.sub(r"\[\d+\]", "", text)
-        text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
-        text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
-        text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
-        text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
-        text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
-        text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
-        text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
-        text = re.sub(r"\s+", " ", text)
-        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
-
-        return text.strip()
+        return _clean_text_for_audiobook(text)
 
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
