@@ -18,6 +18,12 @@ from pathlib import Path
 import click
 import requests
 
+# Suppress verbose output from external libraries
+warnings.filterwarnings("ignore", category=UserWarning)
+logging.getLogger("litellm").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 import audify.convert as convert_module
 from audify.audiobook_creator import DirectoryAudiobookCreator
 from audify.prompts.manager import PromptManager
@@ -355,11 +361,23 @@ def cli(
         click.echo(f"Error: Path '{path_str}' does not exist.", err=True)
         ctx.exit(1)
 
-    logger.info("=" * terminal_width)
+    click.echo("=" * terminal_width)
 
     if path_obj.is_dir():
-        logger.info("Directory Mode: Processing multiple files".center(terminal_width))
-        logger.info("=" * terminal_width)
+        click.echo("Directory Mode: Processing multiple files".center(terminal_width))
+        click.echo("=" * terminal_width)
+        click.echo(f"Source directory: {path_str}")
+        click.echo(f"Language: {language}")
+        click.echo(f"LLM Model: {effective_llm_model}")
+        click.echo(f"TTS Provider: {tts_provider}")
+        click.echo(f"Task: {task}")
+        if prompt_file:
+            click.echo(f"Prompt file: {prompt_file}")
+        if translate:
+            click.echo(f"Translation: {language} -> {translate}")
+
+        click.echo("=" * terminal_width)
+        logger.info("Directory Mode: Processing multiple files")
         logger.info(f"Source directory: {path_str}")
         logger.info(f"Language: {language}")
         logger.info(f"LLM Model: {effective_llm_model}")
@@ -369,8 +387,6 @@ def cli(
             logger.info(f"Prompt file: {prompt_file}")
         if translate:
             logger.info(f"Translation: {language} -> {translate}")
-
-        logger.info("=" * terminal_width)
 
         try:
             dir_creator = DirectoryAudiobookCreator(
@@ -390,9 +406,23 @@ def cli(
             )
             output_path = dir_creator.synthesize()
 
+            # Find the M4B file in the output directory
+            m4b_files = list(Path(output_path).glob("*.m4b"))
+            m4b_path = m4b_files[0] if m4b_files else None
+
+            click.echo("\n" + "=" * terminal_width)
+            click.echo("✓ Audiobook creation complete!".center(terminal_width))
+            click.echo("=" * terminal_width)
+            if m4b_path:
+                click.echo(f"M4B file: {m4b_path}")
+            click.echo(f"Output directory: {output_path}")
+            click.echo("=" * terminal_width)
+
             logger.info("\n" + "=" * terminal_width)
             logger.info("Directory audiobook creation complete!")
             logger.info(f"Output directory: {output_path}")
+            if m4b_path:
+                logger.info(f"M4B file: {m4b_path}")
             logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
@@ -409,6 +439,20 @@ def cli(
     else:
         file_extension = get_file_extension(path_str)
 
+        click.echo(f"Source file: {path_str}")
+        click.echo(f"Language: {language}")
+        click.echo(f"LLM Model: {effective_llm_model}")
+        click.echo(f"TTS Provider: {tts_provider}")
+        click.echo(f"Task: {task}")
+        if prompt_file:
+            click.echo(f"Prompt file: {prompt_file}")
+        if translate:
+            click.echo(f"Translation: {language} -> {translate}")
+        if max_chapters:
+            click.echo(f"Max episodes: {max_chapters}")
+
+        click.echo("=" * terminal_width)
+
         logger.info(f"Source file: {path_str}")
         logger.info(f"Language: {language}")
         logger.info(f"LLM Model: {effective_llm_model}")
@@ -420,8 +464,6 @@ def cli(
             logger.info(f"Translation: {language} -> {translate}")
         if max_chapters:
             logger.info(f"Max episodes: {max_chapters}")
-
-        logger.info("=" * terminal_width)
 
         try:
             creator = convert_module.get_creator(
@@ -443,9 +485,23 @@ def cli(
             )
             output_path = creator.synthesize()
 
+            # Find the M4B file in the output directory
+            m4b_files = list(Path(output_path).glob("*.m4b"))
+            m4b_path = m4b_files[0] if m4b_files else None
+
+            click.echo("\n" + "=" * terminal_width)
+            click.echo("✓ Audiobook creation complete!".center(terminal_width))
+            click.echo("=" * terminal_width)
+            if m4b_path:
+                click.echo(f"M4B file: {m4b_path}")
+            click.echo(f"Output directory: {output_path}")
+            click.echo("=" * terminal_width)
+
             logger.info("\n" + "=" * terminal_width)
             logger.info("Audiobook creation complete!")
             logger.info(f"Output directory: {output_path}")
+            if m4b_path:
+                logger.info(f"M4B file: {m4b_path}")
             logger.info("=" * terminal_width)
 
         except KeyboardInterrupt:
