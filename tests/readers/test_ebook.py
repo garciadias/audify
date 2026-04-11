@@ -164,6 +164,61 @@ class TestEpubReader:
         assert chapters == []
 
     @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapters_skips_multilingual_front_matter_by_filename(
+        self,
+        mock_read_epub,
+        temp_epub_path,
+        mock_epub_book,
+        mock_epub_items,
+    ):
+        """Skip common non-chapter files like cubierta/titulo/notas."""
+        mock_cubierta = Mock()
+        mock_cubierta.get_type.return_value = ITEM_DOCUMENT
+        mock_cubierta.get_name.return_value = "Text/cubierta.xhtml"
+        mock_cubierta.get_body_content.return_value = (
+            b"<html><body><p>" + b"x" * 300 + b"</p></body></html>"
+        )
+
+        mock_titulo = Mock()
+        mock_titulo.get_type.return_value = ITEM_DOCUMENT
+        mock_titulo.get_name.return_value = "Text/titulo.xhtml"
+        mock_titulo.get_body_content.return_value = (
+            b"<html><body><p>" + b"x" * 300 + b"</p></body></html>"
+        )
+
+        mock_notas = Mock()
+        mock_notas.get_type.return_value = ITEM_DOCUMENT
+        mock_notas.get_name.return_value = "Text/notas.xhtml"
+        mock_notas.get_body_content.return_value = (
+            b"<html><body><p>" + b"x" * 300 + b"</p></body></html>"
+        )
+
+        chapter_item = mock_epub_items["chapters"][0]
+
+        mock_epub_book.spine = [
+            ("c1", "yes"),
+            ("c2", "yes"),
+            ("c3", "yes"),
+            ("c4", "yes"),
+        ]
+
+        id_map = {
+            "c1": mock_cubierta,
+            "c2": mock_titulo,
+            "c3": chapter_item,
+            "c4": mock_notas,
+        }
+        mock_epub_book.get_item_with_id.side_effect = lambda x: id_map.get(x)
+        mock_epub_book.get_items.return_value = list(id_map.values())
+        mock_read_epub.return_value = mock_epub_book
+
+        reader = EpubReader(temp_epub_path)
+        chapters = reader.get_chapters()
+
+        assert len(chapters) == 1
+        assert "Section 1" in chapters[0]
+
+    @patch("audify.readers.ebook.epub.read_epub")
     def test_extract_text(self, mock_read_epub, temp_epub_path, mock_epub_book):
         """Test extracting text from HTML chapter content."""
         mock_read_epub.return_value = mock_epub_book

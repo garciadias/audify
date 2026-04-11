@@ -46,6 +46,25 @@ GOOGLE_APPLICATION_CREDENTIALS = _get_config("GOOGLE_APPLICATION_CREDENTIALS", "
 GOOGLE_TTS_VOICE = _get_config("GOOGLE_TTS_VOICE", "en-US-Neural2-F")
 GOOGLE_TTS_LANGUAGE_CODE = _get_config("GOOGLE_TTS_LANGUAGE_CODE", "en-US")
 
+# Language-specific Google TTS defaults used when no explicit voice is provided.
+GOOGLE_TTS_DEFAULT_VOICE_BY_LANGUAGE = {
+    "en": _get_config("GOOGLE_TTS_VOICE_EN", "en-US-Neural2-F"),
+    "es": _get_config("GOOGLE_TTS_VOICE_ES", "es-ES-Neural2-F"),
+    "fr": _get_config("GOOGLE_TTS_VOICE_FR", "fr-FR-Neural2-E"),
+    "de": _get_config("GOOGLE_TTS_VOICE_DE", "de-DE-Neural2-F"),
+    "it": _get_config("GOOGLE_TTS_VOICE_IT", "it-IT-Neural2-C"),
+    "pt": _get_config("GOOGLE_TTS_VOICE_PT", "pt-BR-Neural2-C"),
+    "ja": _get_config("GOOGLE_TTS_VOICE_JA", "ja-JP-Neural2-D"),
+    "zh": _get_config("GOOGLE_TTS_VOICE_ZH", "cmn-CN-Neural2-D"),
+    "hi": _get_config("GOOGLE_TTS_VOICE_HI", "hi-IN-Neural2-D"),
+    "ko": _get_config("GOOGLE_TTS_VOICE_KO", "ko-KR-Neural2-A"),
+    "ru": _get_config("GOOGLE_TTS_VOICE_RU", "ru-RU-Wavenet-D"),
+    "ar": _get_config("GOOGLE_TTS_VOICE_AR", "ar-XA-Wavenet-D"),
+    "nl": _get_config("GOOGLE_TTS_VOICE_NL", "nl-NL-Wavenet-D"),
+    "pl": _get_config("GOOGLE_TTS_VOICE_PL", "pl-PL-Wavenet-B"),
+    "tr": _get_config("GOOGLE_TTS_VOICE_TR", "tr-TR-Wavenet-B"),
+}
+
 QWEN_API_BASE_URL = _get_config("QWEN_API_URL", "http://localhost:8890")
 QWEN_TTS_VOICE = _get_config("QWEN_TTS_VOICE", "Vivian")
 

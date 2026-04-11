@@ -25,6 +25,7 @@ from audify.utils.constants import (
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
     GOOGLE_APPLICATION_CREDENTIALS,
+    GOOGLE_TTS_DEFAULT_VOICE_BY_LANGUAGE,
     GOOGLE_TTS_LANGUAGE_CODE,
     GOOGLE_TTS_VOICE,
     KOKORO_API_BASE_URL,
@@ -501,8 +502,9 @@ class GoogleTTSConfig(TTSAPIConfig):
         timeout: int = 60,
     ):
         self._voice_explicit = voice is not None
+        resolved_voice = voice or self._resolve_default_voice_for_language(language)
         super().__init__(
-            voice=voice or GOOGLE_TTS_VOICE,
+            voice=resolved_voice,
             language=language,
             timeout=timeout,
         )
@@ -538,6 +540,38 @@ class GoogleTTSConfig(TTSAPIConfig):
         if len(parts) == 2:
             return f"{parts[0].lower()}-{parts[1].upper()}"
         return f"{parts[0].lower()}-{parts[1].title()}-{parts[2].upper()}"
+
+    @classmethod
+    def _resolve_default_voice_for_language(cls, language: str) -> str:
+        """Pick a default voice based on language using configured dictionary."""
+        configured_voice = GOOGLE_TTS_DEFAULT_VOICE_BY_LANGUAGE.get(language)
+        if configured_voice:
+            return configured_voice
+
+        # Backward compatibility fallback for environments that only set
+        # a single GOOGLE_TTS_VOICE value.
+        configured_voice = GOOGLE_TTS_VOICE
+        configured_locale = cls._extract_language_code_from_voice(configured_voice)
+        target_locale = cls.LANGUAGE_CODES.get(language, GOOGLE_TTS_LANGUAGE_CODE)
+
+        if configured_locale and configured_locale.lower() == target_locale.lower():
+            return configured_voice
+
+        language_defaults = cls.NEURAL_VOICES.get(language)
+        if language_defaults:
+            fallback_voice = language_defaults[0]
+            if configured_locale and configured_locale.lower() != target_locale.lower():
+                logger.warning(
+                    "Configured Google default voice '%s' does not "
+                    "match language '%s'. "
+                    "Using '%s' instead.",
+                    configured_voice,
+                    target_locale,
+                    fallback_voice,
+                )
+            return fallback_voice
+
+        return configured_voice
 
     def _get_client(self):
         """Get or create Google TTS client."""

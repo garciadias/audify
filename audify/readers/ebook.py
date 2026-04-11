@@ -62,6 +62,31 @@ CHAPTER_TITLE_LLM_PROMPT = (
     "Text:\n{text}"
 )
 
+# Common front/back-matter file name tokens seen across multilingual EPUBs.
+NON_CHAPTER_FILENAME_TOKENS = [
+    "toc",
+    "nav",
+    "titlepage",
+    "cover",
+    "cubierta",
+    "sinopsis",
+    "synopsis",
+    "titulo",
+    "título",
+    "info",
+    "copyright",
+    "colophon",
+    "autor",
+    "author",
+    "biography",
+    "bio",
+    "notes",
+    "notas",
+    "appendix",
+    "apendice",
+    "apéndice",
+]
+
 
 class EpubReader(Reader):
     def __init__(
@@ -93,9 +118,7 @@ class EpubReader(Reader):
             item_name = item.get_name().lower()
 
             # Skip obvious non-chapter files
-            if any(
-                pattern in item_name for pattern in ["toc", "nav", "titlepage", "cover"]
-            ):
+            if self._should_skip_document_by_name(item_name):
                 continue
 
             try:
@@ -110,7 +133,12 @@ class EpubReader(Reader):
 
             # Parse HTML to check document type
             soup = bs4.BeautifulSoup(content, "html.parser")
-            text = soup.get_text().lower()
+            visible_text = soup.get_text(separator=" ", strip=True)
+            text = visible_text.lower()
+
+            # Skip documents with too little readable text.
+            if len(visible_text) < 80:
+                continue
 
             # Check for TOC indicators in content
             toc_indicators = [
@@ -182,22 +210,27 @@ class EpubReader(Reader):
                     continue
                 item_name = item.get_name().lower()
                 # Skip obvious non-chapter files
-                if any(
-                    pattern in item_name
-                    for pattern in ["toc", "nav", "titlepage", "cover"]
-                ):
+                if self._should_skip_document_by_name(item_name):
                     continue
                 try:
                     content = item.get_body_content().decode("utf-8", errors="ignore")
                 except Exception as e:
                     logger.warning(f"Could not decode item {item.get_name()}: {e}")
                     continue
-                # Skip empty or very short content (likely metadata)
-                if len(content.strip()) < 20:
+
+                visible_text = bs4.BeautifulSoup(content, "html.parser").get_text(
+                    separator=" ", strip=True
+                )
+                # Skip empty or very short readable content (likely metadata)
+                if len(visible_text) < 20:
                     continue
                 chapters.append(content)
 
         return chapters
+
+    @staticmethod
+    def _should_skip_document_by_name(item_name: str) -> bool:
+        return any(token in item_name for token in NON_CHAPTER_FILENAME_TOKENS)
 
     def extract_text(self, chapter: str) -> str:
         return bs4.BeautifulSoup(chapter, "html.parser").get_text()
