@@ -26,6 +26,8 @@ def mock_epub_book():
     mock_book = Mock()
     mock_book.title = "Test Book Title"
     mock_book.get_metadata.return_value = [("Test Metadata Title", {})]
+    mock_book.spine = []  # Empty spine to fall back to all items
+    mock_book.get_item_with_id = Mock(return_value=None)
     return mock_book
 
 
@@ -34,25 +36,29 @@ def mock_epub_items():
     """Create mock EPUB items (chapters, images, covers)."""
     # Mock document item (chapter)
     mock_chapter1 = Mock()
+    mock_chapter1.id = "section1"
     mock_chapter1.get_type.return_value = ITEM_DOCUMENT
-    mock_chapter1.get_body_content.return_value = (
-        b"<html><body><h1>Chapter 1</h1><p>This is chapter 1 content.</p></body></html>"
-    )
+    mock_chapter1.get_name.return_value = "section1.xhtml"
+    mock_chapter1.get_body_content.return_value = b"<html><body><h1>Section 1</h1><p>This is section 1 content. This is a longer paragraph to exceed 100 characters. We need to ensure that the text length after extraction is sufficient to pass the filter. Adding more text here to be safe.</p></body></html>"
 
     mock_chapter2 = Mock()
+    mock_chapter2.id = "section2"
     mock_chapter2.get_type.return_value = ITEM_DOCUMENT
-    mock_chapter2.get_body_content.return_value = (
-        b"<html><body><h2>Chapter 2</h2><p>This is chapter 2 content.</p></body></html>"
-    )
+    mock_chapter2.get_name.return_value = "section2.xhtml"
+    mock_chapter2.get_body_content.return_value = b"<html><body><h2>Section 2</h2><p>This is section 2 content. This is a longer paragraph to exceed 100 characters. We need to ensure that the text length after extraction is sufficient to pass the filter. Adding more text here to be safe.</p></body></html>"
 
     # Mock cover item
     mock_cover = Mock()
+    mock_cover.id = "cover"
     mock_cover.get_type.return_value = ITEM_COVER
+    mock_cover.get_name.return_value = "cover.jpg"
     mock_cover.content = b"fake_cover_image_data"
 
     # Mock image item
     mock_image = Mock()
+    mock_image.id = "image1"
     mock_image.get_type.return_value = ITEM_IMAGE
+    mock_image.get_name.return_value = "image1.png"
     mock_image.content = b"fake_image_data"
 
     return {
@@ -112,12 +118,16 @@ class TestEpubReader:
 
         assert len(chapters) == 2
         assert (
-            chapters[0] == "<html><body><h1>Chapter 1</h1><p>"
-            "This is chapter 1 content.</p></body></html>"
+            chapters[0] == "<html><body><h1>Section 1</h1><p>"
+            "This is section 1 content. This is a longer paragraph to exceed 100 characters. "
+            "We need to ensure that the text length after extraction is sufficient to pass the filter. "
+            "Adding more text here to be safe.</p></body></html>"
         )
         assert (
-            chapters[1] == "<html><body><h2>Chapter 2</h2><p>"
-            "This is chapter 2 content.</p></body></html>"
+            chapters[1] == "<html><body><h2>Section 2</h2><p>"
+            "This is section 2 content. This is a longer paragraph to exceed 100 characters. "
+            "We need to ensure that the text length after extraction is sufficient to pass the filter. "
+            "Adding more text here to be safe.</p></body></html>"
         )
 
     @patch("audify.readers.ebook.epub.read_epub")

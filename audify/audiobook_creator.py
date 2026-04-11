@@ -25,6 +25,7 @@ from audify.utils.m4b_builder import (
     assemble_m4b,
     write_metadata_header,
 )
+from audify.utils.progress import ProgressIndicator
 from audify.utils.prompts import AUDIOBOOK_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
 
@@ -189,6 +190,22 @@ class LLMClient:
 class AudiobookCreator(BaseSynthesizer):
     """Creates audiobooks from ebook content using LLM and TTS."""
 
+    def __init_progress(self) -> None:
+        """Initialize progress indicator if not already done."""
+        if not hasattr(self, "_progress"):
+            self._progress = ProgressIndicator()
+
+    @property
+    def progress(self) -> ProgressIndicator:
+        """Lazy-initialized progress indicator."""
+        self.__init_progress()
+        return self._progress
+
+    @progress.setter
+    def progress(self, value: ProgressIndicator) -> None:
+        """Set progress indicator."""
+        self._progress = value
+
     def __init__(
         self,
         path: str | Path,
@@ -245,6 +262,7 @@ class AudiobookCreator(BaseSynthesizer):
         self.llm_base_url = llm_base_url
         self.max_chapters = max_chapters
         self.confirm = confirm
+        self.progress = ProgressIndicator()
 
         # Resolve task prompt and LLM parameters
         self.task_name = task or "audiobook"
@@ -484,10 +502,12 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"Creating audiobook series with {num_chapters} episodes...")
 
         if self.confirm:
+            self.progress.stop()  # Stop spinner before showing confirmation
             response = input(f"Create {num_chapters} audiobook episodes? (y/N): ")
             if response.lower() not in ["y", "yes"]:
                 logger.info("Audiobook creation cancelled by user.")
                 return []
+            self.progress.start()  # Restart spinner after user confirms
 
         episode_paths = []
 
@@ -497,10 +517,12 @@ class AudiobookCreator(BaseSynthesizer):
             episode_number = i + 1
 
             try:
+                self.progress.set_phase("Generating")
                 audiobook_script = self.generate_audiobook_script(
                     chapter_content,
                     episode_number,
                 )
+                self.progress.set_phase("Synthesizing")
                 episode_path = self.synthesize_episode(audiobook_script, episode_number)
 
                 if episode_path.exists():
@@ -627,6 +649,7 @@ class AudiobookCreator(BaseSynthesizer):
 
     def create_m4b(self) -> None:
         """Combines audiobook episodes into M4B audiobook file."""
+        self.progress.set_phase("Combining")
         logger.info("Starting M4B creation process for audiobook...")
 
         episode_mp3_files = sorted(self.episodes_path.glob("episode_*.mp3"))
@@ -758,15 +781,20 @@ class AudiobookCreator(BaseSynthesizer):
 
     def synthesize(self) -> Path:
         """Main synthesis method - creates the audiobook series."""
-        logger.info(f"Starting audiobook creation for: {self.path.name}")
-        episode_paths = self.create_audiobook_series()
+        try:
+            self.progress.start()
+            self.progress.set_phase("Reading")
+            logger.info(f"Starting audiobook creation for: {self.path.name}")
+            episode_paths = self.create_audiobook_series()
 
-        if episode_paths:
-            logger.info(f"Audiobook series complete with {len(episode_paths)} episodes")
-            return self.audiobook_path
-        else:
-            logger.error("No audiobook episodes were created successfully")
-            return self.audiobook_path
+            if episode_paths:
+                logger.info(f"Audiobook series complete with {len(episode_paths)} episodes")
+                return self.audiobook_path
+            else:
+                logger.error("No audiobook episodes were created successfully")
+                return self.audiobook_path
+        finally:
+            self.progress.stop()
 
 
 class AudiobookEpubCreator(AudiobookCreator):
@@ -799,10 +827,12 @@ class AudiobookPdfCreator(AudiobookCreator):
             return []
 
         if self.confirm:
+            self.progress.stop()  # Stop spinner before showing confirmation
             response = input("Create audiobook episode from PDF? (y/N): ")
             if response.lower() not in ["y", "yes"]:
                 logger.info("Audiobook creation cancelled by user.")
                 return []
+            self.progress.start()  # Restart spinner after user confirms
 
         try:
             logger.info(f"Using language: {self.language}")
@@ -829,6 +859,22 @@ class AudiobookPdfCreator(AudiobookCreator):
 
 class DirectoryAudiobookCreator:
     """Creates a single audiobook from multiple files in a directory."""
+
+    def __init_progress(self) -> None:
+        """Initialize progress indicator if not already done."""
+        if not hasattr(self, "_progress"):
+            self._progress = ProgressIndicator()
+
+    @property
+    def progress(self) -> ProgressIndicator:
+        """Lazy-initialized progress indicator."""
+        self.__init_progress()
+        return self._progress
+
+    @progress.setter
+    def progress(self, value: ProgressIndicator) -> None:
+        """Set progress indicator."""
+        self._progress = value
 
     def __init__(
         self,
@@ -861,6 +907,7 @@ class DirectoryAudiobookCreator:
         self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
         self.task = task
         self.prompt_file = prompt_file
+        self.progress = ProgressIndicator()
 
         # Setup output paths
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
@@ -1233,6 +1280,7 @@ class DirectoryAudiobookCreator:
 
     def create_m4b(self) -> None:
         """Combines episodes into M4B audiobook file."""
+        self.progress.set_phase("Combining")
         logger.info("Starting M4B creation process for directory audiobook...")
 
         # Get all episode MP3 files
@@ -1371,48 +1419,56 @@ class DirectoryAudiobookCreator:
 
     def synthesize(self) -> Path:
         """Main synthesis method - processes all files in directory."""
-        logger.info(
-            f"Starting directory audiobook creation for: {self.directory_path.name}"
-        )
-
-        # Get all supported files
-        files = self._get_supported_files()
-
-        if not files:
-            logger.error("No supported files found in directory")
-            return self.audiobook_path
-
-        if self.confirm:
-            prompt = (
-                f"Process {len(files)} files from directory "
-                f"'{self.directory_path.name}'? (y/N): "
+        try:
+            self.progress.start()
+            self.progress.set_phase("Reading")
+            logger.info(
+                f"Starting directory audiobook creation for: {self.directory_path.name}"
             )
-            response = input(prompt)
-            if response.lower() not in ["y", "yes"]:
-                logger.info("Directory audiobook creation cancelled by user.")
+
+            # Get all supported files
+            files = self._get_supported_files()
+
+            if not files:
+                logger.error("No supported files found in directory")
                 return self.audiobook_path
 
-        # Process each file
-        for i, file_path in enumerate(files, start=1):
-            episode_path = self._process_single_file(file_path, i)
-            if episode_path and episode_path.exists():
-                self.episode_paths.append(episode_path)
-                logger.info(
-                    f"Successfully processed file {i}/{len(files)}: {file_path.name}"
+            if self.confirm:
+                self.progress.stop()  # Stop spinner before showing confirmation
+                prompt = (
+                    f"Process {len(files)} files from directory "
+                    f"'{self.directory_path.name}'? (y/N): "
                 )
-            else:
-                logger.warning(
-                    f"Failed to process file {i}/{len(files)}: {file_path.name}"
-                )
+                response = input(prompt)
+                if response.lower() not in ["y", "yes"]:
+                    logger.info("Directory audiobook creation cancelled by user.")
+                    return self.audiobook_path
+                self.progress.start()  # Restart spinner after user confirms
 
-        if self.episode_paths:
-            logger.info(
-                f"Directory audiobook processing complete with "
-                f"{len(self.episode_paths)} episodes"
-            )
-            # Create M4B from all episodes
-            self.create_m4b()
-            return self.audiobook_path
-        else:
-            logger.error("No episodes were created successfully")
-            return self.audiobook_path
+            # Process each file
+            for i, file_path in enumerate(files, start=1):
+                self.progress.set_phase("Processing")
+                episode_path = self._process_single_file(file_path, i)
+                if episode_path and episode_path.exists():
+                    self.episode_paths.append(episode_path)
+                    logger.info(
+                        f"Successfully processed file {i}/{len(files)}: {file_path.name}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to process file {i}/{len(files)}: {file_path.name}"
+                    )
+
+            if self.episode_paths:
+                logger.info(
+                    f"Directory audiobook processing complete with "
+                    f"{len(self.episode_paths)} episodes"
+                )
+                # Create M4B from all episodes
+                self.create_m4b()
+                return self.audiobook_path
+            else:
+                logger.error("No episodes were created successfully")
+                return self.audiobook_path
+        finally:
+            self.progress.stop()

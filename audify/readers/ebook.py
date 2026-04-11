@@ -78,10 +78,121 @@ class EpubReader(Reader):
         return epub.read_epub(self.path)
 
     def get_chapters(self) -> list[str]:
+        """Get chapter content in spine order, filtering out TOC and other non-chapter documents."""
         chapters = []
-        for item in self.book.get_items():
-            if item.get_type() == ITEM_DOCUMENT:
-                chapters.append(item.get_body_content().decode("utf-8"))
+
+        # Process items in spine order (reading order)
+        for spine_id, linear in self.book.spine:
+            item = self.book.get_item_with_id(spine_id)
+            if not item or item.get_type() != ITEM_DOCUMENT:
+                continue
+
+            item_name = item.get_name().lower()
+
+            # Skip obvious non-chapter files
+            if any(
+                pattern in item_name for pattern in ["toc", "nav", "titlepage", "cover"]
+            ):
+                continue
+
+            try:
+                content = item.get_body_content().decode("utf-8", errors="ignore")
+            except Exception as e:
+                logger.warning(f"Could not decode item {item.get_name()}: {e}")
+                continue
+
+            # Skip empty or very short content
+            if len(content.strip()) < 100:
+                continue
+
+            # Parse HTML to check document type
+            soup = bs4.BeautifulSoup(content, "html.parser")
+            text = soup.get_text().lower()
+
+            # Check for TOC indicators in content
+            toc_indicators = [
+                "table of contents",
+                "contents",
+                "目录",  # Chinese for TOC
+                "chapter",  # Might appear in TOC listing chapters
+                "part",
+                "section",
+                "章",  # Chinese chapter character
+            ]
+
+            # Count how many TOC indicators appear
+            toc_indicator_count = sum(
+                1 for indicator in toc_indicators if indicator in text
+            )
+
+            # Check if this looks like a TOC by analyzing structure
+            # TOCs often have many links or list items
+            links = soup.find_all("a")
+            list_items = soup.find_all(["li", "dt", "dd"])
+
+            # If it has many links/list items AND contains TOC indicators, likely a TOC
+            if (len(links) > 5 or len(list_items) > 5) and toc_indicator_count > 1:
+                logger.info(f"Skipping TOC document: {item.get_name()}")
+                continue
+
+            # Check for Chinese chapter patterns like "第一章", "第二章"
+            chinese_chapter_patterns = re.findall(
+                r"第[一二三四五六七八九十\d]+章", text
+            )
+            if len(chinese_chapter_patterns) > 2:
+                # If we see multiple chapter titles in one document, it's likely a TOC
+                logger.info(
+                    f"Skipping document with multiple chapter titles (likely TOC): {item.get_name()}"
+                )
+                continue
+
+            # Check for copyright/credits pages
+            copyright_indicators = [
+                "copyright",
+                "©",
+                "isbn",
+                "published by",
+                "all rights reserved",
+                "责任编辑",
+                "封面设计",
+                "版式设计",
+                "图书在版编目",
+            ]
+
+            copyright_indicator_count = sum(
+                1 for indicator in copyright_indicators if indicator in text
+            )
+            if copyright_indicator_count > 2:
+                logger.info(f"Skipping copyright/credits page: {item.get_name()}")
+                continue
+
+            chapters.append(content)
+
+        # If no chapters found with filtering, fall back to all documents
+        if not chapters:
+            logger.warning(
+                "No chapters found with filtering, falling back to all documents"
+            )
+            for item in self.book.get_items():
+                if item.get_type() != ITEM_DOCUMENT:
+                    continue
+                item_name = item.get_name().lower()
+                # Skip obvious non-chapter files
+                if any(
+                    pattern in item_name
+                    for pattern in ["toc", "nav", "titlepage", "cover"]
+                ):
+                    continue
+                try:
+                    content = item.get_body_content().decode("utf-8", errors="ignore")
+                except Exception as e:
+                    logger.warning(f"Could not decode item {item.get_name()}: {e}")
+                    continue
+                # Skip empty or very short content (likely metadata)
+                if len(content.strip()) < 20:
+                    continue
+                chapters.append(content)
+
         return chapters
 
     def extract_text(self, chapter: str) -> str:
@@ -180,9 +291,7 @@ class EpubReader(Reader):
             return True
         return tag.find(["p", "div", "span"]) is None
 
-    def _extract_from_paragraph_patterns(
-        self, soup: bs4.BeautifulSoup
-    ) -> str:
+    def _extract_from_paragraph_patterns(self, soup: bs4.BeautifulSoup) -> str:
         body = self._find_body(soup)
         paragraphs = body.find_all(["p", "div", "span"], limit=10)
         for p in paragraphs:
@@ -196,9 +305,7 @@ class EpubReader(Reader):
                     return text
         return ""
 
-    def _extract_short_paragraph_title(
-        self, soup: bs4.BeautifulSoup
-    ) -> str:
+    def _extract_short_paragraph_title(self, soup: bs4.BeautifulSoup) -> str:
         body = self._find_body(soup)
         paragraphs = body.find_all(["p", "div"], limit=5)
         for p in paragraphs:
