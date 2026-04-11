@@ -136,6 +136,8 @@ class BaseSynthesizer:
         """Synthesize sentences using the configured TTS provider."""
         tts_config = self._get_tts_config()
         temp_audio_files: List[Path] = []
+        attempted_sentences = 0
+        failed_sentences = 0
 
         try:
             logger.info(f"Starting {tts_config.provider_name} TTS synthesis...")
@@ -165,6 +167,8 @@ class BaseSynthesizer:
                 if not sentence.strip():
                     continue
 
+                attempted_sentences += 1
+
                 try:
                     temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
                     success = tts_config.synthesize(sentence, temp_wav_path)
@@ -172,16 +176,28 @@ class BaseSynthesizer:
                     if success and temp_wav_path.exists():
                         temp_audio_files.append(temp_wav_path)
                     else:
+                        failed_sentences += 1
                         logger.warning(f"Synthesis failed for sentence {i}, skipping.")
 
                 except Exception as e:
+                    failed_sentences += 1
                     logger.warning(f"Error synthesizing sentence {i}: {e}")
                     continue
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")
-            AudioProcessor.combine_wav_segments(
-                temp_audio_files, output_wav_path, logger_instance=logger
-            )
+            try:
+                AudioProcessor.combine_wav_segments(
+                    temp_audio_files, output_wav_path, logger_instance=logger
+                )
+            except ValueError as exc:
+                if "Combined WAV segments are empty" in str(exc):
+                    raise RuntimeError(
+                        "No valid audio segments were synthesized. "
+                        f"Attempted {attempted_sentences} sentence(s), "
+                        f"failed {failed_sentences}. Check TTS provider logs, "
+                        "voice/language compatibility, and credentials."
+                    ) from exc
+                raise
 
         except Exception as e:
             logger.error(

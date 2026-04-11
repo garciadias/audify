@@ -1238,6 +1238,42 @@ class TestAdvancedKokoroScenarios:
         # Synthesis was attempted
         mock_tts_config.synthesize.assert_called_once()
 
+    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
+    def test_synthesize_kokoro_all_invalid_segments_raises(self, mock_temp_dir):
+        """Raise a clear error when synthesis yields no valid WAV segments."""
+        mock_temp_dir.return_value.name = "/tmp/test_dir"
+
+        synthesizer = BaseSynthesizer(
+            path="test.txt",
+            voice="test_voice",
+            translate=None,
+            save_text=False,
+            language="en",
+        )
+
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.synthesize.return_value = True
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "audify.text_to_speech.AudioProcessor.combine_wav_segments",
+                side_effect=ValueError(
+                    "Combined WAV segments are empty; no valid segments found."
+                ),
+            ),
+            pytest.raises(
+                RuntimeError,
+                match="No valid audio segments were synthesized",
+            ),
+        ):
+            synthesizer._synthesize_with_provider(["Hello world"], Path("/tmp/out.wav"))
+
 
 class TestEpubSynthesizerAdvancedCoverage:
     """Tests to cover all missing EpubSynthesizer functionality."""
