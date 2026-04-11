@@ -502,6 +502,18 @@ class TestGoogleTTSConfig:
         # Should return default from GOOGLE_TTS_LANGUAGE_CODE
         assert config._get_language_code() is not None
 
+    def test_get_language_code_prefers_voice_locale(self):
+        """Voice locale should override requested language when explicitly set."""
+        config = GoogleTTSConfig(language="es", voice="en-US-Chirp-HD-F")
+        assert config._get_language_code() == "en-US"
+
+    def test_extract_language_code_from_voice_handles_cmn_cn(self):
+        """Chinese voices use a three-part locale prefix (cmn-CN-...)."""
+        assert (
+            GoogleTTSConfig._extract_language_code_from_voice("cmn-CN-Neural2-A")
+            == "cmn-CN"
+        )
+
     @patch("audify.utils.api_config.GoogleTTSConfig._get_client")
     def test_is_available_success(self, mock_get_client):
         """Test is_available returns True when client can be created."""

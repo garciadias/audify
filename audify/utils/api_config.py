@@ -7,6 +7,7 @@ across different modules that interact with external APIs.
 
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional
@@ -499,6 +500,7 @@ class GoogleTTSConfig(TTSAPIConfig):
         credentials_path: Optional[str] = None,
         timeout: int = 60,
     ):
+        self._voice_explicit = voice is not None
         super().__init__(
             voice=voice or GOOGLE_TTS_VOICE,
             language=language,
@@ -514,8 +516,28 @@ class GoogleTTSConfig(TTSAPIConfig):
         return "google"
 
     def _get_language_code(self) -> str:
-        """Get Google TTS language code from short language code."""
+        """Resolve Google TTS language code, preferring explicit voice locale."""
+        voice_language = self._extract_language_code_from_voice(self.voice)
+        if self._voice_explicit and voice_language:
+            return voice_language
         return self.LANGUAGE_CODES.get(self.language, GOOGLE_TTS_LANGUAGE_CODE)
+
+    @staticmethod
+    def _extract_language_code_from_voice(voice: Optional[str]) -> Optional[str]:
+        """Extract locale code (e.g., en-US, cmn-CN) from a Google voice name."""
+        if not voice:
+            return None
+
+        # Handles patterns like en-US-Neural2-F and cmn-CN-Neural2-A.
+        match = re.match(r"^([a-z]{2,3}(?:-[A-Za-z]{2,4})?-[A-Za-z]{2,4})-", voice)
+        if not match:
+            return None
+
+        language_code = match.group(1)
+        parts = language_code.split("-")
+        if len(parts) == 2:
+            return f"{parts[0].lower()}-{parts[1].upper()}"
+        return f"{parts[0].lower()}-{parts[1].title()}-{parts[2].upper()}"
 
     def _get_client(self):
         """Get or create Google TTS client."""
