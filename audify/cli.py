@@ -18,12 +18,6 @@ from pathlib import Path
 import click
 import requests
 
-# Suppress verbose output from external libraries
-warnings.filterwarnings("ignore", category=UserWarning)
-logging.getLogger("litellm").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-
 import audify.convert as convert_module
 from audify.audiobook_creator import DirectoryAudiobookCreator
 from audify.prompts.manager import PromptManager
@@ -41,6 +35,12 @@ from audify.utils.constants import (
 )
 from audify.utils.logging_utils import configure_cli_logging
 from audify.utils.text import get_file_extension
+
+# Suppress verbose output from external libraries
+warnings.filterwarnings("ignore", category=UserWarning)
+logging.getLogger("litellm").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Ignore UserWarning from pkg_resources about package metadata
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")

@@ -788,7 +788,9 @@ class AudiobookCreator(BaseSynthesizer):
             episode_paths = self.create_audiobook_series()
 
             if episode_paths:
-                logger.info(f"Audiobook series complete with {len(episode_paths)} episodes")
+                logger.info(
+                    f"Audiobook series complete with {len(episode_paths)} episodes"
+                )
                 return self.audiobook_path
             else:
                 logger.error("No audiobook episodes were created successfully")
@@ -1452,7 +1454,8 @@ class DirectoryAudiobookCreator:
                 if episode_path and episode_path.exists():
                     self.episode_paths.append(episode_path)
                     logger.info(
-                        f"Successfully processed file {i}/{len(files)}: {file_path.name}"
+                        f"Successfully processed file {i}/{len(files)}: "
+                        f"{file_path.name}"
                     )
                 else:
                     logger.warning(

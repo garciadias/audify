@@ -64,14 +64,15 @@ def combine_small_sentences(sentences: list[str], min_length: int = 10) -> list[
 def break_too_long_sentences(sentences: list[str], max_length: int = 239) -> list[str]:
     result: list[str] = []
     for sentence in sentences:
-        # If sentence contains CJK characters and has few spaces, split by character length
+        # If sentence contains CJK characters and has few spaces,
+        # split by character length.
         if (
             contains_cjk(sentence) and sentence.count(" ") < len(sentence) / 50
         ):  # heuristic
             # Split by character count
             start = 0
             while start < len(sentence):
-                # Take up to max_length characters, but try to break at punctuation if possible
+                # Take up to max_length characters, but try punctuation boundaries.
                 end = start + max_length
                 if end >= len(sentence):
                     result.append(sentence[start:].strip())

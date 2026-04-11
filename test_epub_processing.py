@@ -3,11 +3,14 @@
 
 import sys
 
+import pytest
+
 sys.path.insert(0, ".")
 
 from audify.readers.ebook import EpubReader
 
 
+@pytest.mark.skip(reason="Manual debug script; requires explicit EPUB path")
 def test_epub_processing(epub_path):
     print(f"Testing EPUB: {epub_path}")
     reader = EpubReader(epub_path)

@@ -78,7 +78,10 @@ class EpubReader(Reader):
         return epub.read_epub(self.path)
 
     def get_chapters(self) -> list[str]:
-        """Get chapter content in spine order, filtering out TOC and other non-chapter documents."""
+        """Get chapter content in spine order.
+
+        Filters out TOC and other non-chapter documents.
+        """
         chapters = []
 
         # Process items in spine order (reading order)
@@ -142,7 +145,8 @@ class EpubReader(Reader):
             if len(chinese_chapter_patterns) > 2:
                 # If we see multiple chapter titles in one document, it's likely a TOC
                 logger.info(
-                    f"Skipping document with multiple chapter titles (likely TOC): {item.get_name()}"
+                    "Skipping document with multiple chapter titles "
+                    f"(likely TOC): {item.get_name()}"
                 )
                 continue
 
