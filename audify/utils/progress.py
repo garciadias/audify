@@ -112,9 +112,7 @@ class ProgressIndicator:
             # Convert to string and show first 60 characters of text
             snippet_str = str(text_snippet) if text_snippet else ""
             display_snippet = (
-                snippet_str[: 60] + "..."
-                if len(snippet_str) > 60
-                else snippet_str
+                snippet_str[:60] + "..." if len(snippet_str) > 60 else snippet_str
             )
             if display_snippet:
                 sys.stdout.write(f"Preview: {display_snippet}\n")
