@@ -89,17 +89,24 @@ class ProgressIndicator:
             chapters: List of chapter titles.
         """
         sys.stdout.write("\n")
-        # Header with gradient effect
-        sys.stdout.write(f"{Colors.CYAN}╔{'═' * 68}╗\n")
-        sys.stdout.write(f"║ {Colors.BOLD}📚 TABLE OF CONTENTS{Colors.RESET}{Colors.CYAN}" + 
-                        " " * 47 + "║\n")
-        sys.stdout.write(f"╠{'═' * 68}╣\n{Colors.RESET}")
+        # Box border width (68 = 2 for borders + 66 content)
+        border = "═" * 68
+        sys.stdout.write(f"{Colors.CYAN}╔{border}╗{Colors.RESET}\n")
+        
+        # Header title - "📚 TABLE OF CONTENTS" is 21 visible chars
+        header_text = "📚 TABLE OF CONTENTS"
+        padding = 66 - len(header_text) - 2  # -2 for internal padding
+        sys.stdout.write(
+            f"{Colors.CYAN}║ {Colors.BOLD}{header_text}{Colors.RESET}{Colors.CYAN}"
+            f"{' ' * padding}║{Colors.RESET}\n"
+        )
+        sys.stdout.write(f"{Colors.CYAN}╠{border}╣{Colors.RESET}\n")
         
         for i, chapter in enumerate(chapters, 1):
             # Convert to string and handle edge cases
             chapter_str = str(chapter) if chapter else f"Chapter {i}"
-            # Truncate long titles to fit terminal width
-            max_width = 61
+            # Truncate long titles to fit in the box (66 - 2 for "N. " - 1 for space)
+            max_width = 60
             display_title = (
                 chapter_str[: max_width - 3] + "..."
                 if len(chapter_str) > max_width
@@ -108,11 +115,14 @@ class ProgressIndicator:
             
             # Alternate row colors for better readability
             color = Colors.BLUE if i % 2 == 0 else Colors.CYAN
+            # Proper padding: 66 chars total - number width - dot - space - title
+            title_padding = 66 - len(str(i)) - 3 - len(display_title) - 1
             sys.stdout.write(
-                f"{color}║ {i:2d}. {display_title:<61}{Colors.CYAN} ║\n"
+                f"{Colors.CYAN}║{Colors.RESET} {color}{i:2d}. {display_title}"
+                f"{' ' * title_padding}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}\n"
             )
         
-        sys.stdout.write(f"╚{'═' * 68}╝{Colors.RESET}\n\n")
+        sys.stdout.write(f"{Colors.CYAN}╚{border}╝{Colors.RESET}\n\n")
         sys.stdout.flush()
 
     def print_chapter_start(
@@ -128,22 +138,31 @@ class ProgressIndicator:
         self.stop()  # Stop spinner to show clear output
         sys.stdout.write("\n")
         
-        # Dynamic chapter header with gradient
-        sys.stdout.write(f"{Colors.MAGENTA}▸ {Colors.BOLD}CHAPTER {chapter_number}{Colors.RESET} ")
-        sys.stdout.write(f"{Colors.CYAN}{chapter_title}{Colors.RESET}\n")
+        # Dynamic chapter header with branch symbol
+        sys.stdout.write(
+            f"{Colors.MAGENTA}▸ {Colors.BOLD}CHAPTER {chapter_number}{Colors.RESET} "
+            f"{Colors.CYAN}{chapter_title}{Colors.RESET}\n"
+        )
         
         if text_snippet:
-            # Convert to string and show first 70 characters of text
+            # Convert to string and show first 65 characters of text
             snippet_str = str(text_snippet) if text_snippet else ""
+            max_preview = 65
             display_snippet = (
-                snippet_str[:70] + "..." if len(snippet_str) > 70 else snippet_str
+                snippet_str[:max_preview] + "..."
+                if len(snippet_str) > max_preview
+                else snippet_str
             )
             if display_snippet:
-                # Preview with subtle styling
-                sys.stdout.write(f"{Colors.BRIGHT_BLACK}├─ Preview: {display_snippet}{Colors.RESET}\n")
+                # Preview with subtle styling and proper indentation
+                sys.stdout.write(
+                    f"{Colors.BRIGHT_BLACK}├─ Preview: {display_snippet}{Colors.RESET}\n"
+                )
         
         # Progress indicator line
-        sys.stdout.write(f"{Colors.YELLOW}└─ Processing...{Colors.RESET}\n")
+        sys.stdout.write(
+            f"{Colors.YELLOW}└─ Processing...{Colors.RESET}\n"
+        )
         sys.stdout.flush()
         self.start()  # Restart spinner for phase updates
 
