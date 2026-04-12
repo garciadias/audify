@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for commit analysis
+
+      - name: Get last tag
+        id: last_tag
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          echo "Last tag: $LAST_TAG"
+
+      - name: Get commit messages since last tag
+        id: commits
+        run: |
+          LAST_TAG=${{ steps.last_tag.outputs.tag }}
+          COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --format='%s')
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Determine version bump
+        id: version
+        run: |
+          LAST_TAG="${{ steps.last_tag.outputs.tag }}"
+          CURRENT_VERSION="${LAST_TAG#v}"
+          COMMITS="${{ steps.commits.outputs.commits }}"
+          
+          # Default to patch bump
+          BUMP="patch"
+          
+          # Check for breaking changes (major bump)
+          if echo "$COMMITS" | grep -q "^BREAKING"; then
+            BUMP="major"
+          # Check for features (minor bump)
+          elif echo "$COMMITS" | grep -q "^feat"; then
+            BUMP="minor"
+          fi
+          
+          # Parse current version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+          
+          # Bump version
+          if [ "$BUMP" = "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$BUMP" = "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          NEW_TAG="v$NEW_VERSION"
+          
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          
+          echo "Version bump: $BUMP"
+          echo "New version: $NEW_VERSION"
+
+      - name: Check if version changed
+        id: check_version
+        run: |
+          CURRENT=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+          
+          if [ "$CURRENT" != "$NEW_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Current version: $CURRENT"
+            echo "New version: $NEW_VERSION"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No version change needed"
+          fi
+
+      - name: Update version in pyproject.toml
+        if: steps.check_version.outputs.changed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = .*/version = \"$NEW_VERSION\"/" pyproject.toml
+          echo "Updated pyproject.toml to version $NEW_VERSION"
+
+      - name: Configure git
+        if: steps.check_version.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit version bump
+        if: steps.check_version.outputs.changed == 'true'
+        run: |
+          git add pyproject.toml
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+
+      - name: Create git tag
+        if: steps.check_version.outputs.changed == 'true'
+        run: |
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.version }}"
+          git push origin main
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub release
+        if: steps.check_version.outputs.changed == 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Changes in this release
+
+            ### Commits
+            ```
+            ${{ steps.commits.outputs.commits }}
+            ```
+
+            **Version bump type:** ${{ steps.version.outputs.bump }}
+
+            For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})
+          draft: false
+          prerelease: false
