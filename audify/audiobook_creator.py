@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
+from rich.progress import track
 from bs4 import BeautifulSoup
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
@@ -526,13 +526,7 @@ class AudiobookCreator(BaseSynthesizer):
         episode_paths = []
 
         for i, chapter_content in enumerate(
-            Progress(
-                SpinnerColumn("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", style="cyan"),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(bar_width=25, style="cyan", complete_style="green"),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeRemainingColumn(),
-            ).track(chapters, description="📚 Creating Episodes")
+            track(chapters, description="Creating Audiobook Episodes")
         ):
             episode_number = i + 1
             chapter_title = chapter_titles[i - 1]
@@ -757,12 +751,7 @@ class AudiobookCreator(BaseSynthesizer):
             current_start_time_ms = 0
 
             for i, mp3_file in enumerate(
-                Progress(
-                    SpinnerColumn("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", style="cyan"),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(bar_width=25, style="cyan", complete_style="green"),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                ).track(episode_mp3_files, description="🔗 Combining Episodes")
+                track(episode_mp3_files, description="Combining Episodes")
             ):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)
@@ -1398,12 +1387,7 @@ class DirectoryAudiobookCreator:
             current_start_time_ms = 0
 
             for i, mp3_file in enumerate(
-                Progress(
-                    SpinnerColumn("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", style="cyan"),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(bar_width=25, style="cyan", complete_style="green"),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                ).track(episode_mp3_files, description="🔗 Combining Episodes")
+                track(episode_mp3_files, description="Combining Episodes")
             ):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)
