@@ -9,9 +9,11 @@ from typing import Optional
 # Braille spinner frames for smooth animation
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
+
 # ANSI color codes for enhanced visual feedback
 class Colors:
     """ANSI color codes for terminal output."""
+
     CYAN = "\033[96m"
     MAGENTA = "\033[95m"
     YELLOW = "\033[93m"
@@ -20,6 +22,18 @@ class Colors:
     BRIGHT_BLACK = "\033[90m"
     RESET = "\033[0m"
     BOLD = "\033[1m"
+
+
+# Phase emoji mapping for visual feedback
+PHASE_EMOJIS = {
+    "Reading": "📖",
+    "Processing": "⚙️",
+    "Generating": "✨",
+    "Synthesizing": "🔊",
+    "Translating": "🌐",
+    "Converting": "🔄",
+    "Assembling": "🔗",
+}
 
 
 class ProgressIndicator:
@@ -92,7 +106,7 @@ class ProgressIndicator:
         # Box border width (68 = 2 for borders + 66 content)
         border = "═" * 68
         sys.stdout.write(f"{Colors.CYAN}╔{border}╗{Colors.RESET}\n")
-        
+
         # Header title - "📚 TABLE OF CONTENTS" is 21 visible chars
         header_text = "📚 TABLE OF CONTENTS"
         padding = 66 - len(header_text) - 2  # -2 for internal padding
@@ -101,7 +115,7 @@ class ProgressIndicator:
             f"{' ' * padding}║{Colors.RESET}\n"
         )
         sys.stdout.write(f"{Colors.CYAN}╠{border}╣{Colors.RESET}\n")
-        
+
         for i, chapter in enumerate(chapters, 1):
             # Convert to string and handle edge cases
             chapter_str = str(chapter) if chapter else f"Chapter {i}"
@@ -112,7 +126,7 @@ class ProgressIndicator:
                 if len(chapter_str) > max_width
                 else chapter_str
             )
-            
+
             # Alternate row colors for better readability
             color = Colors.BLUE if i % 2 == 0 else Colors.CYAN
             # Proper padding: 66 chars total - number width - dot - space - title
@@ -121,7 +135,7 @@ class ProgressIndicator:
                 f"{Colors.CYAN}║{Colors.RESET} {color}{i:2d}. {display_title}"
                 f"{' ' * title_padding}{Colors.RESET}{Colors.CYAN}║{Colors.RESET}\n"
             )
-        
+
         sys.stdout.write(f"{Colors.CYAN}╚{border}╝{Colors.RESET}\n\n")
         sys.stdout.flush()
 
@@ -137,13 +151,13 @@ class ProgressIndicator:
         """
         self.stop()  # Stop spinner to show clear output
         sys.stdout.write("\n")
-        
-        # Dynamic chapter header with branch symbol
+
+        # Dynamic chapter header with book emoji
         sys.stdout.write(
-            f"{Colors.MAGENTA}▸ {Colors.BOLD}CHAPTER {chapter_number}{Colors.RESET} "
+            f"{Colors.MAGENTA}📖 {Colors.BOLD}CHAPTER {chapter_number}{Colors.RESET} "
             f"{Colors.CYAN}{chapter_title}{Colors.RESET}\n"
         )
-        
+
         if text_snippet:
             # Convert to string and show first 65 characters of text
             snippet_str = str(text_snippet) if text_snippet else ""
@@ -154,15 +168,13 @@ class ProgressIndicator:
                 else snippet_str
             )
             if display_snippet:
-                # Preview with subtle styling and proper indentation
+                # Preview with speech bubble emoji and subtle styling
                 sys.stdout.write(
-                    f"{Colors.BRIGHT_BLACK}├─ Preview: {display_snippet}{Colors.RESET}\n"
+                    f"{Colors.BRIGHT_BLACK}💬 Preview: {display_snippet}{Colors.RESET}\n"
                 )
-        
-        # Progress indicator line
-        sys.stdout.write(
-            f"{Colors.YELLOW}└─ Processing...{Colors.RESET}\n"
-        )
+
+        # Progress indicator line with lightning emoji
+        sys.stdout.write(f"{Colors.YELLOW}⚡ Processing...{Colors.RESET}\n")
         sys.stdout.flush()
         self.start()  # Restart spinner for phase updates
 
@@ -173,9 +185,12 @@ class ProgressIndicator:
                 frame = next(self._spinner)
                 phase = self._current_phase
 
+            # Get emoji for current phase
+            emoji = PHASE_EMOJIS.get(phase, "⏳")
+
             # Write to stderr so it doesn't interfere with stdout
-            message = f"{Colors.GREEN}{frame}{Colors.RESET} {Colors.CYAN}{phase}...{Colors.RESET}"
-            sys.stderr.write(f"\r{message:<60}")
+            message = f"{Colors.GREEN}{frame}{Colors.RESET} {emoji} {Colors.CYAN}{phase}...{Colors.RESET}"
+            sys.stderr.write(f"\r{message:<70}")
             sys.stderr.flush()
 
             time.sleep(self.update_interval)
