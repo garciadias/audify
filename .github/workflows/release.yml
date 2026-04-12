@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for commit analysis
+          fetch-depth: 0 # Full history for commit analysis
 
       - name: Get last tag
         id: last_tag
@@ -36,17 +36,17 @@ jobs:
           else
             git log --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
           fi
-          
+
           # Extract just subjects for display in release notes
           git log --format='%s' > /tmp/subjects.txt 2>/dev/null || echo "" > /tmp/subjects.txt
-          
+
           # Store list for use in GitHub release
           {
             echo 'list<<EOF'
             cat /tmp/subjects.txt
             echo 'EOF'
           } >> $GITHUB_OUTPUT
-          
+
           # Check for commit types in full commit messages
           # HAS_FEAT: detects "feat:" and "feat!:" (breaking feature) at line start
           HAS_FEAT=$(grep -E '^feat[!]*:' /tmp/commits_full.txt | wc -l)
@@ -115,7 +115,7 @@ jobs:
         run: |
           CURRENT=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
           NEW_VERSION="${{ steps.version.outputs.version }}"
-          
+
           if [ "$CURRENT" != "$NEW_VERSION" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "Current version: $CURRENT"
