@@ -1,7 +1,7 @@
 # %%
 from pathlib import Path
 
-import PyPDF2
+import pypdf
 
 from audify.domain.reader import Reader
 from audify.utils.text import clean_text
@@ -22,7 +22,7 @@ class PdfReader(Reader):
     def read(self):
         """Extract text from a PDF file."""
         with open(self.path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
+            reader = pypdf.PdfReader(f)
             text = ""
             for page in reader.pages:
                 text += page.extract_text()
