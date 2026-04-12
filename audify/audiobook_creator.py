@@ -501,6 +501,20 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Creating audiobook series with {num_chapters} episodes...")
 
+        # Prepare chapter titles for display
+        chapter_titles = []
+        for i, chapter_content in enumerate(chapters, 1):
+            if isinstance(self.reader, EpubReader):
+                title = self.reader.get_chapter_title(chapter_content)
+            else:
+                title = f"Chapter {i}"
+            chapter_titles.append(title)
+
+        # Display table of contents
+        self.progress.stop()
+        self.progress.print_table_of_contents(chapter_titles)
+        self.progress.start()
+
         if self.confirm:
             self.progress.stop()  # Stop spinner before showing confirmation
             response = input(f"Create {num_chapters} audiobook episodes? (y/N): ")
@@ -515,8 +529,17 @@ class AudiobookCreator(BaseSynthesizer):
             tqdm.tqdm(chapters, desc="Creating Audiobook Episodes", unit="episode")
         ):
             episode_number = i + 1
+            chapter_title = chapter_titles[i - 1]
+
+            # Extract text snippet from chapter for display (first ~100 words)
+            text_snippet = " ".join(chapter_content.split()[:20])
 
             try:
+                # Show chapter info with preview
+                self.progress.print_chapter_start(
+                    episode_number, chapter_title, text_snippet
+                )
+
                 self.progress.set_phase("Generating")
                 audiobook_script = self.generate_audiobook_script(
                     chapter_content,
