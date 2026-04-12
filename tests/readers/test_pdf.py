@@ -229,10 +229,10 @@ class TestPdfReader:
 
     @patch("audify.readers.pdf.pypdf.PdfReader")
     @patch("builtins.open", new_callable=mock_open)
-    def test_pypdf2_exception_handling(
+    def test_pypdf_exception_handling(
         self, mock_file_open, mock_pdf_reader, temp_pdf_path
     ):
-        """Test handling of PyPDF2 exceptions during PDF reading."""
+        """Test handling of pypdf exceptions during PDF reading."""
         mock_pdf_reader.side_effect = pypdf.errors.PdfReadError("Corrupted PDF file")
 
         with patch("pathlib.Path.exists", return_value=True):
