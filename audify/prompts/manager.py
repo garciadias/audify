@@ -102,11 +102,15 @@ class PromptManager:
     def validate_prompt(self, prompt: str) -> tuple[bool, str]:
         """Validate a prompt string.
 
+        Args:
+            prompt: The prompt text to validate.
+
         Returns:
-            Tuple of (is_valid, message).
+            A tuple of (is_valid, message) where is_valid is True if the prompt
+            is valid, and message provides validation details.
         """
         if not prompt or not prompt.strip():
-            return False, "Prompt is empty."
-        if len(prompt) < 10:
-            return False, "Prompt is too short (minimum 10 characters)."
+            return False, "Prompt cannot be empty."
+        if len(prompt.strip()) < 10:
+            return False, "Prompt is too short. Minimum 10 characters required."
         return True, "Prompt is valid."

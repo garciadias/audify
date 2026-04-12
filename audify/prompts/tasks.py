@@ -28,27 +28,49 @@ class TaskRegistry:
 
     @classmethod
     def register(cls, config: TaskConfig) -> None:
-        """Register a new task configuration."""
+        """Register a new task configuration.
+
+        Args:
+            config: The TaskConfig to register.
+        """
         cls._tasks[config.name] = config
 
     @classmethod
     def get(cls, name: str) -> Optional[TaskConfig]:
-        """Get a task configuration by name."""
+        """Get a task configuration by name.
+
+        Args:
+            name: Task name to retrieve.
+
+        Returns:
+            The TaskConfig if found, None otherwise.
+        """
         return cls._tasks.get(name)
 
     @classmethod
     def list_tasks(cls) -> list[str]:
-        """List all registered task names."""
+        """List all registered task names.
+
+        Returns:
+            Sorted list of registered task names.
+        """
         return sorted(cls._tasks.keys())
 
     @classmethod
     def get_all(cls) -> dict[str, TaskConfig]:
-        """Get all registered task configurations."""
+        """Get all registered task configurations.
+
+        Returns:
+            Dictionary of all registered tasks.
+        """
         return dict(cls._tasks)
 
     @classmethod
     def _reset(cls) -> None:
-        """Reset the registry (for testing)."""
+        """Reset the registry (for testing).
+
+        Clears all registered tasks from the registry.
+        """
         cls._tasks = {}
 
 
