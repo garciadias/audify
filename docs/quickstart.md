@@ -30,7 +30,7 @@ audify run book.epub --tts-provider openai
 
 ## Option 2: Kokoro TTS (Local, Free)
 
-Requires Docker and a CUDA GPU.
+Requires Docker and a CUDA GPU. Fast and low-latency synthesis.
 
 ### 1. Clone and start services
 
@@ -54,9 +54,9 @@ uv sync
 audify run book.epub
 ```
 
-## Option 3: Qwen-TTS (Local, Free, Multilingual)
+## Option 3: Qwen-TTS (Local, Free)
 
-Requires GPU and the Qwen-TTS API server.
+Requires GPU and the Qwen-TTS API server. Offers multilingual support and high-quality synthesis.
 
 ### 1. Start Qwen-TTS
 
@@ -89,6 +89,6 @@ audify run book.epub --tts-provider qwen
 
 ## Next Steps
 
-- Learn about all [usage options](usage.md)
-- Explore the [task system](tasks.md) for LLM-powered audio
-- Set up [cloud LLM APIs](commercial-apis.md) for audiobook generation
+- Learn about all [usage options](usage.md) including translation
+- Explore the [task system](tasks.md) for LLM-powered audio generation
+- Set up [cloud LLM APIs](commercial-apis.md) for advanced audiobook creation

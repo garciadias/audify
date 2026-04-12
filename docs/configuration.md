@@ -58,13 +58,28 @@ Never commit `.keys` to version control. It is already in `.gitignore`.
 
 ## TTS Provider Comparison
 
-| Provider         | Local? | Free? | GPU needed? | Best for                        |
-|------------------|--------|-------|-------------|----------------------------------|
-| **Kokoro**       | Yes    | Yes   | Recommended | Development, privacy             |
-| **Qwen-TTS**    | Yes    | Yes   | Recommended | Multilingual, privacy            |
-| **OpenAI**       | No     | No    | No          | High quality, easy setup         |
-| **AWS Polly**    | No     | No    | No          | Enterprise, AWS integration      |
-| **Google Cloud** | No     | No    | No          | Multi-language projects          |
+| Provider         | Local? | Free? | GPU needed? | Key Features                   |
+|------------------|--------|-------|-------------|-------------------------------|
+| **Kokoro**       | Yes    | Yes   | Recommended | Fast, low-latency synthesis   |
+| **Qwen-TTS**     | Yes    | Yes   | Recommended | Multilingual, high quality    |
+| **OpenAI**       | No     | No    | No          | High quality, easy setup      |
+| **AWS Polly**    | No     | No    | No          | Enterprise, multiple engines  |
+| **Google Cloud** | No     | No    | No          | Multilingual, neural voices   |
+
+## Google Cloud TTS Configuration
+
+When using Google Cloud TTS, the default voice is set to **`en-US-Neural2-F`** (English US, Female).
+
+To use different languages or voices, set the environment variables:
+
+```ini
+GOOGLE_TTS_VOICE=<voice-id>          # e.g., es-ES-Neural2-A for Spanish
+GOOGLE_TTS_LANGUAGE_CODE=<lang-code> # e.g., es-ES for Spanish
+```
+
+:::{warning}
+**Important:** The voice locale must match the language. If you specify a voice like `en-US-Chirp-HD-F`, you should set `GOOGLE_TTS_LANGUAGE_CODE=en-US`. Mismatched values will cause errors.
+:::
 
 ## Docker Services
 
