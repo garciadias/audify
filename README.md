@@ -739,3 +739,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [DeepSeek](https://www.deepseek.com/) for DeepSeek API
 - [Google](https://cloud.google.com/text-to-speech) for Gemini and Cloud TTS
 - [AWS Polly](https://aws.amazon.com/polly/) for Text-to-Speech service
+# Test release automation
