@@ -6,9 +6,6 @@ import time
 from itertools import cycle
 from typing import Optional
 
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
-from rich.console import Console
-
 # Braille spinner frames for smooth animation
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
@@ -98,9 +95,6 @@ class ProgressIndicator:
         """
         with self._lock:
             self._current_phase = phase
-        # Start spinner if not already running - ensures it resumes after interruptions
-        if not self._running:
-            self.start()
 
     def print_table_of_contents(self, chapters: list[str]) -> None:
         """Display table of contents for all chapters with modern styling.
@@ -202,36 +196,3 @@ class ProgressIndicator:
             sys.stderr.flush()
 
             time.sleep(self.update_interval)
-
-    def create_rich_progress(self) -> Progress:
-        """Create a beautiful rich progress bar for iterations.
-        
-        Returns:
-            A rich Progress instance configured for audio processing.
-        """
-        return Progress(
-            SpinnerColumn("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", style="cyan"),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30, style="cyan", complete_style="green"),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            console=Console(),
-        )
-
-    @staticmethod
-    def rich_progress_context():
-        """Return a rich Progress context manager for use with 'with' statements.
-        
-        Example:
-            >>> progress = ProgressIndicator()
-            >>> with progress.rich_progress_context() as pbar:
-            ...     for item in pbar.track(items, description="Processing..."):
-            ...         # do work
-        """
-        return Progress(
-            SpinnerColumn("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", style="cyan"),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=30, style="cyan", complete_style="green"),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-        )
