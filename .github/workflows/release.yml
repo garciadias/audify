@@ -29,7 +29,12 @@ jobs:
         id: commits
         run: |
           LAST_TAG=${{ steps.last_tag.outputs.tag }}
-          COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --format='%s')
+          # Check if tag exists, if not get all commits
+          if git rev-parse ${LAST_TAG} >/dev/null 2>&1; then
+            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --format='%s')
+          else
+            COMMITS=$(git log --oneline --format='%s')
+          fi
           echo "commits<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMITS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -40,44 +45,51 @@ jobs:
           LAST_TAG="${{ steps.last_tag.outputs.tag }}"
           CURRENT_VERSION="${LAST_TAG#v}"
           COMMITS="${{ steps.commits.outputs.commits }}"
-          
-          # Default to patch bump
-          BUMP="patch"
-          
-          # Check for breaking changes (major bump)
-          if echo "$COMMITS" | grep -q "^BREAKING"; then
-            BUMP="major"
-          # Check for features (minor bump)
-          elif echo "$COMMITS" | grep -q "^feat"; then
-            BUMP="minor"
-          fi
-          
-          # Parse current version
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-          MAJOR=${MAJOR:-0}
-          MINOR=${MINOR:-0}
-          PATCH=${PATCH:-0}
-          
-          # Bump version
-          if [ "$BUMP" = "major" ]; then
-            MAJOR=$((MAJOR + 1))
-            MINOR=0
-            PATCH=0
-          elif [ "$BUMP" = "minor" ]; then
-            MINOR=$((MINOR + 1))
-            PATCH=0
+
+          # Check if this is the first release (no tags exist)
+          if [ "$LAST_TAG" = "v0.0.0" ]; then
+            # First release - start at 0.1.0
+            NEW_VERSION="0.1.0"
           else
-            PATCH=$((PATCH + 1))
+            # Default to patch bump
+            BUMP="patch"
+
+            # Check for breaking changes (major bump)
+            if echo "$COMMITS" | grep -q "^BREAKING"; then
+              BUMP="major"
+            # Check for features (minor bump)
+            elif echo "$COMMITS" | grep -q "^feat"; then
+              BUMP="minor"
+            fi
+
+            # Parse current version
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            MAJOR=${MAJOR:-0}
+            MINOR=${MINOR:-0}
+            PATCH=${PATCH:-0}
+
+            # Bump version
+            if [ "$BUMP" = "major" ]; then
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+            elif [ "$BUMP" = "minor" ]; then
+              MINOR=$((MINOR + 1))
+              PATCH=0
+            else
+              PATCH=$((PATCH + 1))
+            fi
+
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
           fi
-          
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
           NEW_TAG="v$NEW_VERSION"
-          
-          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+
+          echo "bump=${BUMP:-initial}" >> $GITHUB_OUTPUT
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          
-          echo "Version bump: $BUMP"
+
+          echo "Version bump: ${BUMP:-initial}"
           echo "New version: $NEW_VERSION"
 
       - name: Check if version changed
