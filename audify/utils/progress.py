@@ -95,6 +95,9 @@ class ProgressIndicator:
         """
         with self._lock:
             self._current_phase = phase
+        # Start spinner if not already running - ensures it resumes after interruptions
+        if not self._running:
+            self.start()
 
     def print_table_of_contents(self, chapters: list[str]) -> None:
         """Display table of contents for all chapters with modern styling.
@@ -178,7 +181,7 @@ class ProgressIndicator:
         # Add blank line to separate from tqdm output
         sys.stdout.write("\n")
         sys.stdout.flush()
-        self.start()  # Restart spinner for phase updates
+        # Don't restart spinner here - let tqdm display without interference
 
     def _run(self) -> None:
         """Main loop for the progress indicator with dynamic styling."""
