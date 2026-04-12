@@ -49,12 +49,13 @@ jobs:
           
           # Check for commit types in full commit messages
           # HAS_FEAT: detects "feat:" and "feat!:" (breaking feature) at line start
-          HAS_FEAT=$(grep -c '^feat[!]*:' /tmp/commits_full.txt || echo 0)
-          # HAS_BREAKING: detects both "BREAKING:" and "BREAKING CHANGE:" anywhere in commits
-          # Also detects fix!: or other!: style breaking changes
-          HAS_BREAKING=$(grep -cE '(^[a-z]+!:|BREAKING[\s_]CHANGE:)' /tmp/commits_full.txt || echo 0)
-          echo "has_feat=${HAS_FEAT}" >> $GITHUB_OUTPUT
-          echo "has_breaking=${HAS_BREAKING}" >> $GITHUB_OUTPUT
+          HAS_FEAT=$(grep -E '^feat[!]*:' /tmp/commits_full.txt | wc -l)
+          # HAS_BREAKING: detects breaking changes
+          # - Lines starting with type!: (feat!:, fix!:, etc.)
+          # - Lines containing BREAKING CHANGE: or BREAKING_CHANGE:
+          HAS_BREAKING=$(grep -E '(^[a-z]+!:|BREAKING[[:space:]_]CHANGE:)' /tmp/commits_full.txt | wc -l)
+          echo "has_feat=$HAS_FEAT" >> $GITHUB_OUTPUT
+          echo "has_breaking=$HAS_BREAKING" >> $GITHUB_OUTPUT
 
       - name: Determine version bump
         id: version
