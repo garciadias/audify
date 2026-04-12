@@ -169,9 +169,11 @@ class ProgressIndicator:
             )
             if display_snippet:
                 # Preview with speech bubble emoji and subtle styling
-                sys.stdout.write(
-                    f"{Colors.BRIGHT_BLACK}💬 Preview: {display_snippet}{Colors.RESET}\n"
+                preview_line = (
+                    f"{Colors.BRIGHT_BLACK}💬 Preview: {display_snippet}"
+                    f"{Colors.RESET}\n"
                 )
+                sys.stdout.write(preview_line)
 
         # Progress indicator line with lightning emoji
         sys.stdout.write(f"{Colors.YELLOW}⚡ Processing...{Colors.RESET}\n")
@@ -191,7 +193,10 @@ class ProgressIndicator:
             emoji = PHASE_EMOJIS.get(phase, "⏳")
 
             # Write to stderr so it doesn't interfere with stdout
-            message = f"{Colors.GREEN}{frame}{Colors.RESET} {emoji} {Colors.CYAN}{phase}...{Colors.RESET}"
+            message = (
+                f"{Colors.GREEN}{frame}{Colors.RESET} {emoji} "
+                f"{Colors.CYAN}{phase}...{Colors.RESET}"
+            )
             sys.stderr.write(f"\r{message:<70}")
             sys.stderr.flush()
 
