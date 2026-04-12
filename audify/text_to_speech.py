@@ -94,6 +94,8 @@ class BaseSynthesizer:
         language: str = "en",
         model_name: str = DEFAULT_MODEL,
         tts_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         self.path = Path(path).resolve()
         self.language = language
@@ -102,6 +104,8 @@ class BaseSynthesizer:
         self.model_name = model_name
         self.save_text = save_text
         self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
+        self.llm_model = llm_model
+        self.llm_base_url = llm_base_url
         self.tmp_dir_context = tempfile.TemporaryDirectory(
             prefix=f"audify_{self.path.stem}_"
         )
@@ -132,6 +136,8 @@ class BaseSynthesizer:
         """Synthesize sentences using the configured TTS provider."""
         tts_config = self._get_tts_config()
         temp_audio_files: List[Path] = []
+        attempted_sentences = 0
+        failed_sentences = 0
 
         try:
             logger.info(f"Starting {tts_config.provider_name} TTS synthesis...")
@@ -161,6 +167,8 @@ class BaseSynthesizer:
                 if not sentence.strip():
                     continue
 
+                attempted_sentences += 1
+
                 try:
                     temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
                     success = tts_config.synthesize(sentence, temp_wav_path)
@@ -168,16 +176,28 @@ class BaseSynthesizer:
                     if success and temp_wav_path.exists():
                         temp_audio_files.append(temp_wav_path)
                     else:
+                        failed_sentences += 1
                         logger.warning(f"Synthesis failed for sentence {i}, skipping.")
 
                 except Exception as e:
+                    failed_sentences += 1
                     logger.warning(f"Error synthesizing sentence {i}: {e}")
                     continue
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")
-            AudioProcessor.combine_wav_segments(
-                temp_audio_files, output_wav_path, logger_instance=logger
-            )
+            try:
+                AudioProcessor.combine_wav_segments(
+                    temp_audio_files, output_wav_path, logger_instance=logger
+                )
+            except ValueError as exc:
+                if "Combined WAV segments are empty" in str(exc):
+                    raise RuntimeError(
+                        "No valid audio segments were synthesized. "
+                        f"Attempted {attempted_sentences} sentence(s), "
+                        f"failed {failed_sentences}. Check TTS provider logs, "
+                        "voice/language compatibility, and credentials."
+                    ) from exc
+                raise
 
         except Exception as e:
             logger.error(
@@ -246,9 +266,9 @@ class EpubSynthesizer(BaseSynthesizer):
         model_name: str = DEFAULT_MODEL,
         output_dir: Optional[str | Path] = None,
         tts_provider: Optional[str] = None,
-        llm_config: Optional[
-            Union[OllamaAPIConfig, CommercialAPIConfig]
-        ] = None,
+        llm_config: Optional[Union[OllamaAPIConfig, CommercialAPIConfig]] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         self.reader = EpubReader(path, llm_config=llm_config)
         detected_language = self.reader.get_language()
@@ -265,7 +285,11 @@ class EpubSynthesizer(BaseSynthesizer):
         if translate:
             logger.info(f"Translating title from {language} to {translate}")
             self.title = translate_sentence(
-                sentence=self.title, src_lang=language, tgt_lang=translate
+                sentence=self.title,
+                src_lang=language,
+                tgt_lang=translate,
+                model=llm_model,
+                base_url=llm_base_url,
             )
 
         self.file_name = get_file_name_title(self.title)
@@ -281,6 +305,8 @@ class EpubSynthesizer(BaseSynthesizer):
             translate=translate,
             save_text=save_text,
             tts_provider=tts_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
 
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
@@ -332,7 +358,11 @@ class EpubSynthesizer(BaseSynthesizer):
             try:
                 sentences = [
                     translate_sentence(
-                        sentence, src_lang=self.language, tgt_lang=self.translate
+                        sentence,
+                        src_lang=self.language,
+                        tgt_lang=self.translate,
+                        model=self.llm_model,
+                        base_url=self.llm_base_url,
                     )
                     for sentence in tqdm.tqdm(
                         sentences,
@@ -363,7 +393,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return total_duration
 
     def _split_chapters_by_duration(
-        self, chapter_mp3_files: List[Path], max_hours: float = 15.0
+        self, chapter_mp3_files: List[Path], max_hours: float = 6.0
     ) -> List[List[Path]]:
         """Split chapter MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(chapter_mp3_files, max_hours)
@@ -435,14 +465,15 @@ class EpubSynthesizer(BaseSynthesizer):
         total_duration_hours = self._calculate_total_duration(chapter_mp3_files) / 3600
         logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        # If duration is less than 15 hours, create a single M4B
-        if total_duration_hours <= 15.0:
-            logger.info("Creating single M4B file (duration <= 15 hours)")
+        # If duration is less than 6 hours, create a single M4B
+        # Using 6 hours as a safe limit to avoid WAV 4GB file size issues
+        if total_duration_hours <= 6.0:
+            logger.info("Creating single M4B file (duration <= 6 hours)")
             self._create_single_m4b(chapter_mp3_files)
         else:
             logger.info(
-                f"Duration ({total_duration_hours:.2f}h) exceeds 15 hours, "
-                f"splitting into multiple M4B files"
+                f"Duration ({total_duration_hours:.2f}h) exceeds 6 hours, "
+                f"splitting into multiple M4B files to avoid WAV file size limits"
             )
             self._create_multiple_m4bs(chapter_mp3_files)
 
@@ -471,7 +502,7 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _create_multiple_m4bs(self, chapter_mp3_files: List[Path]) -> None:
         """Create multiple M4B files by splitting chapters into chunks."""
-        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=15.0)
+        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=6.0)
         logger.info(f"Split into {len(chunks)} chunks")
 
         for chunk_index, chunk_files in enumerate(chunks):
@@ -506,9 +537,7 @@ class EpubSynthesizer(BaseSynthesizer):
                 )
                 chunk_metadata_path.unlink(missing_ok=True)
             except Exception as e:
-                logger.error(
-                    f"M4B creation failed for chunk {chunk_index + 1}: {e}"
-                )
+                logger.error(f"M4B creation failed for chunk {chunk_index + 1}: {e}")
 
         logger.info(f"Created {len(chunks)} M4B files for long audiobook")
 
@@ -648,6 +677,8 @@ class PdfSynthesizer(BaseSynthesizer):
         translate: Optional[str] = None,
         save_text: bool = False,
         tts_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         pdf_path = Path(pdf_path).resolve()
         if not pdf_path.exists():
@@ -667,6 +698,8 @@ class PdfSynthesizer(BaseSynthesizer):
             translate=translate,
             save_text=save_text,
             tts_provider=tts_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
         )
 
     def synthesize(self) -> Path:
@@ -691,7 +724,11 @@ class PdfSynthesizer(BaseSynthesizer):
                 try:
                     sentences = [
                         translate_sentence(
-                            sentence, src_lang=self.language, tgt_lang=self.translate
+                            sentence,
+                            src_lang=self.language,
+                            tgt_lang=self.translate,
+                            model=self.llm_model,
+                            base_url=self.llm_base_url,
                         )
                         for sentence in tqdm.tqdm(
                             sentences, desc="Translating PDF", unit="sentence"
@@ -726,9 +763,13 @@ class VoiceSamplesSynthesizer:
         sample_text: Optional[str] = None,
         max_samples: Optional[int] = None,
         output_dir: Optional[str | Path] = None,
+        llm_model: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         self.language = language
         self.translate = translate
+        self.llm_model = llm_model
+        self.llm_base_url = llm_base_url
         self.max_samples = max_samples
         self.sample_text = sample_text or (
             "Bean on bread is a simple yet delightful snack."
@@ -801,6 +842,8 @@ class VoiceSamplesSynthesizer:
                     sentence=sample_text,
                     src_lang=self.language,
                     tgt_lang=self.translate,
+                    model=self.llm_model,
+                    base_url=self.llm_base_url,
                 )
 
             # Generate audio

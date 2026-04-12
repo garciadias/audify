@@ -6,6 +6,7 @@ modules to reduce code duplication and provide consistent audio handling.
 """
 
 import logging
+import struct
 import tempfile
 from pathlib import Path
 from typing import List, Optional
@@ -159,7 +160,7 @@ class AudioProcessor:
 
     @staticmethod
     def split_audio_by_duration(
-        file_paths: List[Path], max_duration_hours: float = 15.0
+        file_paths: List[Path], max_duration_hours: float = 6.0
     ) -> List[List[Path]]:
         """
         Split a list of audio files into chunks based on total duration.
@@ -232,9 +233,7 @@ class AudioProcessor:
                     segment = AudioSegment.from_wav(temp_wav_path)
                     combined_audio += segment
                 except CouldntDecodeError:
-                    _log.warning(
-                        f"Could not decode temporary segment: {temp_wav_path}"
-                    )
+                    _log.warning(f"Could not decode temporary segment: {temp_wav_path}")
                 finally:
                     temp_wav_path.unlink(missing_ok=True)
             else:
@@ -245,9 +244,42 @@ class AudioProcessor:
             raise ValueError(
                 "Combined WAV segments are empty; no valid segments found."
             )
+
+        # Check if WAV file might exceed 4GB limit
+        # Rough estimate: 44.1kHz, 16-bit, stereo = 176,400 bytes/sec
+        # 4GB = 4,294,967,296 bytes
+        # Max safe duration = 4,294,967,296 / 176,400 ≈ 24,350 sec ≈ 6.76 hours
+        # Using conservative estimate of 6 hours
+        duration_ms = len(combined_audio)
+        duration_hours = duration_ms / (1000 * 3600)
+        if duration_hours > 6.0:
+            _log.warning(
+                f"Combined audio duration ({duration_hours:.2f} hours) may exceed "
+                f"WAV file 4GB limit. Consider splitting the audio into "
+                "shorter segments."
+            )
+
         _log.info(f"Exporting combined audio to {output_wav_path}")
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
-        combined_audio.export(output_wav_path, format="wav")
+        try:
+            combined_audio.export(output_wav_path, format="wav")
+        except struct.error as e:
+            if "requires 0 <= number <= 4294967295" in str(e):
+                _log.error(
+                    f"WAV file would exceed 4GB limit ({duration_hours:.2f} hours). "
+                    f"Try splitting the audio into shorter segments or "
+                    f"using MP3 format."
+                )
+                # Re-raise with more helpful message
+                raise ValueError(
+                    f"Audio too long for WAV format ({duration_hours:.2f} hours "
+                    f"exceeds 4GB limit). Please split into shorter segments."
+                ) from e
+            else:
+                raise
+        except Exception as e:
+            _log.error(f"Error exporting WAV file: {e}")
+            raise
 
     @staticmethod
     def create_temp_audio_file(

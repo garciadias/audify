@@ -57,7 +57,7 @@ GOOGLE_APPLICATION_CREDENTIALS=
 # English: en-US-Neural2-A through en-US-Neural2-J
 # Spanish: es-ES-Neural2-A through es-ES-Neural2-F
 # See full list: https://cloud.google.com/text-to-speech/docs/voices
-GOOGLE_TTS_VOICE=en-US-Neural2-F
+GOOGLE_TTS_VOICE=en-US-Chirp-HD-F
 
 # Language code for synthesis
 GOOGLE_TTS_LANGUAGE_CODE=en-US

@@ -3,9 +3,14 @@
 Test script for audify.translate module with comprehensive coverage.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
-from audify.translate import OllamaTranslationConfig, translate_sentence
+from audify.translate import (
+    OllamaTranslationConfig,
+    _get_translation_config,
+    translate_sentence,
+)
+from audify.utils.api_config import CommercialAPIConfig
 from audify.utils.constants import LANGUAGE_NAMES
 from audify.utils.prompts import TRANSLATE_PROMPT
 
@@ -132,7 +137,6 @@ def test_translation_interface():
     ]
 
     for sentence, src_lang, tgt_lang in test_cases:
-
         src_lang_name = LANGUAGE_NAMES.get(src_lang, src_lang)
         tgt_lang_name = LANGUAGE_NAMES.get(tgt_lang, tgt_lang)
 
@@ -141,3 +145,42 @@ def test_translation_interface():
         )
         assert len(prompt) > 0
         assert sentence in prompt
+
+
+def test_translate_sentence_commercial_api():
+    """Test translation using commercial API (model starting with 'api:')."""
+    # Create a mock config that passes isinstance checks
+    mock_config = Mock(spec=CommercialAPIConfig)
+    mock_config.model = "deepseek/deepseek-chat"
+    mock_config.base_url = None
+    mock_config.generate.return_value = "Translated text"
+    # Make isinstance(config, CommercialAPIConfig) return True
+    mock_config.__class__ = CommercialAPIConfig
+
+    with patch("audify.translate._get_translation_config") as mock_get_config:
+        mock_get_config.return_value = mock_config
+
+        result = translate_sentence(
+            "Hello world",
+            model="api:deepseek/deepseek-chat",
+            src_lang="en",
+            tgt_lang="es",
+        )
+        assert result == "Translated text"
+        mock_get_config.assert_called_once_with(
+            model="api:deepseek/deepseek-chat",
+            base_url=None,
+        )
+        mock_config.generate.assert_called_once_with(
+            user_prompt=ANY,
+            temperature=0.1,
+            top_p=0.9,
+            num_predict=2048,
+        )
+
+
+def test_get_translation_config_commercial():
+    """Test _get_translation_config with commercial API model."""
+    config = _get_translation_config(model="api:deepseek/deepseek-chat")
+    assert isinstance(config, CommercialAPIConfig)
+    assert config.model == "deepseek/deepseek-chat"

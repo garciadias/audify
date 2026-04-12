@@ -7,6 +7,7 @@ across different modules that interact with external APIs.
 
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional
@@ -24,6 +25,7 @@ from audify.utils.constants import (
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
     GOOGLE_APPLICATION_CREDENTIALS,
+    GOOGLE_TTS_DEFAULT_VOICE_BY_LANGUAGE,
     GOOGLE_TTS_LANGUAGE_CODE,
     GOOGLE_TTS_VOICE,
     KOKORO_API_BASE_URL,
@@ -499,8 +501,10 @@ class GoogleTTSConfig(TTSAPIConfig):
         credentials_path: Optional[str] = None,
         timeout: int = 60,
     ):
+        self._voice_explicit = voice is not None
+        resolved_voice = voice or self._resolve_default_voice_for_language(language)
         super().__init__(
-            voice=voice or GOOGLE_TTS_VOICE,
+            voice=resolved_voice,
             language=language,
             timeout=timeout,
         )
@@ -514,8 +518,60 @@ class GoogleTTSConfig(TTSAPIConfig):
         return "google"
 
     def _get_language_code(self) -> str:
-        """Get Google TTS language code from short language code."""
+        """Resolve Google TTS language code, preferring explicit voice locale."""
+        voice_language = self._extract_language_code_from_voice(self.voice)
+        if self._voice_explicit and voice_language:
+            return voice_language
         return self.LANGUAGE_CODES.get(self.language, GOOGLE_TTS_LANGUAGE_CODE)
+
+    @staticmethod
+    def _extract_language_code_from_voice(voice: Optional[str]) -> Optional[str]:
+        """Extract locale code (e.g., en-US, cmn-CN) from a Google voice name."""
+        if not voice:
+            return None
+
+        # Handles patterns like en-US-Neural2-F and cmn-CN-Neural2-A.
+        match = re.match(r"^([a-z]{2,3}(?:-[A-Za-z]{2,4})?-[A-Za-z]{2,4})-", voice)
+        if not match:
+            return None
+
+        language_code = match.group(1)
+        parts = language_code.split("-")
+        if len(parts) == 2:
+            return f"{parts[0].lower()}-{parts[1].upper()}"
+        return f"{parts[0].lower()}-{parts[1].title()}-{parts[2].upper()}"
+
+    @classmethod
+    def _resolve_default_voice_for_language(cls, language: str) -> str:
+        """Pick a default voice based on language using configured dictionary."""
+        configured_voice = GOOGLE_TTS_DEFAULT_VOICE_BY_LANGUAGE.get(language)
+        if configured_voice:
+            return configured_voice
+
+        # Backward compatibility fallback for environments that only set
+        # a single GOOGLE_TTS_VOICE value.
+        configured_voice = GOOGLE_TTS_VOICE
+        configured_locale = cls._extract_language_code_from_voice(configured_voice)
+        target_locale = cls.LANGUAGE_CODES.get(language, GOOGLE_TTS_LANGUAGE_CODE)
+
+        if configured_locale and configured_locale.lower() == target_locale.lower():
+            return configured_voice
+
+        language_defaults = cls.NEURAL_VOICES.get(language)
+        if language_defaults:
+            fallback_voice = language_defaults[0]
+            if configured_locale and configured_locale.lower() != target_locale.lower():
+                logger.warning(
+                    "Configured Google default voice '%s' does not "
+                    "match language '%s'. "
+                    "Using '%s' instead.",
+                    configured_voice,
+                    target_locale,
+                    fallback_voice,
+                )
+            return fallback_voice
+
+        return configured_voice
 
     def _get_client(self):
         """Get or create Google TTS client."""
@@ -806,6 +862,9 @@ class CommercialAPIConfig(APIConfig):
         self.model = self.MODEL_MAPPINGS.get(model, model)
         self.api_key = api_key
 
+        # Also load any additional keys from .keys file
+        self._load_api_keys_to_env()
+
         # If no API key provided, try to load from api_keys module
         if not self.api_key:
             try:
@@ -839,9 +898,6 @@ class CommercialAPIConfig(APIConfig):
                 os.environ["OPENAI_API_KEY"] = self.api_key
             elif "gemini" in original_model.lower():
                 os.environ["GOOGLE_API_KEY"] = self.api_key
-
-        # Also load any additional keys from .keys file
-        self._load_api_keys_to_env()
 
     def _load_api_keys_to_env(self) -> None:
         """Load API keys from .keys file into environment variables."""

@@ -123,10 +123,11 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000  # Non-zero length
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.from_wav"
-        ) as mock_from_wav, patch("pydub.AudioSegment.empty") as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.from_wav") as mock_from_wav,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio1 = MagicMock()
             mock_audio2 = MagicMock()
 
@@ -151,10 +152,11 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty, patch("tqdm.tqdm") as mock_tqdm:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+            patch("tqdm.tqdm") as mock_tqdm,
+        ):
             mock_audio = MagicMock()
 
             mock_from_mp3.return_value = mock_audio
@@ -165,9 +167,7 @@ class TestAudioProcessor:
                 file_paths, output_path, show_progress=True, description="Testing"
             )
 
-            mock_tqdm.assert_called_once_with(
-                file_paths, desc="Testing", unit="file"
-            )
+            mock_tqdm.assert_called_once_with(file_paths, desc="Testing", unit="file")
 
     def test_combine_audio_files_empty_result(self, tmp_path):
         """Test combine_audio_files when result is empty."""
@@ -178,10 +178,10 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 0  # Empty audio
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio = MagicMock()
 
             mock_from_mp3.return_value = mock_audio
@@ -197,9 +197,10 @@ class TestAudioProcessor:
         file_paths = [tmp_path / "nonexistent.mp3"]
         output_path = tmp_path / "combined.wav"
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty:
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_from_mp3.side_effect = FileNotFoundError("File not found")
             mock_empty.return_value = MagicMock()
 
@@ -219,10 +220,10 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio = MagicMock()
 
             mock_from_mp3.return_value = mock_audio
@@ -245,10 +246,10 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio = MagicMock()
 
             mock_from_mp3.return_value = mock_audio
@@ -271,10 +272,10 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio = MagicMock()
 
             def side_effect(path):
@@ -360,7 +361,7 @@ class TestAudioProcessor:
 
             chunks = AudioProcessor.split_audio_by_duration(file_paths)
 
-            # Should use default 15 hours, so all files fit in one chunk
+            # Should use default 6 hours, so all files fit in one chunk
             assert len(chunks) == 1
             assert chunks[0] == file_paths
 
@@ -403,9 +404,10 @@ class TestAudioProcessor:
         file_paths = [Path("file1.mp3")]
         output_prefix = "test_temp"
 
-        with patch.object(
-            AudioProcessor, "combine_audio_files"
-        ) as mock_combine, patch("tempfile.gettempdir") as mock_tempdir:
+        with (
+            patch.object(AudioProcessor, "combine_audio_files") as mock_combine,
+            patch("tempfile.gettempdir") as mock_tempdir,
+        ):
             mock_tempdir.return_value = "/tmp"
             mock_combine.return_value = MagicMock()
 
@@ -450,7 +452,7 @@ class TestAudioProcessor:
         file_paths = [
             tmp_path / "file1.mp3",
             tmp_path / "file2.wav",
-            tmp_path / "file3.m4a"
+            tmp_path / "file3.m4a",
         ]
         output_path = tmp_path / "combined.wav"
 
@@ -458,11 +460,12 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, \
-             patch("pydub.AudioSegment.from_wav") as mock_from_wav, \
-             patch("pydub.AudioSegment.from_file") as mock_from_file, \
-             patch("pydub.AudioSegment.empty") as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.from_wav") as mock_from_wav,
+            patch("pydub.AudioSegment.from_file") as mock_from_file,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio = MagicMock()
             mock_from_mp3.return_value = mock_audio
             mock_from_wav.return_value = mock_audio
@@ -488,10 +491,10 @@ class TestAudioProcessor:
         mock_combined.__len__.return_value = 1000
         mock_combined.__iadd__.return_value = mock_combined
 
-        with patch("pydub.AudioSegment.from_mp3") as mock_from_mp3, patch(
-            "pydub.AudioSegment.empty"
-        ) as mock_empty:
-
+        with (
+            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
+            patch("pydub.AudioSegment.empty") as mock_empty,
+        ):
             mock_audio = MagicMock()
 
             def side_effect(path):
@@ -556,9 +559,7 @@ class TestAudioProcessor:
                     [missing, present], tmp_path / "out.wav", logger_instance=mock_log
                 )
 
-        mock_log.warning.assert_any_call(
-            f"Temporary segment file not found: {missing}"
-        )
+        mock_log.warning.assert_any_call(f"Temporary segment file not found: {missing}")
 
     def test_combine_wav_segments_empty_raises(self, tmp_path):
         """combine_wav_segments raises ValueError when combined audio is empty."""
@@ -574,6 +575,4 @@ class TestAudioProcessor:
                 side_effect=CouldntDecodeError,
             ):
                 with pytest.raises(ValueError, match="empty"):
-                    AudioProcessor.combine_wav_segments(
-                        [seg], tmp_path / "out.wav"
-                    )
+                    AudioProcessor.combine_wav_segments([seg], tmp_path / "out.wav")
