@@ -120,11 +120,48 @@ jobs:
                   git config user.name "github-actions[bot]"
                   git config user.email "github-actions[bot]@users.noreply.github.com"
 
-            - name: Commit version bump
+            - name: Generate release notes
+              if: steps.check_version.outputs.changed == 'true'
+              id: release_notes
+              run: |
+                  TEMPLATE=".github/RELEASE_NOTES_TEMPLATE.md"
+                  VERSION="${{ steps.version.outputs.version }}"
+                  COMMITS="${{ steps.commits.outputs.commits }}"
+                  DATE=$(date -u '+%Y-%m-%d')
+                  
+                  # Parse commits into categories
+                  FEATURES=$(echo "$COMMITS" | grep "^feat" | sed 's/^feat: /- /' || echo "No new features")
+                  BUG_FIXES=$(echo "$COMMITS" | grep "^fix" | sed 's/^fix: /- /' || echo "No bug fixes")
+                  OTHER=$(echo "$COMMITS" | grep -v "^feat\|^fix" | sed 's/^/- /' || echo "")
+                  
+                  # Read template and substitute placeholders
+                  NOTES=$(cat "$TEMPLATE")
+                  NOTES="${NOTES//{{VERSION}}/$VERSION}"
+                  NOTES="${NOTES//{{DATE}}/$DATE}"
+                  NOTES="${NOTES//{{FEATURES}}/$FEATURES}"
+                  NOTES="${NOTES//{{BUG_FIXES}}/$BUG_FIXES}"
+                  NOTES="${NOTES//{{OTHER_CHANGES}}/$OTHER}"
+                  NOTES="${NOTES//{{OVERVIEW}}/This release includes improvements and bug fixes.}"
+                  
+                  # For now, we'll use the current version as previous (should be improved with actual previous version)
+                  PREV_VERSION=$(echo "$VERSION" | awk -F. '{print $1"."$2"."($3-1)}')
+                  NOTES="${NOTES//{{PREVIOUS_VERSION}}/$PREV_VERSION}"
+                  
+                  # Save release notes to file for later use
+                  echo "$NOTES" > release_notes.md
+                  
+                  # Output for use in subsequent steps
+                  echo "notes<<EOF" >> $GITHUB_OUTPUT
+                  echo "$NOTES" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: Commit version bump and release notes
               if: steps.check_version.outputs.changed == 'true'
               run: |
-                  git add pyproject.toml
-                  git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+                  mkdir -p docs/releases
+                  mv release_notes.md "docs/releases/${{ steps.version.outputs.version }}.md"
+                  git add pyproject.toml "docs/releases/${{ steps.version.outputs.version }}.md"
+                  git commit -m "chore: bump version to ${{ steps.version.outputs.version }} and add release notes"
 
             - name: Create git tag
               if: steps.check_version.outputs.changed == 'true'
@@ -141,16 +178,6 @@ jobs:
               with:
                   tag_name: ${{ steps.version.outputs.tag }}
                   release_name: Release ${{ steps.version.outputs.version }}
-                  body: |
-                      ## Changes in this release
-
-                      ### Commits
-                      ```
-                      ${{ steps.commits.outputs.commits }}
-                      ```
-
-                      **Version bump type:** ${{ steps.version.outputs.bump }}
-
-                      For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})
+                  body: ${{ steps.release_notes.outputs.notes }}
                   draft: false
                   prerelease: false
