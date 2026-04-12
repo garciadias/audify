@@ -233,10 +233,10 @@ dependencies = [
     { name = "pypdf" },
     { name = "python-multipart" },
     { name = "reportlab" },
+    { name = "rich" },
     { name = "sentencepiece" },
     { name = "soundfile" },
     { name = "streamlit" },
-    { name = "tqdm" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -279,10 +279,10 @@ requires-dist = [
     { name = "pypdf", specifier = ">=3.9.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "reportlab", specifier = ">=4.4.3" },
+    { name = "rich", specifier = ">=13.0.0" },
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "streamlit", specifier = ">=1.33.0" },
-    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
 

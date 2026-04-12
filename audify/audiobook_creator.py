@@ -2,10 +2,10 @@ import re
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
-from rich.progress import track
 from bs4 import BeautifulSoup
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
+from rich.progress import track
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader

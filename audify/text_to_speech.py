@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import requests
-from rich.progress import track
 from pydub import AudioSegment
+from rich.progress import track
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
@@ -728,9 +728,7 @@ class PdfSynthesizer(BaseSynthesizer):
                             model=self.llm_model,
                             base_url=self.llm_base_url,
                         )
-                        for sentence in track(
-                            sentences, description="Translating PDF"
-                        )
+                        for sentence in track(sentences, description="Translating PDF")
                     ]
                 except Exception as e:
                     logger.error(f"Error translating PDF content: {e}", exc_info=True)
