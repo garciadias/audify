@@ -7,11 +7,13 @@ on:
       - "docs/**"
       - "audify/**"
       - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "audify/**"
       - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
   release:
     types: [published]
 
@@ -26,7 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install documentation dependencies
         run: pip install -r docs/requirements.txt
