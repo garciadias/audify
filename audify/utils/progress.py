@@ -175,6 +175,8 @@ class ProgressIndicator:
 
         # Progress indicator line with lightning emoji
         sys.stdout.write(f"{Colors.YELLOW}⚡ Processing...{Colors.RESET}\n")
+        # Add blank line to separate from tqdm output
+        sys.stdout.write("\n")
         sys.stdout.flush()
         self.start()  # Restart spinner for phase updates
 
