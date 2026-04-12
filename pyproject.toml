@@ -1,6 +1,6 @@
 [project]
 name = "audify"
-version = "0.1.2"
+version = "0.1.3"
 description = "Convert ebooks and PDFs to audiobooks using AI text-to-speech"
 readme = "README.md"
 requires-python = ">=3.10,<=3.13"
