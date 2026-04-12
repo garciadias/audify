@@ -29,16 +29,19 @@ jobs:
         id: commits
         run: |
           LAST_TAG=${{ steps.last_tag.outputs.tag }}
-          # Check if tag exists, if not get all commits
-          # Use %B to get full commit message (subject + body) to capture breaking markers and footers
+          
+          # Determine the commit range to use
           if git rev-parse ${LAST_TAG} >/dev/null 2>&1; then
-            git log ${LAST_TAG}..HEAD --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
+            COMMIT_RANGE="${LAST_TAG}..HEAD"
           else
-            git log --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
+            COMMIT_RANGE="HEAD"
           fi
           
+          # Get full commit messages (subject + body) to capture breaking markers and footers
+          git log ${COMMIT_RANGE} --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
+          
           # Extract just subjects for display in release notes
-          git log --format='%s' > /tmp/subjects.txt 2>/dev/null || echo "" > /tmp/subjects.txt
+          git log ${COMMIT_RANGE} --format='%s' > /tmp/subjects.txt
           
           # Store list for use in GitHub release
           {
