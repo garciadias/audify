@@ -217,7 +217,7 @@ wheels = [
 
 [[package]]
 name = "audify"
-version = "0.1.0"
+version = "0.1.3"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
@@ -233,10 +233,10 @@ dependencies = [
     { name = "pypdf" },
     { name = "python-multipart" },
     { name = "reportlab" },
+    { name = "rich" },
     { name = "sentencepiece" },
     { name = "soundfile" },
     { name = "streamlit" },
-    { name = "tqdm" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -279,10 +279,10 @@ requires-dist = [
     { name = "pypdf", specifier = ">=3.9.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "reportlab", specifier = ">=4.4.3" },
+    { name = "rich", specifier = ">=13.0.0" },
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "soundfile", specifier = ">=0.13.1" },
     { name = "streamlit", specifier = ">=1.33.0" },
-    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
 
@@ -890,7 +890,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371 }
 wheels = [
@@ -2526,7 +2526,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "python_full_version < '3.11' or sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450 }
 wheels = [

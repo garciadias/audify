@@ -2,10 +2,10 @@ import re
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
-import tqdm
 from bs4 import BeautifulSoup
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
+from rich.progress import track
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
@@ -501,6 +501,20 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Creating audiobook series with {num_chapters} episodes...")
 
+        # Prepare chapter titles for display
+        chapter_titles = []
+        for i, chapter_content in enumerate(chapters, 1):
+            if isinstance(self.reader, EpubReader):
+                title = self.reader.get_chapter_title(chapter_content)
+            else:
+                title = f"Chapter {i}"
+            chapter_titles.append(title)
+
+        # Display table of contents
+        self.progress.stop()
+        self.progress.print_table_of_contents(chapter_titles)
+        self.progress.start()
+
         if self.confirm:
             self.progress.stop()  # Stop spinner before showing confirmation
             response = input(f"Create {num_chapters} audiobook episodes? (y/N): ")
@@ -512,11 +526,22 @@ class AudiobookCreator(BaseSynthesizer):
         episode_paths = []
 
         for i, chapter_content in enumerate(
-            tqdm.tqdm(chapters, desc="Creating Audiobook Episodes", unit="episode")
+            track(chapters, description="Creating Audiobook Episodes")
         ):
             episode_number = i + 1
+            chapter_title = chapter_titles[i]
+
+            # Extract text snippet from chapter for display (first ~100 words)
+            # Clean the text to remove HTML tags before extracting snippet
+            cleaned_content = _clean_text_for_audiobook(chapter_content)
+            text_snippet = " ".join(cleaned_content.split()[:100])
 
             try:
+                # Show chapter info with preview
+                self.progress.print_chapter_start(
+                    episode_number, chapter_title, text_snippet
+                )
+
                 self.progress.set_phase("Generating")
                 audiobook_script = self.generate_audiobook_script(
                     chapter_content,
@@ -726,7 +751,7 @@ class AudiobookCreator(BaseSynthesizer):
             current_start_time_ms = 0
 
             for i, mp3_file in enumerate(
-                tqdm.tqdm(episode_mp3_files, desc="Combining Episodes", unit="file")
+                track(episode_mp3_files, description="Combining Episodes")
             ):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)
@@ -1362,7 +1387,7 @@ class DirectoryAudiobookCreator:
             current_start_time_ms = 0
 
             for i, mp3_file in enumerate(
-                tqdm.tqdm(episode_mp3_files, desc="Combining Episodes", unit="file")
+                track(episode_mp3_files, description="Combining Episodes")
             ):
                 try:
                     audio = AudioSegment.from_mp3(mp3_file)

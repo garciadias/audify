@@ -602,7 +602,7 @@ class TestAudiobookCreatorSynthesizeEpisode:
                 "audify.audiobook_creator.translate_sentence",
                 side_effect=mock_translate,
             ),
-            patch("tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("rich.progress.track", side_effect=lambda x, **kwargs: x),
             patch.object(creator, "_synthesize_sentences") as mock_synth,
             patch.object(creator, "_convert_to_mp3", return_value=mp3_path),
         ):
@@ -639,7 +639,7 @@ class TestAudiobookCreatorSynthesizeEpisode:
                 "audify.audiobook_creator.translate_sentence",
                 side_effect=Exception("Translation error"),
             ),
-            patch("tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("rich.progress.track", side_effect=lambda x, **kwargs: x),
             patch.object(creator, "_synthesize_sentences") as mock_synth,
             patch.object(creator, "_convert_to_mp3", return_value=mp3_path),
         ):
@@ -678,7 +678,7 @@ class TestAudiobookCreatorCreateSeries:
 
         with (
             patch("builtins.input", return_value="y"),
-            patch("tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("rich.progress.track", side_effect=lambda x, **kwargs: x),
             patch.object(
                 creator, "generate_audiobook_script", return_value="Script content"
             ),
@@ -715,7 +715,7 @@ class TestAudiobookCreatorCreateSeries:
         mock_exists.return_value = True
 
         with (
-            patch("tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("rich.progress.track", side_effect=lambda x, **kwargs: x),
             patch.object(
                 creator, "generate_audiobook_script", return_value="Script content"
             ),
@@ -1239,7 +1239,7 @@ class TestAudiobookCreatorM4BCreation:
             patch("pathlib.Path.exists", return_value=False),
             patch("audify.audiobook_creator.AudioSegment") as mock_audio_seg,
             patch(
-                "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
+                "audify.audiobook_creator.track", side_effect=lambda x, **kwargs: x
             ),
         ):
             # Mock empty audio
@@ -1270,7 +1270,7 @@ class TestAudiobookCreatorM4BCreation:
             patch("pathlib.Path.exists", return_value=False),
             patch("audify.audiobook_creator.AudioSegment") as mock_audio_seg,
             patch(
-                "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
+                "audify.audiobook_creator.track", side_effect=lambda x, **kwargs: x
             ),
             patch.object(creator, "_log_episode_metadata", side_effect=[1000, 2000]),
             patch("audify.audiobook_creator.assemble_m4b") as mock_assemble,
@@ -1309,7 +1309,7 @@ class TestAudiobookCreatorM4BCreation:
             patch("pathlib.Path.exists", return_value=False),
             patch("audify.audiobook_creator.AudioSegment") as mock_audio_seg,
             patch(
-                "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
+                "audify.audiobook_creator.track", side_effect=lambda x, **kwargs: x
             ),
         ):
             # Mock CouldntDecodeError
@@ -1341,7 +1341,7 @@ class TestAudiobookCreatorM4BCreation:
             patch("pathlib.Path.exists", return_value=False),
             patch("audify.audiobook_creator.AudioSegment") as mock_audio_seg,
             patch(
-                "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
+                "audify.audiobook_creator.track", side_effect=lambda x, **kwargs: x
             ),
             patch.object(creator, "_log_episode_metadata", return_value=1000),
             patch(
@@ -1376,7 +1376,7 @@ class TestAudiobookCreatorM4BCreation:
             patch("pathlib.Path.exists", return_value=False),
             patch("audify.audiobook_creator.AudioSegment") as mock_audio_seg,
             patch(
-                "audify.audiobook_creator.tqdm.tqdm", side_effect=lambda x, **kwargs: x
+                "audify.audiobook_creator.track", side_effect=lambda x, **kwargs: x
             ),
             patch.object(creator, "_log_episode_metadata", return_value=1000),
             patch(

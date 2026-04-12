@@ -432,7 +432,7 @@ class TestDirectoryAudiobookCreatorCreateM4b:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("subprocess.run")
     @patch("audify.audiobook_creator.AudioSegment")
-    @patch("audify.audiobook_creator.tqdm.tqdm")
+    @patch("audify.audiobook_creator.track")
     def test_create_m4b_success(
         self, mock_tqdm, mock_audio_segment, mock_subprocess, mock_base_synth
     ):
@@ -578,7 +578,7 @@ class TestDirectoryAudiobookCreatorCreateM4b:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("subprocess.run")
     @patch("audify.audiobook_creator.AudioSegment")
-    @patch("audify.audiobook_creator.tqdm.tqdm")
+    @patch("audify.audiobook_creator.track")
     def test_create_m4b_ffmpeg_error(
         self, mock_tqdm, mock_audio_segment, mock_subprocess, mock_base_synth
     ):
@@ -750,7 +750,7 @@ class TestDirectoryAudiobookCreatorCreateSingleM4b:
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("audify.audiobook_creator.AudioSegment")
-    @patch("audify.audiobook_creator.tqdm.tqdm")
+    @patch("audify.audiobook_creator.track")
     def test_create_single_m4b_empty_audio(
         self, mock_tqdm, mock_audio_segment, mock_base_synth
     ):
@@ -785,7 +785,7 @@ class TestDirectoryAudiobookCreatorCreateSingleM4b:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("subprocess.run")
     @patch("audify.audiobook_creator.AudioSegment")
-    @patch("audify.audiobook_creator.tqdm.tqdm")
+    @patch("audify.audiobook_creator.track")
     def test_create_single_m4b_existing_temp_file(
         self, mock_tqdm, mock_audio_segment, mock_subprocess, mock_base_synth
     ):
@@ -820,7 +820,7 @@ class TestDirectoryAudiobookCreatorCreateSingleM4b:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("subprocess.run")
     @patch("audify.audiobook_creator.AudioSegment")
-    @patch("audify.audiobook_creator.tqdm.tqdm")
+    @patch("audify.audiobook_creator.track")
     def test_create_single_m4b_ffmpeg_not_found(
         self, mock_tqdm, mock_audio_segment, mock_subprocess, mock_base_synth
     ):

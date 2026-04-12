@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import requests
-import tqdm
 from pydub import AudioSegment
+from rich.progress import track
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
@@ -158,11 +158,10 @@ class BaseSynthesizer:
                     f"Available voices: {available_voices[:5]}..."
                 )
 
-            for i, sentence in tqdm.tqdm(
+            for i, sentence in track(
                 enumerate(sentences),
-                desc=f"{tts_config.provider_name.title()} Synthesizing",
+                description=f"{tts_config.provider_name.title()} Synthesizing",
                 total=len(sentences),
-                unit="sentence",
             ):
                 if not sentence.strip():
                     continue
@@ -364,10 +363,9 @@ class EpubSynthesizer(BaseSynthesizer):
                         model=self.llm_model,
                         base_url=self.llm_base_url,
                     )
-                    for sentence in tqdm.tqdm(
+                    for sentence in track(
                         sentences,
-                        desc=f"Translating Ch. {chapter_number:03d}",
-                        unit="sentence",
+                        description=f"Translating Ch. {chapter_number:03d}",
                     )
                 ]
             except Exception as e:
@@ -628,7 +626,7 @@ class EpubSynthesizer(BaseSynthesizer):
         actual_chapter_id = 1
 
         for i, chapter_content in enumerate(
-            tqdm.tqdm(chapters, desc="Processing Chapters", unit="chapter")
+            track(chapters, description="Processing Chapters")
         ):
             if not chapter_content or (
                 isinstance(chapter_content, str) and not chapter_content.strip()
@@ -730,9 +728,7 @@ class PdfSynthesizer(BaseSynthesizer):
                             model=self.llm_model,
                             base_url=self.llm_base_url,
                         )
-                        for sentence in tqdm.tqdm(
-                            sentences, desc="Translating PDF", unit="sentence"
-                        )
+                        for sentence in track(sentences, description="Translating PDF")
                     ]
                 except Exception as e:
                     logger.error(f"Error translating PDF content: {e}", exc_info=True)

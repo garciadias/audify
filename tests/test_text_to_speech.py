@@ -542,7 +542,7 @@ class TestEpubSynthesizer:
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     @patch("audify.text_to_speech.AudioSegment.from_mp3")
     @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
+    @patch("audify.text_to_speech.track")
     def test_create_temp_m4b_for_chunk(
         self, mock_tqdm, mock_empty, mock_from_mp3, mock_temp_dir, mock_epub_reader
     ):
@@ -597,7 +597,7 @@ class TestEpubSynthesizer:
             patch("pathlib.Path.mkdir"),
             patch("builtins.open", mock_file),
             patch("audify.text_to_speech.AudioSegment.empty") as mock_empty,
-            patch("audify.text_to_speech.tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("audify.text_to_speech.track", side_effect=lambda x, **kwargs: x),
         ):
             mock_combined = MagicMock()
             mock_empty.return_value = mock_combined
@@ -762,7 +762,7 @@ class TestPdfSynthesizer:
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     @patch("audify.text_to_speech.break_text_into_sentences")
     @patch("audify.text_to_speech.translate_sentence")
-    @patch("audify.text_to_speech.tqdm.tqdm")
+    @patch("audify.text_to_speech.track")
     def test_pdf_synthesizer_with_translation(
         self, mock_tqdm, mock_translate, mock_break, mock_temp_dir, mock_pdf_reader
     ):
@@ -820,7 +820,7 @@ class TestPdfSynthesizer:
             patch("pathlib.Path.mkdir"),
             patch.object(PdfSynthesizer, "_synthesize_sentences") as mock_synth,
             patch.object(PdfSynthesizer, "_convert_to_mp3") as mock_convert,
-            patch("audify.text_to_speech.tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("audify.text_to_speech.track", side_effect=lambda x, **kwargs: x),
         ):
             mock_convert.return_value = Path("output.mp3")
 
@@ -1347,7 +1347,7 @@ class TestEpubSynthesizerAdvancedCoverage:
             patch("builtins.open", mock_file),
             patch.object(EpubSynthesizer, "_synthesize_sentences"),
             patch.object(EpubSynthesizer, "_convert_to_mp3") as mock_convert,
-            patch("audify.text_to_speech.tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("audify.text_to_speech.track", side_effect=lambda x, **kwargs: x),
         ):
             mock_convert.return_value = Path("/tmp/chapter_001.mp3")
 
@@ -1452,7 +1452,7 @@ class TestEpubSynthesizerAdvancedCoverage:
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     @patch("audify.text_to_speech.AudioSegment.from_mp3")
     @patch("audify.text_to_speech.AudioSegment.empty")
-    @patch("audify.text_to_speech.tqdm.tqdm")
+    @patch("audify.text_to_speech.track")
     def test_epub_create_temp_m4b_export_error(
         self, mock_tqdm, mock_empty, mock_from_mp3, mock_temp_dir, mock_epub_reader
     ):
@@ -1882,7 +1882,7 @@ class TestComprehensiveCoverage:
                 return_value=Path("/tmp/chapter_001.mp3"),
             ),
             patch.object(EpubSynthesizer, "create_m4b"),
-            patch("audify.text_to_speech.tqdm.tqdm", side_effect=lambda x, **kwargs: x),
+            patch("audify.text_to_speech.track", side_effect=lambda x, **kwargs: x),
         ):
             synthesizer = EpubSynthesizer(path="test.epub")
 

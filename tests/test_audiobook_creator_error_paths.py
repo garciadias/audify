@@ -140,9 +140,9 @@ class TestDirectoryCreatorM4bExportFailure:
 
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("audify.audiobook_creator.AudioSegment")
-    @patch("audify.audiobook_creator.tqdm.tqdm")
+    @patch("audify.audiobook_creator.track")
     def test_create_single_m4b_export_failure(
-        self, mock_tqdm, mock_audio_segment, mock_base_synth
+        self, mock_track, mock_audio_segment, mock_base_synth
     ):
         """Test _create_single_m4b when export fails (lines 1224-1227)."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -154,7 +154,7 @@ class TestDirectoryCreatorM4bExportFailure:
             creator._initialize_metadata_file()
             creator.chapter_titles = ["Chapter 1"]
 
-            mock_tqdm.side_effect = lambda x, **_kwargs: x
+            mock_track.side_effect = lambda x, **_kwargs: x
 
             mock_combined = Mock()
             mock_combined.__len__ = Mock(return_value=5000)

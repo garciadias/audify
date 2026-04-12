@@ -26,6 +26,7 @@ dependencies = [
     "streamlit>=1.33.0",
     "soundfile>=0.13.1",
     "litellm>=1.59.10",
+    "rich>=13.0.0",
     "tqdm>=4.67.1",
     "pydub>=0.25.1",
     "reportlab>=4.4.3",
