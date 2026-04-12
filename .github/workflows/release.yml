@@ -30,21 +30,29 @@ jobs:
         run: |
           LAST_TAG=${{ steps.last_tag.outputs.tag }}
           # Check if tag exists, if not get all commits
+          # Use %B to get full commit message (subject + body) to capture breaking markers and footers
           if git rev-parse ${LAST_TAG} >/dev/null 2>&1; then
-            git log ${LAST_TAG}..HEAD --oneline --format='%s' > /tmp/commits.txt
+            git log ${LAST_TAG}..HEAD --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
           else
-            git log --oneline --format='%s' > /tmp/commits.txt
+            git log --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
           fi
+          
+          # Extract just subjects for display in release notes
+          git log --format='%s' > /tmp/subjects.txt 2>/dev/null || echo "" > /tmp/subjects.txt
+          
           # Store list for use in GitHub release
           {
             echo 'list<<EOF'
-            cat /tmp/commits.txt
+            cat /tmp/subjects.txt
             echo 'EOF'
           } >> $GITHUB_OUTPUT
           
-          # Check for commit types (safe string operations)
-          HAS_FEAT=$(grep -c '^feat' /tmp/commits.txt || echo 0)
-          HAS_BREAKING=$(grep -c '^BREAKING' /tmp/commits.txt || echo 0)
+          # Check for commit types in full commit messages
+          # HAS_FEAT: detects "feat:" and "feat!:" (breaking feature) at line start
+          HAS_FEAT=$(grep -c '^feat[!]*:' /tmp/commits_full.txt || echo 0)
+          # HAS_BREAKING: detects both "BREAKING:" and "BREAKING CHANGE:" anywhere in commits
+          # Also detects fix!: or other!: style breaking changes
+          HAS_BREAKING=$(grep -cE '(^[a-z]+!:|BREAKING[\s_]CHANGE:)' /tmp/commits_full.txt || echo 0)
           echo "has_feat=${HAS_FEAT}" >> $GITHUB_OUTPUT
           echo "has_breaking=${HAS_BREAKING}" >> $GITHUB_OUTPUT
 
