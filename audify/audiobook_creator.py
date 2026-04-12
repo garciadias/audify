@@ -529,12 +529,12 @@ class AudiobookCreator(BaseSynthesizer):
             track(chapters, description="Creating Audiobook Episodes")
         ):
             episode_number = i + 1
-            chapter_title = chapter_titles[i - 1]
+            chapter_title = chapter_titles[i]
 
             # Extract text snippet from chapter for display (first ~100 words)
             # Clean the text to remove HTML tags before extracting snippet
             cleaned_content = _clean_text_for_audiobook(chapter_content)
-            text_snippet = " ".join(cleaned_content.split()[:20])
+            text_snippet = " ".join(cleaned_content.split()[:100])
 
             try:
                 # Show chapter info with preview
