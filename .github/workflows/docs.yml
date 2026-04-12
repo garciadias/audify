@@ -7,11 +7,13 @@ on:
       - "docs/**"
       - "audify/**"
       - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "audify/**"
       - ".readthedocs.yaml"
+      - ".github/workflows/docs.yml"
   release:
     types: [published]
 
@@ -26,7 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install documentation dependencies
         run: pip install -r docs/requirements.txt
@@ -54,14 +56,23 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           echo "Release tag: $TAG"
-          if [ -n "$RTD_TOKEN" ]; then
-            curl -s -X PATCH \
-              -H "Authorization: Token $RTD_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"active": true, "hidden": false}' \
-              "https://readthedocs.org/api/v3/projects/audify/versions/$TAG/" \
-              && echo "Version $TAG activated on ReadTheDocs" \
-              || echo "Note: Version will be available but may need manual activation."
+          if [ -z "$RTD_TOKEN" ]; then
+            echo "RTD token not set: skipping version activation"
+            exit 0
+          fi
+          response=$(curl -sS --fail -X PATCH \
+            -H "Authorization: Token $RTD_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"active": true, "hidden": false}' \
+            -w "\n%{http_code}" \
+            "https://readthedocs.org/api/v3/projects/audify/versions/$TAG/")
+          http_code=$(echo "$response" | tail -n1)
+          if [ "$http_code" = "200" ]; then
+            echo "Version $TAG activated on ReadTheDocs"
+          else
+            echo "Error: Failed to activate version $TAG (HTTP $http_code)"
+            echo "$response"
+            exit 1
           fi
         env:
           RTD_TOKEN: ${{ secrets.RTD_TOKEN }}

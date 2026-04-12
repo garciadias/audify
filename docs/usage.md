@@ -28,7 +28,7 @@ audify run book.epub --tts-provider openai
 
 - **`--language`** (or `-l`): Sets the language for TTS voice selection and audio output. Default: `en` (English).
 - **`--translate`** (or `-t`): Translates the extracted text to a target language before TTS synthesis.
-  - Cannot be used alone - requires the source language to be known
+  - Can be used alone when source language is autodetected; otherwise provide `--language` for explicit source language
   - Example: `--language en --translate es` means "extract English text, translate to Spanish, then synthesize Spanish speech"
   - Uses your configured LLM (local Ollama or commercial API) to perform translation
 
@@ -59,15 +59,15 @@ audify audiobook book.epub --max-chapters 5
 # Custom voice and language
 audify audiobook book.epub --voice af_bella --language en
 
-# With translation (translates extracted text before LLM processing)
+# With translation (LLM processes source text, then script is translated for synthesis)
 audify audiobook book.epub --translate pt
 
-# Full workflow: extract as English, translate to Spanish, process with LLM, synthesize
+# Full workflow: extract as English, LLM processes English text, translate script to Spanish, synthesize
 audify audiobook book.epub --language en --translate es -m "api:deepseek/deepseek-chat"
 ```
 
 :::{note}
-When using `--translate`, the extracted text is first translated to the target language, then passed to the LLM. This ensures the LLM processes content in the target language.
+When using `--translate` with audiobook generation, the LLM processes the extracted text in the source language to generate the script, then that script is translated to the target language before synthesis. This ensures the LLM has access to the original text for best results.
 :::
 
 ### Using commercial LLM APIs
