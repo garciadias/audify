@@ -741,3 +741,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [AWS Polly](https://aws.amazon.com/polly/) for Text-to-Speech service
 # Test release automation
 # Release automation v2 test
+# Release Workflow Test v3
+
+Testing the fixed release workflow with proper breaking change detection.
