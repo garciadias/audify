@@ -31,34 +31,43 @@ jobs:
           LAST_TAG=${{ steps.last_tag.outputs.tag }}
           # Check if tag exists, if not get all commits
           if git rev-parse ${LAST_TAG} >/dev/null 2>&1; then
-            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --format='%s')
+            git log ${LAST_TAG}..HEAD --oneline --format='%s' > /tmp/commits.txt
           else
-            COMMITS=$(git log --oneline --format='%s')
+            git log --oneline --format='%s' > /tmp/commits.txt
           fi
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Store list for use in GitHub release
+          {
+            echo 'list<<EOF'
+            cat /tmp/commits.txt
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+          
+          # Check for commit types (safe string operations)
+          HAS_FEAT=$(grep -c '^feat' /tmp/commits.txt || echo 0)
+          HAS_BREAKING=$(grep -c '^BREAKING' /tmp/commits.txt || echo 0)
+          echo "has_feat=${HAS_FEAT}" >> $GITHUB_OUTPUT
+          echo "has_breaking=${HAS_BREAKING}" >> $GITHUB_OUTPUT
 
       - name: Determine version bump
         id: version
         run: |
           LAST_TAG="${{ steps.last_tag.outputs.tag }}"
           CURRENT_VERSION="${LAST_TAG#v}"
-          COMMITS="${{ steps.commits.outputs.commits }}"
+          HAS_FEAT=${{ steps.commits.outputs.has_feat }}
+          HAS_BREAKING=${{ steps.commits.outputs.has_breaking }}
 
           # Check if this is the first release (no tags exist)
           if [ "$LAST_TAG" = "v0.0.0" ]; then
             # First release - start at 0.1.0
             NEW_VERSION="0.1.0"
+            BUMP="initial"
           else
-            # Default to patch bump
+            # Determine bump type based on commit analysis
             BUMP="patch"
-
-            # Check for breaking changes (major bump)
-            if echo "$COMMITS" | grep -q "^BREAKING"; then
+            
+            if [ "${HAS_BREAKING}" != "0" ]; then
               BUMP="major"
-            # Check for features (minor bump)
-            elif echo "$COMMITS" | grep -q "^feat"; then
+            elif [ "${HAS_FEAT}" != "0" ]; then
               BUMP="minor"
             fi
 
@@ -85,11 +94,11 @@ jobs:
 
           NEW_TAG="v$NEW_VERSION"
 
-          echo "bump=${BUMP:-initial}" >> $GITHUB_OUTPUT
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-          echo "Version bump: ${BUMP:-initial}"
+          echo "Version bump: $BUMP"
           echo "New version: $NEW_VERSION"
 
       - name: Check if version changed
@@ -146,7 +155,7 @@ jobs:
 
             ### Commits
             ```
-            ${{ steps.commits.outputs.commits }}
+            ${{ steps.commits.outputs.list }}
             ```
 
             **Version bump type:** ${{ steps.version.outputs.bump }}
