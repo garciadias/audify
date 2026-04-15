@@ -39,6 +39,12 @@ _DEFAULT_LLM_PARAMS = {
     "num_predict": 4096,
 }
 
+# Maximum words per chunk sent to the LLM.  At ~4 chars/token and a 4096-token
+# output limit, ~3 277 words of audiobook prose fit in one response.  Using
+# 2 500 words per input chunk gives the LLM comfortable headroom to expand the
+# prose without hitting the output cap.
+_MAX_WORDS_PER_LLM_CHUNK = 2500
+
 logger = setup_logging(module_name=__name__)
 
 
@@ -395,12 +401,33 @@ class AudiobookCreator(BaseSynthesizer):
             logger.debug(f"Using language: {source_lang}")
             logger.debug(f"Sample of chapter text:\n{cleaned_text[:500]}...")
 
-            audiobook_script = self.llm_client.generate_script(
-                text=cleaned_text,
-                prompt=self._task_prompt,
-                language=source_lang,
-                **self._task_llm_params,
-            )
+            chunks = self._split_text_into_chunks(cleaned_text)
+            if len(chunks) == 1:
+                audiobook_script = self.llm_client.generate_script(
+                    text=cleaned_text,
+                    prompt=self._task_prompt,
+                    language=source_lang,
+                    **self._task_llm_params,
+                )
+            else:
+                logger.info(
+                    f"Chapter {chapter_number} ({len(cleaned_text.split())} words) "
+                    f"split into {len(chunks)} chunks for LLM processing"
+                )
+                chunk_scripts: List[str] = []
+                for idx, chunk in enumerate(chunks, 1):
+                    logger.info(
+                        f"  Processing chunk {idx}/{len(chunks)} "
+                        f"({len(chunk.split())} words)…"
+                    )
+                    chunk_script = self.llm_client.generate_script(
+                        text=chunk,
+                        prompt=self._task_prompt,
+                        language=source_lang,
+                        **self._task_llm_params,
+                    )
+                    chunk_scripts.append(chunk_script)
+                audiobook_script = " ".join(chunk_scripts)
 
         # Save the script if requested
         if self.save_text:
@@ -469,6 +496,52 @@ class AudiobookCreator(BaseSynthesizer):
 
         self._synthesize_sentences(sentences, episode_wav_path)
         return self._convert_to_mp3(episode_wav_path)
+
+    def _split_text_into_chunks(
+        self, text: str, max_words: int = _MAX_WORDS_PER_LLM_CHUNK
+    ) -> List[str]:
+        """Split *text* into chunks of at most *max_words* words.
+
+        Splits preferentially at blank-line (paragraph) boundaries so each
+        chunk is a coherent block of prose.  If a single paragraph exceeds
+        *max_words*, it is split by word count alone.
+
+        Returns a list with a single element when the text already fits
+        within the limit.
+        """
+        words = text.split()
+        if len(words) <= max_words:
+            return [text]
+
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+        chunks: List[str] = []
+        current_words: List[str] = []
+        current_count = 0
+
+        for paragraph in paragraphs:
+            para_words = paragraph.split()
+            para_count = len(para_words)
+
+            # Flush the current buffer before starting a new paragraph when
+            # adding it would exceed the limit.
+            if current_count + para_count > max_words and current_words:
+                chunks.append(" ".join(current_words))
+                current_words = []
+                current_count = 0
+
+            if para_count > max_words:
+                # A single oversized paragraph: split by word count.
+                for start in range(0, para_count, max_words):
+                    chunks.append(" ".join(para_words[start : start + max_words]))
+            else:
+                current_words.extend(para_words)
+                current_count += para_count
+
+        if current_words:
+            chunks.append(" ".join(current_words))
+
+        return chunks if chunks else [text]
 
     def _break_script_into_segments(self, script: str) -> List[str]:
         """Break script into ≤200-char segments for better TTS chunking."""
