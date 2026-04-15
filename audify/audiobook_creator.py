@@ -126,15 +126,23 @@ class LLMClient:
         system_prompt = prompt
 
         try:
-            # Prepare system prompt (translate if needed)
+            # Prepare system prompt (translate if needed).
+            # Cache the result so repeated calls with the same prompt+language
+            # (e.g. when processing multiple chunks of a long chapter) only
+            # incur one translation request.
             if language and language != "en":
-                system_prompt = translate_sentence(
-                    prompt,
-                    model=self.model_string,
-                    src_lang="en",
-                    tgt_lang=language,
-                    base_url=self.base_url,
-                )
+                cache_key = (prompt, language)
+                if not hasattr(self, "_prompt_translation_cache"):
+                    self._prompt_translation_cache: dict = {}
+                if cache_key not in self._prompt_translation_cache:
+                    self._prompt_translation_cache[cache_key] = translate_sentence(
+                        prompt,
+                        model=self.model_string,
+                        src_lang="en",
+                        tgt_lang=language,
+                        base_url=self.base_url,
+                    )
+                system_prompt = self._prompt_translation_cache[cache_key]
             if self.is_commercial:
                 logger.info(f"Sending request to commercial API: {self.config.model}")
             else:
