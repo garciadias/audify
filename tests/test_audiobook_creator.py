@@ -340,6 +340,166 @@ class TestAudiobookCreatorMethods:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+class TestSplitTextIntoChunks:
+    """Tests for AudiobookCreator._split_text_into_chunks."""
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_short_text_returned_as_single_chunk(self, mock_init):
+        """Text shorter than max_words is returned unchanged as one chunk."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        text = " ".join(["word"] * 100)
+        result = creator._split_text_into_chunks(text, max_words=2500)
+        assert result == [text]
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_long_text_split_into_multiple_chunks(self, mock_init):
+        """Text longer than max_words is split into multiple chunks."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        # Build text that is clearly over the limit
+        text = " ".join([f"word{i}" for i in range(300)])
+        result = creator._split_text_into_chunks(text, max_words=100)
+        assert len(result) > 1
+        # Reconstruct and verify no words were lost
+        all_words = " ".join(result).split()
+        assert len(all_words) == 300
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_chunk_size_respected(self, mock_init):
+        """Each chunk must not exceed max_words words."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        text = " ".join([f"word{i}" for i in range(500)])
+        max_words = 100
+        result = creator._split_text_into_chunks(text, max_words=max_words)
+        for chunk in result:
+            assert len(chunk.split()) <= max_words
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_splits_at_paragraph_boundaries(self, mock_init):
+        """Chunks respect paragraph (blank-line) boundaries when possible."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        para_a = " ".join([f"a{i}" for i in range(80)])
+        para_b = " ".join([f"b{i}" for i in range(80)])
+        text = f"{para_a}\n\n{para_b}"
+        result = creator._split_text_into_chunks(text, max_words=100)
+        # Both paragraphs fit within 100 words each; they should stay together
+        # (80+80=160 > 100 so they must be in separate chunks)
+        assert len(result) == 2
+        assert result[0] == para_a
+        assert result[1] == para_b
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_empty_text_returns_single_chunk(self, mock_init):
+        """Empty or whitespace-only text returns a list with one element."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        result = creator._split_text_into_chunks("", max_words=100)
+        assert len(result) == 1
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_no_words_lost_across_chunks(self, mock_init):
+        """All words from the source appear in the combined chunks."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        words = [f"w{i}" for i in range(1000)]
+        text = " ".join(words)
+        result = creator._split_text_into_chunks(text, max_words=250)
+        combined = " ".join(result).split()
+        assert combined == words
+
+
+class TestGenerateAudiobookScriptChunking:
+    """Tests for the chunked LLM path inside generate_audiobook_script."""
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_single_chunk_calls_llm_once(self, mock_init):
+        """Short chapters (≤ max words) call the LLM exactly once."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        creator._requires_llm = True
+        creator._task_prompt = "prompt"
+        creator._task_llm_params = {}
+        creator.save_text = False
+        creator.language = "en"
+        creator.scripts_path = Path(tempfile.mkdtemp())
+
+        mock_llm = MagicMock()
+        mock_llm.generate_script.return_value = "script output"
+        creator.llm_client = mock_llm
+
+        # Reader mock for chapter title
+        creator.reader = MagicMock()
+        creator.reader.get_chapter_title.return_value = "Chapter 1"
+        creator.chapter_titles = []
+
+        # Use > 200 words so the LLM path is exercised (not the short-text bypass)
+        short_text = " ".join([f"word{i}" for i in range(300)])
+        result = creator.generate_audiobook_script(short_text, 1)
+
+        assert mock_llm.generate_script.call_count == 1
+        assert result == "script output"
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_long_chapter_calls_llm_per_chunk(self, mock_init):
+        """Long chapters are split and the LLM is called once per chunk."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        creator._requires_llm = True
+        creator._task_prompt = "prompt"
+        creator._task_llm_params = {}
+        creator.save_text = False
+        creator.language = "en"
+        creator.scripts_path = Path(tempfile.mkdtemp())
+
+        mock_llm = MagicMock()
+        mock_llm.generate_script.return_value = "chunk output"
+        creator.llm_client = mock_llm
+
+        creator.reader = MagicMock()
+        creator.reader.get_chapter_title.return_value = "Long Chapter"
+        creator.chapter_titles = []
+
+        # 6 000 words → 3 chunks at default 2 500-word limit
+        long_text = " ".join([f"word{i}" for i in range(6000)])
+
+        with patch.object(
+            creator,
+            "_split_text_into_chunks",
+            return_value=["chunk1", "chunk2", "chunk3"],
+        ) as mock_split:
+            result = creator.generate_audiobook_script(long_text, 1)
+
+        mock_split.assert_called_once()
+        assert mock_llm.generate_script.call_count == 3
+        assert result == "chunk output chunk output chunk output"
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    def test_combined_script_joins_chunks_with_space(self, mock_init):
+        """Chunk outputs are joined with a single space."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        creator._requires_llm = True
+        creator._task_prompt = "prompt"
+        creator._task_llm_params = {}
+        creator.save_text = False
+        creator.language = "en"
+        creator.scripts_path = Path(tempfile.mkdtemp())
+
+        outputs = iter(["Part one.", "Part two.", "Part three."])
+        mock_llm = MagicMock()
+        mock_llm.generate_script.side_effect = lambda **kw: next(outputs)  # noqa: ARG005
+        creator.llm_client = mock_llm
+
+        creator.reader = MagicMock()
+        creator.reader.get_chapter_title.return_value = "Ch"
+        creator.chapter_titles = []
+
+        long_text = " ".join([f"w{i}" for i in range(6000)])
+
+        with patch.object(
+            creator,
+            "_split_text_into_chunks",
+            return_value=["c1", "c2", "c3"],
+        ):
+            result = creator.generate_audiobook_script(long_text, 1)
+
+        assert result == "Part one. Part two. Part three."
+
+
 class TestAudiobookCreatorInitialization:
     """Test the AudiobookCreator initialization with different file types."""
 
