@@ -1,4 +1,4 @@
-name: Release
+name: Release and Publish
 
 on:
   push:
@@ -6,17 +6,20 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  id-token: write  # Required for PyPI trusted publishing
 
 jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.version.outputs.skip == 'false' }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Full history for commit analysis
+          fetch-depth: 0
 
       - name: Get last tag
         id: last_tag
@@ -37,7 +40,6 @@ jobs:
             git log --format='%s' > /tmp/subjects.txt
           fi
 
-          # Check if there are any new commits
           COMMIT_COUNT=$(wc -l < /tmp/subjects.txt | tr -d ' ')
           echo "count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
 
@@ -84,8 +86,6 @@ jobs:
             COMPUTED_VERSION="$MAJOR.$MINOR.$PATCH"
           fi
 
-          # Use the higher of pyproject.toml version and computed version
-          # This handles cases where version was manually bumped in a PR
           pick_higher() {
             IFS='.' read -r a1 b1 c1 <<< "$1"
             IFS='.' read -r a2 b2 c2 <<< "$2"
@@ -101,7 +101,6 @@ jobs:
           NEW_VERSION=$(pick_higher "$CURRENT_TOML" "$COMPUTED_VERSION")
           NEW_TAG="v$NEW_VERSION"
 
-          # Check if this tag already exists
           if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Tag $NEW_TAG already exists, skipping release"
@@ -155,3 +154,51 @@ jobs:
           **Version bump type:** ${{ steps.version.outputs.bump }}
 
           For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})"
+
+  build:
+    name: Build distribution
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: [release, build]
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/audify-cli
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing (OIDC) - no API token needed
+        # Configure at https://pypi.org/manage/project/audify-cli/settings/publishing/
