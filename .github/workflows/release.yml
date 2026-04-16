@@ -73,7 +73,7 @@ jobs:
           else
             # Determine bump type based on commit analysis
             BUMP="patch"
-            
+
             if [ "${HAS_BREAKING}" != "0" ]; then
               BUMP="major"
             elif [ "${HAS_FEAT}" != "0" ]; then
@@ -153,22 +153,18 @@ jobs:
 
       - name: Create GitHub release
         if: steps.check_version.outputs.changed == 'true'
-        uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          release_name: Release ${{ steps.version.outputs.version }}
-          body: |
-            ## Changes in this release
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Release ${{ steps.version.outputs.version }}" \
+            --notes "## Changes in this release
 
-            ### Commits
-            ```
-            ${{ steps.commits.outputs.list }}
-            ```
+          ### Commits
+          \`\`\`
+          ${{ steps.commits.outputs.list }}
+          \`\`\`
 
-            **Version bump type:** ${{ steps.version.outputs.bump }}
+          **Version bump type:** ${{ steps.version.outputs.bump }}
 
-            For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})
-          draft: false
-          prerelease: false
+          For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})"

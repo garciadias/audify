@@ -52,13 +52,13 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 You can install Audify as a standalone command-line tool using pip or uv:
 
 ```bash
-pip install audify
+pip install audify-cli
 ```
 
 Or using uv (recommended):
 
 ```bash
-uv pip install audify
+uv pip install audify-cli
 ```
 
 This will install the `audify` command with subcommands:

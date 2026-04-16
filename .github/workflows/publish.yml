@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/audify
+      url: https://pypi.org/p/audify-cli
     steps:
       - name: Download distribution artifacts
         uses: actions/download-artifact@v4
@@ -69,4 +69,4 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         # Uses trusted publishing (OIDC) - no API token needed
-        # Configure at https://pypi.org/manage/project/audify/settings/publishing/
+        # Configure at https://pypi.org/manage/project/audify-cli/settings/publishing/

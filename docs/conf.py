@@ -8,7 +8,7 @@ copyright = "2024, Audify Contributors"
 author = "Audify Contributors"
 
 try:
-    release = importlib.metadata.version("audify")
+    release = importlib.metadata.version("audify-cli")
 except importlib.metadata.PackageNotFoundError:
     release = "0.1.0"
 version = ".".join(release.split(".")[:2])
