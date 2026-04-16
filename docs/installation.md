@@ -16,13 +16,13 @@
 The simplest way to install Audify:
 
 ```bash
-pip install audify
+pip install audify-cli
 ```
 
 Or with [uv](https://docs.astral.sh/uv/) (recommended):
 
 ```bash
-uv pip install audify
+uv pip install audify-cli
 ```
 
 This installs the `audify` CLI command with all subcommands.

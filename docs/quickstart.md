@@ -9,7 +9,7 @@ No Docker required. Use OpenAI, AWS Polly, or Google Cloud TTS.
 ### 1. Install Audify
 
 ```bash
-pip install audify
+pip install audify-cli
 ```
 
 ### 2. Configure credentials
@@ -70,7 +70,7 @@ make up
 ### 2. Install and configure Audify
 
 ```bash
-pip install audify
+pip install audify-cli
 ```
 
 Create a `.keys` file:

@@ -49,7 +49,7 @@ Audify is a pipeline and CLI tool that transforms written content (EPUB, PDF, TX
 
 ```bash
 # Install
-pip install audify
+pip install audify-cli
 
 # Convert an EPUB to audiobook (direct TTS)
 audify book.epub --task direct
