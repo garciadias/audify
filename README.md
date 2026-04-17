@@ -47,6 +47,7 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **OpenAI TTS**: OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 - **AWS Polly**: AWS account with access keys ([AWS setup](https://aws.amazon.com/polly/))
 - **Google Cloud TTS**: Google Cloud project with credentials ([GCP setup](https://cloud.google.com/text-to-speech))
+
 ## 📦 Installation as a command-line tool
 
 You can install Audify as a standalone command-line tool using pip or uv:
@@ -62,10 +63,12 @@ uv pip install audify-cli
 ```
 
 This will install the `audify` command with subcommands:
+
 - `audify run`: Basic TTS conversion of EPUB/PDF files
 - `audify audiobook`: LLM-powered audiobook generation
 
 Alternatively, you can use the direct commands:
+
 - `audify-run`: Alias for `audify run`
 - `audify-audiobook`: Alias for `audify audiobook`
 
@@ -73,7 +76,7 @@ After installation, you can run `audify --help` to see available options.
 
 ## 🐳 Quick Start with Docker (For Kokoro TTS)
 
-> **Note**: Docker is only required if you want to use the local Kokoro TTS provider. For Qwen-TTS, you'll need to run the Qwen-TTS API separately (see Qwen-TTS Setup below). You can skip to "Quick Start with Cloud TTS" if you prefer using OpenAI, AWS Polly, or Google Cloud TTS.
+> **Note**: Docker is optional for local TTS providers. You can run Kokoro and/or Qwen-TTS with Docker Compose, or run Qwen-TTS directly with the local wrapper script.
 
 ### 1. Clone and Setup
 
@@ -126,47 +129,65 @@ task audiobook path/to/your/book.epub
 
 ## 🚀 Quick Start with Qwen-TTS (Local)
 
-Qwen-TTS is a high-quality, free, and privacy-friendly local TTS solution with excellent multilingual support. Audify supports three ways to use Qwen-TTS:
+Qwen-TTS is available through Audify's local FastAPI-compatible wrapper.
 
-### Option 1: DashScope Cloud API (Easiest, requires API key)
-- Get an API key from [DashScope](https://dashscope.aliyun.com/)
-- Add it to your `.keys` file:
-  ```ini
-  [qwen_tts]
-  api_key = your-dashscope-api-key
-  ```
-- Audify will automatically use the cloud API (no local server needed)
+### Option 1: Docker Compose (Recommended)
 
-### Option 2: Local FastAPI Wrapper (Recommended for local GPU)
-Audify includes a ready-to-use FastAPI wrapper script that provides a compatible API server:
+1. Start Ollama and Qwen-TTS services:
 
-1. Install required dependencies:
    ```bash
-   pip install qwen-tts fastapi uvicorn torch
+   docker compose --profile qwen up -d ollama qwen-tts
    ```
-2. Start the API server (adjust port/model as needed):
+
+2. (Optional) Run the Audify API in Docker with Qwen endpoint wiring:
+
    ```bash
-   QWEN_TTS_MOCK=1 python scripts/qwen_tts_api.py  # Mock mode for testing
-   # Or with real model:
-   # QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice python scripts/qwen_tts_api.py
-   ```
-3. Update your `.keys` file to point to the local server:
-   ```ini
-   [qwen_tts]
-   base_url = http://localhost:8890
+   docker compose --profile qwen up -d api
    ```
 
-### Option 3: Original Qwen3-TTS Gradio Demo
-If you want to use the original Qwen3-TTS repository directly:
+3. Confirm Qwen-TTS health:
 
-1. Clone and install [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)
-2. Run the Gradio demo:
    ```bash
-   qwen-tts-demo
+   curl http://localhost:8890/health
    ```
-3. Set up a compatible API server (see `scripts/qwen_tts_api.py` for reference)
 
-Once your Qwen-TTS server is running, update your `.keys` file as shown above and Audify will automatically use it for TTS synthesis.
+### Option 2: Local FastAPI Wrapper Script
+
+1. Install dependencies:
+
+   ```bash
+   pip install qwen-tts fastapi uvicorn soundfile numpy torch
+   ```
+
+2. Run the wrapper server:
+
+   ```bash
+   python scripts/qwen_tts_api.py
+   # API: http://localhost:8890
+   ```
+
+### Run conversion with Qwen-TTS
+
+Use either task aliases or the raw CLI command:
+
+```bash
+# Direct TTS
+task --tts-provider qwen run "book.epub"
+
+# LLM audiobook generation using Ollama gemma4:31b + Qwen-TTS
+task --tts-provider qwen --llm-model gemma4:31b audiobook "book.epub"
+
+# Equivalent raw CLI form (current CLI shape)
+audify "book.epub" --task audiobook --tts-provider qwen -m gemma4:31b
+```
+
+To pin defaults in `.keys`:
+
+```ini
+TTS_PROVIDER=qwen
+QWEN_API_URL=http://localhost:8890
+QWEN_TTS_VOICE=Vivian
+```
 
 > **Note**: For detailed setup instructions, see [docs/quickstart.md](docs/quickstart.md#qwen-tts-setup).
 
@@ -442,15 +463,22 @@ export OLLAMA_MODEL="magistral:24b"
 
 ### Docker Services
 
-The `docker-compose.yml` configures (only needed for local/Kokoro TTS):
+The `docker-compose.yml` configures local services:
 
 - **Kokoro TTS**: Port 8887 (GPU-accelerated speech synthesis, local)
 - **Ollama**: Port 11434 (LLM for translation and audiobook generation, optional)
 - **Audify API**: Port 8000 (REST API server, starts after Kokoro and Ollama are healthy)
+- **Qwen-TTS**: Port 8890 (enabled with the `qwen` compose profile)
 
 The `api` service waits for Kokoro and Ollama to pass their healthchecks before starting, so services are always ready when the API accepts requests.
 
-Note: Docker services are only required for Kokoro (local TTS). Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
+Start Qwen-TTS service with:
+
+```bash
+docker compose --profile qwen up -d qwen-tts
+```
+
+Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
 
 ## 📁 Output Structure
 
@@ -509,6 +537,7 @@ task api       # Start REST API server (dev mode, port 8000)
 ```
 
 You can also use the installed CLI commands directly:
+
 - `audify run` (or `audify-run`) - equivalent to `task run`
 - `audify audiobook` (or `audify-audiobook`) - equivalent to `task audiobook`
 
@@ -734,10 +763,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [DeepSeek](https://www.deepseek.com/) for DeepSeek API
 - [Google](https://cloud.google.com/text-to-speech) for Gemini and Cloud TTS
 - [AWS Polly](https://aws.amazon.com/polly/) for Text-to-Speech service
+
 # Test release automation
+
 # Release automation v2 test
+
 # Release Workflow Test v3
 
 Testing the fixed release workflow with proper breaking change detection.
+
 # Release Test v4 - Fixed grep patterns
+
 # Release validation complete - workflow is working

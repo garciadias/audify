@@ -56,63 +56,61 @@ audify run book.epub
 
 ## Option 3: Qwen-TTS (Local, Free)
 
-Requires GPU. Offers multilingual support and high-quality synthesis. Three approaches:
+Requires a local Qwen-TTS-compatible API and typically a GPU.
 
-### Option 3A: DashScope Cloud API (Simplest)
-**Note**: Cloud API may incur costs.
+### Option 3A: Docker Compose Profile (Recommended)
 
-1. Get an API key from [DashScope](https://help.aliyun.com/zh/model-studio/qwen-tts-realtime)
-2. Add to your `.keys` file:
+Run the provided qwen-tts service in this repository:
+
+1. Start Qwen-TTS and Ollama:
+
    ```bash
-   DASHSCOPE_API_KEY=your-api-key
-   TTS_PROVIDER=qwen
-   # Note: Cloud API uses different endpoints, not yet fully integrated
-   # Currently only local API server is supported
+   docker compose --profile qwen up -d qwen-tts ollama
    ```
 
-### Option 3B: Local API Server (Recommended for programmatic use)
-Run a local FastAPI server that wraps the Qwen3-TTS model:
+2. Confirm Qwen-TTS health:
+
+   ```bash
+   curl http://localhost:8890/health
+   ```
+
+3. Use Qwen in Audify:
+
+   ```bash
+   # Direct TTS
+   audify book.epub --task direct --tts-provider qwen
+
+   # Audiobook generation with Ollama LLM + Qwen-TTS
+   audify book.epub --task audiobook --tts-provider qwen -m gemma4:31b
+   ```
+
+### Option 3B: Local API Wrapper Script
 
 1. Install dependencies:
+
    ```bash
-   pip install qwen-tts fastapi uvicorn soundfile numpy
+   pip install qwen-tts fastapi uvicorn soundfile numpy torch
    ```
 
-2. Download the API server script:
+2. Run the wrapper:
+
    ```bash
-   curl -o qwen_tts_api.py https://raw.githubusercontent.com/garciadias/audify/main/scripts/qwen_tts_api.py
+   python scripts/qwen_tts_api.py
    ```
 
-3. Run the server:
-   ```bash
-   python qwen_tts_api.py
-   # API available at http://localhost:8890
-   ```
+3. Configure Audify:
 
-4. Configure Audify in `.keys`:
    ```bash
    TTS_PROVIDER=qwen
    QWEN_API_URL=http://localhost:8890
    QWEN_TTS_VOICE=Vivian
    ```
 
-### Option 3C: Gradio Demo (For testing)
-Interactive web interface for manual testing:
-
-1. Install and run:
-   ```bash
-   pip install qwen-tts
-   qwen-tts-demo Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --port 8890
-   ```
-2. Open browser to http://localhost:8890
-
-**Note**: The Gradio demo doesn't provide the API endpoints Audify needs. Use Option 3B for programmatic access.
-
-### Convert a book
-Once your Qwen-TTS server is running (Option 3B):
+### Task aliases (equivalent commands)
 
 ```bash
-audify run book.epub --tts-provider qwen
+task --tts-provider qwen run "book.epub"
+task --tts-provider qwen --llm-model gemma4:31b audiobook "book.epub"
 ```
 
 ## Next Steps

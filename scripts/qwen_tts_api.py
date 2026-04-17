@@ -4,10 +4,11 @@ Simple FastAPI server for Qwen3-TTS.
 Provides endpoints compatible with Audify's QwenTTSConfig.
 """
 
+import importlib.util
+import logging
 import os
 import sys
-import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 
 # Import torch with fallback for mock mode
 try:
@@ -77,7 +78,6 @@ class MockTTSModel:
     ):
         """Generate mock audio."""
         import numpy as np
-        import torch
 
         # Generate a simple sine wave (1 second at 440Hz)
         sample_rate = 24000
@@ -154,7 +154,11 @@ async def startup_event():
             MODEL_NAME,
             device_map=DEVICE,
             dtype=torch_dtype,
-            attn_implementation="flash_attention_2",
+            **(
+                {"attn_implementation": "flash_attention_2"}
+                if importlib.util.find_spec("flash_attn") is not None
+                else {}
+            ),
         )
         logger.info("Model loaded successfully")
     except Exception as e:
@@ -233,9 +237,10 @@ async def synthesize_speech(request: TTSRequest):
         )
 
         # Convert to WAV bytes
+        import io
+
         import numpy as np
         import soundfile as sf
-        import io
 
         # wavs is a list of numpy arrays
         if isinstance(wavs, list) and len(wavs) > 0:
