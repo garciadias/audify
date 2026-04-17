@@ -126,54 +126,49 @@ task audiobook path/to/your/book.epub
 
 ## 🚀 Quick Start with Qwen-TTS (Local)
 
-Qwen-TTS is a high-quality, free, and privacy-friendly local TTS solution with excellent multilingual support.
+Qwen-TTS is a high-quality, free, and privacy-friendly local TTS solution with excellent multilingual support. Audify supports three ways to use Qwen-TTS:
 
-### 1. Setup Qwen-TTS API
+### Option 1: DashScope Cloud API (Easiest, requires API key)
+- Get an API key from [DashScope](https://dashscope.aliyun.com/)
+- Add it to your `.keys` file:
+  ```ini
+  [qwen_tts]
+  api_key = your-dashscope-api-key
+  ```
+- Audify will automatically use the cloud API (no local server needed)
 
-First, set up the Qwen-TTS API server (requires GPU):
+### Option 2: Local FastAPI Wrapper (Recommended for local GPU)
+Audify includes a ready-to-use FastAPI wrapper script that provides a compatible API server:
 
-```bash
-# Clone Qwen-TTS API repository
-git clone https://github.com/QwenLM/Qwen3-TTS
-cd Qwen3-TTS
+1. Install required dependencies:
+   ```bash
+   pip install qwen-tts fastapi uvicorn torch
+   ```
+2. Start the API server (adjust port/model as needed):
+   ```bash
+   QWEN_TTS_MOCK=1 python scripts/qwen_tts_api.py  # Mock mode for testing
+   # Or with real model:
+   # QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice python scripts/qwen_tts_api.py
+   ```
+3. Update your `.keys` file to point to the local server:
+   ```ini
+   [qwen_tts]
+   base_url = http://localhost:8890
+   ```
 
-# Start with Docker (recommended)
-make up
+### Option 3: Original Qwen3-TTS Gradio Demo
+If you want to use the original Qwen3-TTS repository directly:
 
-# The API will be available at http://localhost:8890
-```
+1. Clone and install [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)
+2. Run the Gradio demo:
+   ```bash
+   qwen-tts-demo
+   ```
+3. Set up a compatible API server (see `scripts/qwen_tts_api.py` for reference)
 
-For detailed setup instructions, see the [Qwen3-TTS documentation](https://github.com/QwenLM/Qwen3-TTS).
+Once your Qwen-TTS server is running, update your `.keys` file as shown above and Audify will automatically use it for TTS synthesis.
 
-### 2. Install Audify
-
-```bash
-git clone https://github.com/garciadias/audify.git
-cd audify
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv sync
-```
-
-### 3. Configure Qwen-TTS
-
-Create a `.keys` file:
-
-```bash
-TTS_PROVIDER=qwen
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
-```
-
-### 4. Convert Your First Book
-
-```bash
-# Convert using Qwen-TTS
-task run path/to/your/book.epub
-
-# Or specify provider explicitly
-task --tts-provider qwen run path/to/your/book.epub
-```
+> **Note**: For detailed setup instructions, see [docs/quickstart.md](docs/quickstart.md#qwen-tts-setup).
 
 ## 🚀 Quick Start with Cloud TTS
 

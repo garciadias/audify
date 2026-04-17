@@ -56,32 +56,60 @@ audify run book.epub
 
 ## Option 3: Qwen-TTS (Local, Free)
 
-Requires GPU and the Qwen-TTS API server. Offers multilingual support and high-quality synthesis.
+Requires GPU. Offers multilingual support and high-quality synthesis. Three approaches:
 
-### 1. Start Qwen-TTS
+### Option 3A: DashScope Cloud API (Simplest)
+**Note**: Cloud API may incur costs.
 
-```bash
-git clone https://github.com/QwenLM/Qwen3-TTS
-cd Qwen3-TTS
-make up
-# API available at http://localhost:8890
-```
+1. Get an API key from [DashScope](https://help.aliyun.com/zh/model-studio/qwen-tts-realtime)
+2. Add to your `.keys` file:
+   ```bash
+   DASHSCOPE_API_KEY=your-api-key
+   TTS_PROVIDER=qwen
+   # Note: Cloud API uses different endpoints, not yet fully integrated
+   # Currently only local API server is supported
+   ```
 
-### 2. Install and configure Audify
+### Option 3B: Local API Server (Recommended for programmatic use)
+Run a local FastAPI server that wraps the Qwen3-TTS model:
 
-```bash
-pip install audify-cli
-```
+1. Install dependencies:
+   ```bash
+   pip install qwen-tts fastapi uvicorn soundfile numpy
+   ```
 
-Create a `.keys` file:
+2. Download the API server script:
+   ```bash
+   curl -o qwen_tts_api.py https://raw.githubusercontent.com/garciadias/audify/main/scripts/qwen_tts_api.py
+   ```
 
-```bash
-TTS_PROVIDER=qwen
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
-```
+3. Run the server:
+   ```bash
+   python qwen_tts_api.py
+   # API available at http://localhost:8890
+   ```
 
-### 3. Convert a book
+4. Configure Audify in `.keys`:
+   ```bash
+   TTS_PROVIDER=qwen
+   QWEN_API_URL=http://localhost:8890
+   QWEN_TTS_VOICE=Vivian
+   ```
+
+### Option 3C: Gradio Demo (For testing)
+Interactive web interface for manual testing:
+
+1. Install and run:
+   ```bash
+   pip install qwen-tts
+   qwen-tts-demo Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --port 8890
+   ```
+2. Open browser to http://localhost:8890
+
+**Note**: The Gradio demo doesn't provide the API endpoints Audify needs. Use Option 3B for programmatic access.
+
+### Convert a book
+Once your Qwen-TTS server is running (Option 3B):
 
 ```bash
 audify run book.epub --tts-provider qwen

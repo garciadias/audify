@@ -134,7 +134,7 @@ except importlib.metadata.PackageNotFoundError:
     type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
     default=DEFAULT_TTS_PROVIDER,
     help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
-    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
+    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS), qwen (local).",
 )
 @click.option(
     "--task",
