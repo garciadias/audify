@@ -1,6 +1,6 @@
 [project]
 name = "audify-cli"
-version = "0.2.0"
+version = "0.2.1"
 description = "Convert ebooks and PDFs to audiobooks using AI text-to-speech"
 readme = "README.md"
 requires-python = ">=3.10,<=3.13"

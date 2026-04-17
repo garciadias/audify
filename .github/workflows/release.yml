@@ -13,35 +13,44 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     outputs:
-      released: ${{ steps.version.outputs.skip == 'false' }}
-      tag: ${{ steps.version.outputs.tag }}
+      released: ${{ steps.check.outputs.released }}
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get last tag
-        id: last_tag
+      - name: Check if release needed
+        id: check
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "tag=$LAST_TAG" >> $GITHUB_OUTPUT
-          echo "Last tag: $LAST_TAG"
+          # Read version from pyproject.toml (source of truth)
+          VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          TAG="v$VERSION"
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          # Only release if this tag doesn't already exist
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "released=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists, skipping release"
+          else
+            echo "released=true" >> $GITHUB_OUTPUT
+            echo "Will create release $TAG"
+          fi
 
       - name: Get commit messages since last tag
         id: commits
+        if: steps.check.outputs.released == 'true'
         run: |
-          LAST_TAG=${{ steps.last_tag.outputs.tag }}
-          if git rev-parse ${LAST_TAG} >/dev/null 2>&1; then
-            git log ${LAST_TAG}..HEAD --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
             git log ${LAST_TAG}..HEAD --format='%s' > /tmp/subjects.txt
           else
-            git log --format='%B%n---COMMIT_SEP---%n' > /tmp/commits_full.txt
             git log --format='%s' > /tmp/subjects.txt
           fi
-
-          COMMIT_COUNT=$(wc -l < /tmp/subjects.txt | tr -d ' ')
-          echo "count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
 
           {
             echo 'list<<EOF'
@@ -49,101 +58,19 @@ jobs:
             echo 'EOF'
           } >> $GITHUB_OUTPUT
 
-          HAS_FEAT=$(grep -cE '^feat[!]*:' /tmp/commits_full.txt || true)
-          HAS_BREAKING=$(grep -cE '(^[a-z]+!:|BREAKING[[:space:]_]CHANGE:)' /tmp/commits_full.txt || true)
-          echo "has_feat=$HAS_FEAT" >> $GITHUB_OUTPUT
-          echo "has_breaking=$HAS_BREAKING" >> $GITHUB_OUTPUT
-
-      - name: Determine version
-        id: version
-        if: steps.commits.outputs.count != '0'
-        run: |
-          LAST_TAG="${{ steps.last_tag.outputs.tag }}"
-          CURRENT_TOML=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
-          LAST_TAG_VERSION="${LAST_TAG#v}"
-          HAS_FEAT=${{ steps.commits.outputs.has_feat }}
-          HAS_BREAKING=${{ steps.commits.outputs.has_breaking }}
-
-          if [ "$LAST_TAG" = "v0.0.0" ]; then
-            COMPUTED_VERSION="0.1.0"
-            BUMP="initial"
-          else
-            BUMP="patch"
-            if [ "${HAS_BREAKING}" != "0" ]; then
-              BUMP="major"
-            elif [ "${HAS_FEAT}" != "0" ]; then
-              BUMP="minor"
-            fi
-
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_TAG_VERSION"
-            if [ "$BUMP" = "major" ]; then
-              MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
-            elif [ "$BUMP" = "minor" ]; then
-              MINOR=$((MINOR + 1)); PATCH=0
-            else
-              PATCH=$((PATCH + 1))
-            fi
-            COMPUTED_VERSION="$MAJOR.$MINOR.$PATCH"
-          fi
-
-          pick_higher() {
-            IFS='.' read -r a1 b1 c1 <<< "$1"
-            IFS='.' read -r a2 b2 c2 <<< "$2"
-            if [ "$a1" -gt "$a2" ] || \
-               { [ "$a1" -eq "$a2" ] && [ "$b1" -gt "$b2" ]; } || \
-               { [ "$a1" -eq "$a2" ] && [ "$b1" -eq "$b2" ] && [ "$c1" -gt "$c2" ]; }; then
-              echo "$1"
-            else
-              echo "$2"
-            fi
-          }
-
-          NEW_VERSION=$(pick_higher "$CURRENT_TOML" "$COMPUTED_VERSION")
-          NEW_TAG="v$NEW_VERSION"
-
-          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "Tag $NEW_TAG already exists, skipping release"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
-          echo "bump=$BUMP" >> $GITHUB_OUTPUT
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "needs_toml_update=$( [ "$CURRENT_TOML" != "$NEW_VERSION" ] && echo true || echo false )" >> $GITHUB_OUTPUT
-
-          echo "Version: $NEW_VERSION (tag: $NEW_TAG, bump: $BUMP)"
-          echo "pyproject.toml: $CURRENT_TOML, needs update: $( [ "$CURRENT_TOML" != "$NEW_VERSION" ] && echo yes || echo no )"
-
-      - name: Configure git
-        if: steps.version.outputs.skip == 'false'
+      - name: Create tag and release
+        if: steps.check.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Update version in pyproject.toml
-        if: steps.version.outputs.skip == 'false' && steps.version.outputs.needs_toml_update == 'true'
-        run: |
-          sed -i "s/^version = .*/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+          git tag -a "${{ steps.check.outputs.tag }}" -m "Release ${{ steps.check.outputs.version }}"
+          git push origin "${{ steps.check.outputs.tag }}"
 
-      - name: Commit version bump
-        if: steps.version.outputs.skip == 'false' && steps.version.outputs.needs_toml_update == 'true'
-        run: |
-          git add pyproject.toml
-          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
-          git push origin main
-
-      - name: Create tag and release
-        if: steps.version.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.version }}"
-          git push origin "${{ steps.version.outputs.tag }}"
-
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "Release ${{ steps.version.outputs.version }}" \
+          gh release create "${{ steps.check.outputs.tag }}" \
+            --title "Release ${{ steps.check.outputs.version }}" \
             --notes "## Changes in this release
 
           ### Commits
@@ -151,9 +78,7 @@ jobs:
           ${{ steps.commits.outputs.list }}
           \`\`\`
 
-          **Version bump type:** ${{ steps.version.outputs.bump }}
-
-          For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.version.outputs.tag }})"
+          For detailed changes, see [all commits](${{ github.server_url }}/${{ github.repository }}/commits/${{ steps.check.outputs.tag }})"
 
   build:
     name: Build distribution
