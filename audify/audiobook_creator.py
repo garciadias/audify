@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import Any, List, Optional, Union
@@ -46,6 +47,14 @@ _DEFAULT_LLM_PARAMS = {
 _MAX_WORDS_PER_LLM_CHUNK = 2500
 
 logger = setup_logging(module_name=__name__)
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Read a boolean flag from environment variables."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _clean_text_for_audiobook(text: str) -> str:
@@ -353,6 +362,84 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Audiobook output directory set to: {self.audiobook_path}")
 
+    def _verify_tts_provider_available(self) -> None:
+        """Verify TTS provider is available before starting synthesis.
+
+        This check runs early to catch configuration issues before
+        wasting time on LLM processing.
+
+        Raises:
+            RuntimeError: If TTS provider is not available or misconfigured.
+        """
+        if _env_flag("AUDIFY_SKIP_TTS_PREFLIGHT", default=False):
+            logger.warning(
+                "Skipping TTS provider preflight because "
+                "AUDIFY_SKIP_TTS_PREFLIGHT is enabled."
+            )
+            return
+
+        # Some tests build instances via __new__ and don't initialize
+        # BaseSynthesizer state. In that case, skip preflight.
+        if not hasattr(self, "_tts_config"):
+            logger.debug(
+                "Skipping TTS preflight because synthesizer state is not initialized."
+            )
+            return
+
+        logger.info(f"Verifying TTS provider '{self.tts_provider}' availability...")
+        tts_config = self._get_tts_config()
+
+        if not tts_config.is_available():
+            error_msg = (
+                f"TTS provider '{self.tts_provider}' is not available. "
+                f"Cannot proceed with audiobook synthesis. "
+            )
+
+            # Add provider-specific debugging info
+            if hasattr(tts_config, "base_url"):
+                error_msg += f"Configured API URL: {tts_config.base_url}. "
+
+            error_msg += (
+                "Please verify:\n"
+                "  1. TTS service is running and accessible\n"
+                "  2. Environment variables are correctly set (QWEN_API_URL, etc.)\n"
+                "  3. Network connectivity to the TTS API endpoint\n"
+                "  4. API credentials if required\n"
+            )
+
+            # Add provider-specific guidance
+            if self.tts_provider == "qwen":
+                error_msg += (
+                    "\nFor Qwen TTS:\n"
+                    "  • Ensure qwen-tts Docker container is running: "
+                    "`docker-compose -f docker-compose.yml up -d "
+                    "qwen-tts --profile qwen`\n"
+                    "  • Check container health: "
+                    "`curl http://localhost:8890/health`\n"
+                    "  • Verify QWEN_API_URL is set to: http://localhost:8890\n"
+                    "  • Check container logs: "
+                    "`docker-compose logs qwen-tts`\n"
+                )
+            elif self.tts_provider == "kokoro":
+                error_msg += (
+                    "\nFor Kokoro TTS:\n"
+                    "  • Ensure Kokoro service is running\n"
+                    "  • Verify KOKORO_API_URL is set correctly\n"
+                )
+
+            if _env_flag("AUDIFY_STRICT_TTS_PREFLIGHT", default=False):
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            logger.warning(
+                error_msg
+                + "Continuing anyway (set AUDIFY_STRICT_TTS_PREFLIGHT=1 to fail "
+                "fast, or AUDIFY_SKIP_TTS_PREFLIGHT=1 to skip checks entirely)."
+            )
+            return
+
+        logger.info(f"✓ TTS provider '{self.tts_provider}' is available and ready")
+
     def _clean_text_for_audiobook(self, text: str) -> str:
         return _clean_text_for_audiobook(text)
 
@@ -502,8 +589,23 @@ class AudiobookCreator(BaseSynthesizer):
             )
             return episode_mp3_path
 
-        self._synthesize_sentences(sentences, episode_wav_path)
-        return self._convert_to_mp3(episode_wav_path)
+        try:
+            self._synthesize_sentences(sentences, episode_wav_path)
+            return self._convert_to_mp3(episode_wav_path)
+        except Exception as e:
+            logger.error(
+                f"TTS synthesis failed for Episode {episode_number}: {e}",
+                exc_info=True,
+            )
+            # Log details about TTS provider configuration for debugging
+            tts_config = self._get_tts_config()
+            logger.error(
+                f"TTS Provider: {tts_config.provider_name}, "
+                f"Voice: {tts_config.voice}, Language: {tts_config.language}"
+            )
+            if hasattr(tts_config, "base_url"):
+                logger.error(f"TTS API URL: {tts_config.base_url}")
+            raise
 
     def _split_text_into_chunks(
         self, text: str, max_words: int = _MAX_WORDS_PER_LLM_CHUNK
@@ -569,6 +671,10 @@ class AudiobookCreator(BaseSynthesizer):
     def create_audiobook_series(self) -> List[Path]:
         """Create audiobook series from all chapters."""
         logger.info("Starting audiobook series creation...")
+
+        # Verify TTS provider before processing, but do not hard-fail unless
+        # strict preflight is explicitly enabled.
+        self._verify_tts_provider_available()
 
         if isinstance(self.reader, EpubReader):
             chapters = self.reader.get_chapters()
@@ -923,6 +1029,10 @@ class AudiobookPdfCreator(AudiobookCreator):
     def create_audiobook_series(self) -> List[Path]:
         """Create a single audiobook episode from the PDF content."""
         logger.info("Creating audiobook episode from PDF...")
+
+        # Verify TTS provider before processing, but do not hard-fail unless
+        # strict preflight is explicitly enabled.
+        self._verify_tts_provider_available()
 
         # Get the full PDF content
         if isinstance(self.reader, PdfReader):

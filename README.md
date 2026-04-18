@@ -189,6 +189,28 @@ QWEN_API_URL=http://localhost:8890
 QWEN_TTS_VOICE=Vivian
 ```
 
+Preflight behavior (optional):
+
+```ini
+# Skip startup availability check entirely (advanced)
+AUDIFY_SKIP_TTS_PREFLIGHT=0
+
+# If set to 1, fail fast when preflight says TTS is unavailable
+AUDIFY_STRICT_TTS_PREFLIGHT=0
+
+# Qwen health-check behavior (retries help under heavy /tts load)
+QWEN_HEALTH_TIMEOUT=8
+QWEN_HEALTH_RETRIES=3
+```
+
+Container path behavior:
+
+- When Audify CLI runs in a container with `/app/data` mounted,
+   host-style paths are auto-resolved to container paths when possible.
+- Inputs outside `/app/data` are staged into `/app/data/input`.
+- Outputs outside `/app/data` are copied to `/app/data/output` so artifacts are
+   immediately visible on the host bind mount.
+
 > **Note**: For detailed setup instructions, see [docs/quickstart.md](docs/quickstart.md#qwen-tts-setup).
 
 ## 🚀 Quick Start with Cloud TTS

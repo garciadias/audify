@@ -5,6 +5,7 @@ Tests for audify.create_audiobook module.
 
 import logging
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -378,3 +379,62 @@ class TestMain:
         call_args = mock_get_creator.call_args
         assert call_args.kwargs["llm_model"] == "my-llm-model"
         assert call_args.kwargs["model_name"] == "my-tts-model"
+
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
+    @patch("os.get_terminal_size")
+    def test_main_options_after_path_are_parsed(
+        self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+    ):
+        """Test that options appearing after the path are parsed correctly."""
+        mock_terminal_size.return_value = (80, 24)
+        mock_get_extension.return_value = ".pdf"
+
+        mock_creator = Mock()
+        mock_creator.synthesize.return_value = "/path/to/output"
+        mock_get_creator.return_value = mock_creator
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as temp_file:
+            result = runner.invoke(
+                cli,
+                [
+                    temp_file.name,
+                    "--tts-provider",
+                    "qwen",
+                    "--llm-model",
+                    "qwen3.6:35b",
+                    "--task",
+                    "audiobook",
+                ],
+            )
+
+        assert result.exit_code == 0
+        call_args = mock_get_creator.call_args
+        assert call_args.kwargs["tts_provider"] == "qwen"
+        assert call_args.kwargs["llm_model"] == "qwen3.6:35b"
+        assert call_args.kwargs["task"] == "audiobook"
+
+    @patch("audify.convert.get_creator")
+    @patch("audify.cli.get_file_extension")
+    @patch("os.get_terminal_size")
+    def test_main_fails_when_output_has_no_audio_artifacts(
+        self, mock_terminal_size, mock_get_extension, mock_get_creator, runner
+    ):
+        """Test CLI returns non-zero when output dir exists but has no audio files."""
+        mock_terminal_size.return_value = (80, 24)
+        mock_get_extension.return_value = ".pdf"
+
+        with tempfile.TemporaryDirectory() as out_dir:
+            output_path = Path(out_dir)
+            (output_path / "episodes").mkdir()
+            (output_path / "scripts").mkdir()
+
+            mock_creator = Mock()
+            mock_creator.synthesize.return_value = str(output_path)
+            mock_get_creator.return_value = mock_creator
+
+            with tempfile.NamedTemporaryFile(suffix=".pdf") as temp_file:
+                result = runner.invoke(cli, [temp_file.name])
+
+        assert result.exit_code == 1
+        assert "No audio artifacts were generated" in result.output
