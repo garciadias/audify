@@ -25,7 +25,7 @@ TTS_PROVIDER=openai
 ### 3. Convert a book
 
 ```bash
-audify run book.epub --tts-provider openai
+audify book.epub --task direct --tts-provider openai
 ```
 
 ## Option 2: Kokoro TTS (Local, Free)
@@ -51,7 +51,7 @@ docker compose exec ollama ollama pull qwen3:30b
 
 ```bash
 uv sync
-audify run book.epub
+audify book.epub --task direct
 ```
 
 ## Option 3: Qwen-TTS (Local, Free)
@@ -106,11 +106,11 @@ Run the provided qwen-tts service in this repository:
    QWEN_TTS_VOICE=Vivian
    ```
 
-### Task aliases (equivalent commands)
+### Equivalent commands
 
 ```bash
-task --tts-provider qwen run "book.epub"
-task --tts-provider qwen --llm-model gemma4:31b audiobook "book.epub"
+audify book.epub --task direct --tts-provider qwen
+audify book.epub --task audiobook --tts-provider qwen --llm-model gemma4:31b
 ```
 
 ## Next Steps
