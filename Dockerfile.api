@@ -16,12 +16,7 @@ RUN groupadd --gid 1001 appuser \
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-COPY pyproject.toml README.md uv.lock ./
-COPY ./audify/ /app/audify/
-
-RUN uv sync --no-dev \
+RUN pip install --no-cache-dir audify-cli \
     && chown -R appuser:appuser /app
 
 USER appuser
@@ -31,5 +26,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uv", "run", "uvicorn", "audify.api.app:app", \
+CMD ["uvicorn", "audify.api.app:app", \
      "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

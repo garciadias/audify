@@ -25,6 +25,7 @@ rest-api
 :caption: Reference
 
 cli-reference
+api-reference
 architecture
 commercial-apis
 ```

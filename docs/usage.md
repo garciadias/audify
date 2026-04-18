@@ -22,6 +22,9 @@ audify run book.epub --language en --translate es
 
 # Choose TTS provider
 audify run book.epub --tts-provider openai
+
+# Qwen-TTS direct conversion (current CLI form)
+audify book.epub --task direct --tts-provider qwen
 ```
 
 ### Understanding --language and --translate
@@ -64,6 +67,9 @@ audify audiobook book.epub --translate pt
 
 # Full workflow: extract as English, LLM processes English text, translate script to Spanish, synthesize
 audify audiobook book.epub --language en --translate es -m "api:deepseek/deepseek-chat"
+
+# Qwen-TTS + Ollama local model (current CLI form)
+audify book.epub --task audiobook --tts-provider qwen -m gemma4:31b
 ```
 
 :::{note}
@@ -87,6 +93,14 @@ audify audiobook book.epub -m "api:gemini/gemini-1.5-pro"
 ```
 
 See [Commercial APIs](commercial-apis.md) for API key setup.
+
+### Qwen-TTS setup checklist
+
+Before using Qwen-TTS commands:
+
+1. Start a Qwen-compatible API (`docker compose --profile qwen up -d qwen-tts` or `python scripts/qwen_tts_api.py`)
+2. Ensure `QWEN_API_URL` points to that service (usually `http://localhost:8890` on host)
+3. Set provider with `--tts-provider qwen` or `TTS_PROVIDER=qwen`
 
 ## Task System
 

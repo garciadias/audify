@@ -5,7 +5,7 @@
 # =============================================================================
 # TTS Provider Selection
 # =============================================================================
-# Options: kokoro, openai, aws, google
+# Options: kokoro, openai, aws, google, qwen
 TTS_PROVIDER=kokoro
 
 # =============================================================================
@@ -61,6 +61,15 @@ GOOGLE_TTS_VOICE=en-US-Chirp-HD-F
 
 # Language code for synthesis
 GOOGLE_TTS_LANGUAGE_CODE=en-US
+
+# =============================================================================
+# Qwen-TTS (Local/Free)
+# =============================================================================
+# Base URL for Qwen3-TTS API (default: http://localhost:8890)
+QWEN_API_URL=http://localhost:8890
+
+# Voice options: Vivian (more may be available in future)
+QWEN_TTS_VOICE=Vivian
 
 # =============================================================================
 # LLM Configuration (for audiobook script generation)

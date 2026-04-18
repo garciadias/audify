@@ -12,6 +12,7 @@ Unified CLI entry point supporting:
 import importlib.metadata
 import logging
 import os
+import shutil
 import warnings
 from pathlib import Path
 
@@ -46,14 +47,157 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 try:
-    __version__ = importlib.metadata.version("audify")
+    __version__ = importlib.metadata.version("audify-cli")
 except importlib.metadata.PackageNotFoundError:
     __version__ = "0.1.0"
 
 
+_CONTAINER_DATA_ROOT = Path("/app/data")
+_CONTAINER_INPUT_ROOT = _CONTAINER_DATA_ROOT / "input"
+_CONTAINER_OUTPUT_ROOT = _CONTAINER_DATA_ROOT / "output"
+
+
+def _is_container_runtime() -> bool:
+    """Return True when running in a container with shared /app/data mount."""
+    return Path("/.dockerenv").exists() and _CONTAINER_DATA_ROOT.exists()
+
+
+def _resolve_input_path_for_runtime(path_str: str, logger: logging.Logger) -> str:
+    """Resolve host-like paths to container-mounted paths when possible."""
+    raw_path = Path(path_str).expanduser()
+    if raw_path.exists() or not _is_container_runtime():
+        return str(raw_path)
+
+    raw_string = str(raw_path)
+    candidates: list[Path] = []
+
+    # Common host path pattern: /.../data/<relative>
+    marker = "/data/"
+    if marker in raw_string:
+        suffix = raw_string.split(marker, 1)[1]
+        candidates.append(_CONTAINER_DATA_ROOT / suffix)
+
+    if raw_path.is_absolute():
+        candidates.append(_CONTAINER_DATA_ROOT / "ebooks" / raw_path.name)
+        candidates.append(Path("/app") / raw_path.name)
+    else:
+        candidates.append(Path("/app") / raw_path)
+        candidates.append(_CONTAINER_DATA_ROOT / raw_path)
+        candidates.append(_CONTAINER_DATA_ROOT / "ebooks" / raw_path)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        candidate_str = str(candidate)
+        if candidate_str in seen:
+            continue
+        seen.add(candidate_str)
+        if candidate.exists():
+            logger.info(
+                f"Resolved input path '{path_str}' to '{candidate_str}' "
+                "for container runtime"
+            )
+            return candidate_str
+
+    return str(raw_path)
+
+
+def _stage_input_to_host_data(path_obj: Path, logger: logging.Logger) -> Path:
+    """Copy non-shared container inputs into /app/data/input for host visibility."""
+    if not _is_container_runtime() or not path_obj.exists():
+        return path_obj
+
+    resolved = path_obj.resolve()
+    if resolved.is_relative_to(_CONTAINER_DATA_ROOT):
+        return resolved
+
+    _CONTAINER_INPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    staged_path = _CONTAINER_INPUT_ROOT / resolved.name
+
+    if resolved.is_dir():
+        shutil.copytree(resolved, staged_path, dirs_exist_ok=True)
+    else:
+        shutil.copy2(resolved, staged_path)
+
+    logger.info(f"Staged input for host visibility: {resolved} -> {staged_path}")
+    return staged_path
+
+
+def _resolve_output_path_for_runtime(
+    output: str | None,
+    logger: logging.Logger,
+) -> str | None:
+    """Map output paths to /app/data when running in a container."""
+    if output is None:
+        if _is_container_runtime():
+            _CONTAINER_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+            return str(_CONTAINER_OUTPUT_ROOT)
+        return None
+
+    output_path = Path(output).expanduser()
+    if output_path.exists() or not _is_container_runtime():
+        return str(output_path)
+
+    output_string = str(output_path)
+    marker = "/data/"
+    if marker in output_string:
+        suffix = output_string.split(marker, 1)[1]
+        mapped = _CONTAINER_DATA_ROOT / suffix
+        logger.info(f"Resolved output path '{output}' to '{mapped}'")
+        return str(mapped)
+
+    if not output_path.is_absolute():
+        mapped = _CONTAINER_OUTPUT_ROOT / output_path
+        logger.info(f"Resolved relative output path '{output}' to '{mapped}'")
+        return str(mapped)
+
+    return str(output_path)
+
+
+def _ensure_output_synced_to_host_data(
+    output_path: Path,
+    logger: logging.Logger,
+) -> Path:
+    """Ensure output artifacts are available under /app/data/output."""
+    if not _is_container_runtime() or not output_path.exists():
+        return output_path
+
+    resolved = output_path.resolve()
+    if resolved.is_relative_to(_CONTAINER_DATA_ROOT):
+        return resolved
+
+    _CONTAINER_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    target = _CONTAINER_OUTPUT_ROOT / resolved.name
+
+    if resolved.is_dir():
+        shutil.copytree(resolved, target, dirs_exist_ok=True)
+    else:
+        shutil.copy2(resolved, target)
+
+    logger.info(f"Copied output artifact to host-visible path: {target}")
+    return target
+
+
+def _contains_audio_artifacts(output_path: Path) -> bool:
+    """Return True when output path contains generated audio artifacts."""
+    if not output_path.exists():
+        return False
+
+    if output_path.is_file():
+        return output_path.suffix.lower() in {".mp3", ".wav", ".m4b"}
+
+    for pattern in ("*.mp3", "*.wav", "*.m4b"):
+        if any(output_path.rglob(pattern)):
+            return True
+
+    return False
+
+
 @click.group(
     invoke_without_command=True,
-    context_settings={"allow_extra_args": True},
+    context_settings={
+        "allow_extra_args": True,
+        "allow_interspersed_args": True,
+    },
 )
 @click.option(
     "--language",
@@ -134,7 +278,7 @@ except importlib.metadata.PackageNotFoundError:
     type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
     default=DEFAULT_TTS_PROVIDER,
     help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
-    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
+    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS), qwen (local).",
 )
 @click.option(
     "--task",
@@ -193,7 +337,7 @@ except importlib.metadata.PackageNotFoundError:
     is_flag=True,
     help="Show detailed log messages in terminal.",
 )
-@click.argument("path", nargs=-1, type=click.Path())
+@click.argument("path", required=False, type=click.Path())
 @click.version_option(__version__, "--version", "-V", message="audify %(version)s")
 @click.pass_context
 def cli(
@@ -218,13 +362,13 @@ def cli(
     create_voice_samples: bool,
     max_samples: int,
     verbose: bool,
-    path: tuple[str, ...],
+    path: str | None,
 ):
     """Audify: Convert ebooks and PDFs to audiobooks using AI text-to-speech."""
     if ctx.invoked_subcommand is not None:
         return
 
-    path_str = path[0] if path else None
+    path_str = path
 
     configure_cli_logging(verbose=verbose)
     logger = logging.getLogger(__name__)
@@ -354,12 +498,18 @@ def cli(
         click.echo(ctx.get_help())
         return
 
+    path_str = _resolve_input_path_for_runtime(path_str, logger)
+    output = _resolve_output_path_for_runtime(output, logger)
+
     effective_llm_model = llm_model or OLLAMA_DEFAULT_MODEL
     path_obj = Path(path_str)
 
     if not path_obj.exists():
         click.echo(f"Error: Path '{path_str}' does not exist.", err=True)
         ctx.exit(1)
+
+    path_obj = _stage_input_to_host_data(path_obj, logger)
+    path_str = str(path_obj)
 
     click.echo("=" * terminal_width)
 
@@ -405,9 +555,23 @@ def cli(
                 prompt_file=prompt_file,
             )
             output_path = dir_creator.synthesize()
+            output_path = _ensure_output_synced_to_host_data(
+                Path(output_path),
+                logger,
+            )
+
+            if output_path.exists() and not _contains_audio_artifacts(output_path):
+                message = (
+                    "No audio artifacts were generated in the output directory. "
+                    "Check TTS/LLM logs for errors and verify provider settings."
+                )
+                logger.error(message)
+                click.echo(f"Error: {message}", err=True)
+                click.echo(f"Output directory: {output_path}", err=True)
+                raise SystemExit(1)
 
             # Find the M4B file in the output directory
-            m4b_files = list(Path(output_path).glob("*.m4b"))
+            m4b_files = list(output_path.glob("*.m4b"))
             m4b_path = m4b_files[0] if m4b_files else None
 
             click.echo("\n" + "=" * terminal_width)
@@ -484,9 +648,23 @@ def cli(
                 prompt_file=prompt_file,
             )
             output_path = creator.synthesize()
+            output_path = _ensure_output_synced_to_host_data(
+                Path(output_path),
+                logger,
+            )
+
+            if output_path.exists() and not _contains_audio_artifacts(output_path):
+                message = (
+                    "No audio artifacts were generated in the output directory. "
+                    "Check TTS/LLM logs for errors and verify provider settings."
+                )
+                logger.error(message)
+                click.echo(f"Error: {message}", err=True)
+                click.echo(f"Output directory: {output_path}", err=True)
+                raise SystemExit(1)
 
             # Find the M4B file in the output directory
-            m4b_files = list(Path(output_path).glob("*.m4b"))
+            m4b_files = list(output_path.glob("*.m4b"))
             m4b_path = m4b_files[0] if m4b_files else None
 
             click.echo("\n" + "=" * terminal_width)

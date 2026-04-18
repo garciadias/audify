@@ -668,6 +668,23 @@ class QwenTTSConfig(TTSAPIConfig):
         )
         self.base_url = base_url or QWEN_API_BASE_URL
         self._available_voices: Optional[List[str]] = None
+        self.health_timeout = self._parse_positive_int(
+            os.getenv("QWEN_HEALTH_TIMEOUT", "8"),
+            default=8,
+        )
+        self.health_retries = self._parse_positive_int(
+            os.getenv("QWEN_HEALTH_RETRIES", "3"),
+            default=3,
+        )
+
+    @staticmethod
+    def _parse_positive_int(raw: str, default: int) -> int:
+        """Parse positive integer from env vars with fallback."""
+        try:
+            value = int(raw)
+            return value if value > 0 else default
+        except (TypeError, ValueError):
+            return default
 
     @property
     def provider_name(self) -> str:
@@ -684,17 +701,65 @@ class QwenTTSConfig(TTSAPIConfig):
         return f"{self.base_url}/tts"
 
     def is_available(self) -> bool:
-        """Check if Qwen-TTS API is reachable."""
-        try:
-            response = requests.get(self.health_url, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("status") == "healthy" and data.get(
-                    "model_loaded", False
+        """Check if Qwen-TTS API is reachable.
+
+        Uses retries to avoid false negatives under transient load.
+        """
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, self.health_retries + 1):
+            try:
+                response = requests.get(self.health_url, timeout=self.health_timeout)
+                if response.status_code == 200:
+                    data = response.json()
+                    is_healthy = data.get("status") == "healthy" and data.get(
+                        "model_loaded", False
+                    )
+                    if not is_healthy:
+                        logger.debug(f"Qwen API responded but model not ready: {data}")
+                    return is_healthy
+
+                logger.debug(
+                    "Qwen API health check returned status "
+                    f"{response.status_code} (attempt {attempt}/{self.health_retries})"
                 )
-            return False
-        except requests.RequestException:
-            return False
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                logger.debug(
+                    "Qwen-TTS health check timed out at "
+                    f"{self.health_url} (attempt {attempt}/{self.health_retries})"
+                )
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                logger.debug(
+                    "Qwen-TTS health check connection failure at "
+                    f"{self.health_url} (attempt {attempt}/{self.health_retries})"
+                )
+            except requests.RequestException as e:
+                last_error = e
+                logger.debug(
+                    "Qwen-TTS health check request failed at "
+                    f"{self.health_url} (attempt {attempt}/{self.health_retries}): {e}"
+                )
+
+        if isinstance(last_error, requests.exceptions.Timeout):
+            logger.warning(
+                "Qwen-TTS health check timed out after "
+                f"{self.health_retries} attempt(s). "
+                f"API may be overloaded or inaccessible at {self.health_url}."
+            )
+        elif isinstance(last_error, requests.exceptions.ConnectionError):
+            logger.warning(
+                "Qwen-TTS connection failed after "
+                f"{self.health_retries} attempt(s). Check if:\n"
+                "  - Container/process is running\n"
+                "  - Port 8890 is exposed/listening\n"
+                f"  - API URL is correct: {self.base_url}"
+            )
+        elif last_error is not None:
+            logger.warning(f"Qwen-TTS request failed: {last_error}")
+
+        return False
 
     def get_available_voices(self) -> List[str]:
         """Get available voices for Qwen-TTS.
@@ -740,7 +805,24 @@ class QwenTTSConfig(TTSAPIConfig):
                 return True
             else:
                 logger.error(f"Qwen-TTS API error: {response.status_code}")
+                if response.status_code == 500:
+                    logger.error(
+                        "Qwen-TTS returned 500 error. Check container logs: "
+                        "`docker-compose logs qwen-tts`"
+                    )
                 return False
+        except requests.exceptions.Timeout:
+            logger.error(
+                f"Qwen-TTS synthesis request timed out after {self.timeout}s. "
+                f"The API may be overloaded or unresponsive at {self.tts_url}"
+            )
+            return False
+        except requests.exceptions.ConnectionError as e:
+            logger.error(
+                f"Qwen-TTS connection error: {e}. "
+                f"Verify the API is accessible at {self.tts_url}"
+            )
+            return False
         except requests.RequestException as e:
             logger.error(f"Qwen-TTS synthesis failed: {e}")
             return False

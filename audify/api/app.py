@@ -13,6 +13,7 @@ POST /synthesize        – convert an uploaded EPUB/PDF to MP3 (simple TTS)
 POST /audiobook         – convert an uploaded EPUB/PDF to an M4B audiobook via LLM
 """
 
+import importlib.metadata
 import os
 import shutil
 import tempfile
@@ -35,13 +36,18 @@ from audify.utils.logging_utils import setup_logging
 
 logger = setup_logging(module_name=__name__)
 
+try:
+    _version = importlib.metadata.version("audify-cli")
+except importlib.metadata.PackageNotFoundError:
+    _version = "0.1.0"
+
 app = FastAPI(
     title="Audify API",
     description=(
         "Convert ebooks (EPUB, PDF, TXT) into audiobooks using Kokoro TTS "
         "and LLM-powered script generation."
     ),
-    version="0.1.0",
+    version=_version,
 )
 
 # ---------------------------------------------------------------------------
