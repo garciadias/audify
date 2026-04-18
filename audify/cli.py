@@ -46,7 +46,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
 try:
-    __version__ = importlib.metadata.version("audify")
+    __version__ = importlib.metadata.version("audify-cli")
 except importlib.metadata.PackageNotFoundError:
     __version__ = "0.1.0"
 
