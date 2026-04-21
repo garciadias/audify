@@ -67,6 +67,36 @@ class TestQwenTTSConfig:
 
         config = QwenTTSConfig()
         assert config.is_available() is False
+        assert mock_get.call_count == config.health_retries
+
+    @patch("audify.utils.api_config.requests.get")
+    def test_is_available_retries_until_healthy(self, mock_get):
+        """Test is_available retries unhealthy responses until healthy."""
+        unhealthy = Mock()
+        unhealthy.status_code = 200
+        unhealthy.json.return_value = {"status": "healthy", "model_loaded": False}
+
+        healthy = Mock()
+        healthy.status_code = 200
+        healthy.json.return_value = {"status": "healthy", "model_loaded": True}
+
+        mock_get.side_effect = [unhealthy, healthy]
+
+        config = QwenTTSConfig()
+        assert config.is_available() is True
+        assert mock_get.call_count == 2
+
+    @patch("audify.utils.api_config.requests.get")
+    def test_is_available_false_on_invalid_json(self, mock_get):
+        """Test is_available returns False when health endpoint returns invalid JSON."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("Invalid JSON")
+        mock_get.return_value = mock_response
+
+        config = QwenTTSConfig()
+        assert config.is_available() is False
+        assert mock_get.call_count == config.health_retries
 
     @patch("audify.utils.api_config.requests.get")
     def test_is_available_false_on_error(self, mock_get):
@@ -186,13 +216,18 @@ class TestQwenTTSIntegration:
         )
 
         try:
-            # Wait for server to start
-            time.sleep(3)
-
-            # Test config
             config = QwenTTSConfig(base_url="http://localhost:8892")
-            print("Testing health...")
-            assert config.is_available() is True
+
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if config.is_available():
+                    break
+                if proc.poll() is not None:
+                    stderr = (proc.stderr.read() or b"").decode("utf-8", "replace")
+                    pytest.fail(f"qwen_tts_api.py exited early: {stderr}")
+                time.sleep(0.5)
+            else:
+                pytest.fail("Mock Qwen server did not become healthy in 30s")
 
             # Get voices
             voices = config.get_available_voices()
@@ -210,4 +245,8 @@ class TestQwenTTSIntegration:
 
         finally:
             proc.terminate()
-            proc.wait(timeout=2)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)

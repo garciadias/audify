@@ -6,7 +6,7 @@ When running Audify with Qwen TTS provider, the application processes files (scr
 
 Example output:
 
-```
+```text
 data/output/vertical_federated_learning_concepts_advances_and_challenges/
 ├── scripts/          # ✓ Generated
 ├── episodes/         # ✓ Created but empty - no MP3 files!
@@ -54,9 +54,10 @@ INFO: 172.24.0.1:36260 - "POST /tts HTTP/1.1" 200 OK
 1. Audify makes health check request to Qwen API
 2. Request hangs (Docker networking issue)
 3. Health check times out/returns false
-4. `_verify_tts_provider_available()` raises RuntimeError
-5. NO audio synthesis happens
-6. Episodes folder is created but stays empty
+4. `_verify_tts_provider_available()` reports the provider as unavailable
+5. In strict mode (`AUDIFY_STRICT_TTS_PREFLIGHT=1`), Audify raises `RuntimeError`
+6. In default mode, Audify logs a warning and may continue until synthesis fails
+7. Episodes folder can be created but remain empty
 
 ## Solutions Implemented
 
@@ -66,7 +67,7 @@ Added `_verify_tts_provider_available()` method to catch TTS issues **before** s
 
 **Benefits:**
 
-- Fails fast instead of wasting 10+ minutes on LLM processing
+- Can fail fast when `AUDIFY_STRICT_TTS_PREFLIGHT=1`, avoiding wasted LLM processing
 - Clear error message about what's wrong
 - Specific guidance for each provider
 

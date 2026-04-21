@@ -68,7 +68,7 @@ services:
       - QWEN_TTS_DEVICE=cuda:0
       - QWEN_TTS_DTYPE=bfloat16
     volumes:
-      - qwen_hf_cache:/root/.cache/huggingface
+      - qwen_hf_cache:/home/appuser/.cache/huggingface
     healthcheck:
       test:
         [
