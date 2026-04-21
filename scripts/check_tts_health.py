@@ -6,6 +6,7 @@ This helps troubleshoot issues when audio files aren't being created.
 """
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -70,8 +71,13 @@ def check_docker_services() -> None:
     import subprocess
 
     try:
+        docker_bin = shutil.which("docker")
+        if docker_bin is None:
+            print("✗ Docker is not installed or not in PATH")
+            return
+
         result = subprocess.run(
-            ["docker", "ps", "--format", "{{.Names}}"],
+            [docker_bin, "ps", "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
             timeout=5,
@@ -109,8 +115,9 @@ def check_api_endpoints() -> None:
     print("Checking API Endpoints")
     print(f"{'=' * 60}")
 
+    qwen_config = get_tts_config(provider="qwen")
     endpoints = {
-        "Qwen TTS": "http://localhost:8890/health",
+        "Qwen TTS": getattr(qwen_config, "health_url", "http://localhost:8890/health"),
         "Kokoro TTS": f"{KOKORO_API_BASE_URL}/health",
     }
 

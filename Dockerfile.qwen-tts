@@ -27,6 +27,16 @@ RUN pip install --no-cache-dir --upgrade pip \
     soundfile \
     numpy
 
+RUN groupadd --gid 1001 appuser \
+    && useradd --uid 1001 --gid appuser --create-home appuser \
+    && mkdir -p /home/appuser/.cache/huggingface \
+    && chown -R appuser:appuser /app /home/appuser/.cache
+
+ENV HF_HOME=/home/appuser/.cache/huggingface \
+    HOME=/home/appuser
+
+USER appuser
+
 EXPOSE 8890
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=20 \

@@ -7,6 +7,7 @@ across different modules that interact with external APIs.
 
 import logging
 import os
+import random
 import re
 import time
 from abc import ABC, abstractmethod
@@ -15,7 +16,20 @@ from typing import Callable, List, Optional, TypeVar
 
 import boto3
 import requests
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    ConnectionClosedError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
 from litellm import completion
+from litellm import exceptions as litellm_exceptions
+
+try:
+    from google.api_core import exceptions as google_api_exceptions
+except ImportError:
+    google_api_exceptions = None
 
 from audify.utils.constants import (
     AWS_ACCESS_KEY_ID,
@@ -54,6 +68,73 @@ T = TypeVar("T")
 _DEFAULT_MAX_RETRIES = 5
 _DEFAULT_RETRY_DELAY = 5.0  # seconds between retries
 
+_LITELLM_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    requests.RequestException,
+    litellm_exceptions.APIConnectionError,
+    litellm_exceptions.InternalServerError,
+    litellm_exceptions.RateLimitError,
+    litellm_exceptions.ServiceUnavailableError,
+    litellm_exceptions.Timeout,
+)
+
+_AWS_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    EndpointConnectionError,
+    ConnectionClosedError,
+    ReadTimeoutError,
+    BotoCoreError,
+    ClientError,
+)
+
+_GOOGLE_RETRY_EXCEPTIONS: list[type[BaseException]] = [requests.RequestException]
+if google_api_exceptions is not None:
+    _GOOGLE_RETRY_EXCEPTIONS.extend([
+        google_api_exceptions.DeadlineExceeded,
+        google_api_exceptions.GoogleAPICallError,
+        google_api_exceptions.InternalServerError,
+        google_api_exceptions.ResourceExhausted,
+        google_api_exceptions.ServiceUnavailable,
+        google_api_exceptions.TooManyRequests,
+    ])
+
+
+def _extract_status_code(exc: BaseException) -> Optional[int]:
+    """Extract an HTTP-like status code from common exception types."""
+    response = getattr(exc, "response", None)
+    if response is not None:
+        status = getattr(response, "status_code", None)
+        if isinstance(status, int):
+            return status
+
+    for attr in ("status_code", "status"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _is_retriable_botocore_client_error(exc: BaseException) -> bool:
+    """Return True only for transient AWS ClientError codes."""
+    if not isinstance(exc, ClientError):
+        return True
+
+    code = exc.response.get("Error", {}).get("Code", "")
+    retriable_codes = {
+        "RequestTimeout",
+        "RequestTimeoutException",
+        "ServiceUnavailable",
+        "Throttling",
+        "ThrottlingException",
+        "TooManyRequestsException",
+    }
+    return code in retriable_codes
+
+
+def _compute_backoff_delay(retry_delay: float, attempt: int) -> float:
+    """Compute exponential backoff delay with jitter."""
+    exponential = retry_delay * (2 ** (attempt - 1))
+    jitter = random.uniform(0, retry_delay)
+    return min(exponential + jitter, 60.0)
+
 
 def _retry_request(
     func: Callable[[], T],
@@ -62,6 +143,7 @@ def _retry_request(
     max_retries: int = _DEFAULT_MAX_RETRIES,
     retry_delay: float = _DEFAULT_RETRY_DELAY,
     reraise: bool = False,
+    retry_on: tuple[type[BaseException], ...] = (requests.RequestException,),
 ) -> T:
     """Execute *func* with retries on transient HTTP/network failures.
 
@@ -70,15 +152,39 @@ def _retry_request(
     (``reraise=True``) or a ``RuntimeError`` is raised with a clear message
     naming the API that failed.
 
-    Only ``requests.RequestException`` (covers timeouts, connection errors,
-    HTTP errors raised via ``raise_for_status()``) and generic ``Exception``
-    from SDK clients (boto3, google-cloud, litellm) are caught.
+    Retries are limited to ``retry_on`` exception types.
     """
-    last_exc: Optional[Exception] = None
+    last_exc: Optional[BaseException] = None
     for attempt in range(1, max_retries + 1):
         try:
             return func()
-        except Exception as exc:
+        except retry_on as exc:
+            status_code = _extract_status_code(exc)
+            if (
+                status_code is not None
+                and 400 <= status_code < 500
+                and status_code not in (408, 429)
+            ):
+                last_exc = exc
+                logger.warning(
+                    "%s request failed with non-retriable status %d: %s",
+                    api_name,
+                    status_code,
+                    exc,
+                )
+                break
+
+            if isinstance(exc, ClientError) and not _is_retriable_botocore_client_error(
+                exc
+            ):
+                last_exc = exc
+                logger.warning(
+                    "%s failed with non-retriable AWS error: %s",
+                    api_name,
+                    exc,
+                )
+                break
+
             last_exc = exc
             logger.warning(
                 "%s request failed (attempt %d/%d): %s",
@@ -88,16 +194,12 @@ def _retry_request(
                 exc,
             )
             if attempt < max_retries:
-                logger.info(
-                    "Retrying %s in %.0fs…", api_name, retry_delay
-                )
-                time.sleep(retry_delay)
+                delay = _compute_backoff_delay(retry_delay, attempt)
+                logger.info("Retrying %s in %.2fs…", api_name, delay)
+                time.sleep(delay)
 
     # All retries exhausted
-    msg = (
-        f"{api_name} failed after {max_retries} attempts. "
-        f"Last error: {last_exc}"
-    )
+    msg = f"{api_name} failed after {max_retries} attempts. Last error: {last_exc}"
     logger.error(msg)
     if reraise and last_exc is not None:
         raise last_exc
@@ -342,9 +444,7 @@ class OpenAITTSConfig(TTSAPIConfig):
             return True
 
         try:
-            return _retry_request(
-                _do_request, api_name=f"OpenAI TTS ({self.base_url})"
-            )
+            return _retry_request(_do_request, api_name=f"OpenAI TTS ({self.base_url})")
         except RuntimeError:
             return False
 
@@ -474,7 +574,9 @@ class AWSTTSConfig(TTSAPIConfig):
 
         try:
             return _retry_request(
-                _do_request, api_name="AWS Polly TTS"
+                _do_request,
+                api_name="AWS Polly TTS",
+                retry_on=_AWS_RETRY_EXCEPTIONS,
             )
         except RuntimeError:
             return False
@@ -708,7 +810,9 @@ class GoogleTTSConfig(TTSAPIConfig):
 
         try:
             return _retry_request(
-                _do_request, api_name="Google Cloud TTS"
+                _do_request,
+                api_name="Google Cloud TTS",
+                retry_on=tuple(_GOOGLE_RETRY_EXCEPTIONS),
             )
         except RuntimeError:
             return False
@@ -732,11 +836,13 @@ class QwenTTSConfig(TTSAPIConfig):
         self.base_url = base_url or QWEN_API_BASE_URL
         self._available_voices: Optional[List[str]] = None
         self.health_timeout = self._parse_positive_int(
-            os.getenv("QWEN_HEALTH_TIMEOUT", "8"),
+            os.getenv("QWEN_HEALTH_TIMEOUT")
+            or _keys_config.get("QWEN_HEALTH_TIMEOUT", "8"),
             default=8,
         )
         self.health_retries = self._parse_positive_int(
-            os.getenv("QWEN_HEALTH_RETRIES", "3"),
+            os.getenv("QWEN_HEALTH_RETRIES")
+            or _keys_config.get("QWEN_HEALTH_RETRIES", "3"),
             default=3,
         )
 
@@ -774,36 +880,62 @@ class QwenTTSConfig(TTSAPIConfig):
             try:
                 response = requests.get(self.health_url, timeout=self.health_timeout)
                 if response.status_code == 200:
-                    data = response.json()
+                    try:
+                        data = response.json()
+                    except ValueError as e:
+                        last_error = e
+                        logger.debug(
+                            "Qwen API health check returned invalid JSON "
+                            f"(attempt {attempt}/{self.health_retries}): {e}"
+                        )
+                        if attempt < self.health_retries:
+                            time.sleep(min(2.0, 0.5 * attempt))
+                        continue
+
                     is_healthy = data.get("status") == "healthy" and data.get(
                         "model_loaded", False
                     )
-                    if not is_healthy:
-                        logger.debug(f"Qwen API responded but model not ready: {data}")
-                    return is_healthy
+                    if is_healthy:
+                        return True
+
+                    logger.debug(
+                        "Qwen API responded but model not ready "
+                        f"(attempt {attempt}/{self.health_retries}): {data}"
+                    )
+                    if attempt < self.health_retries:
+                        time.sleep(min(2.0, 0.5 * attempt))
+                    continue
 
                 logger.debug(
                     "Qwen API health check returned status "
                     f"{response.status_code} (attempt {attempt}/{self.health_retries})"
                 )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
             except requests.exceptions.Timeout as e:
                 last_error = e
                 logger.debug(
                     "Qwen-TTS health check timed out at "
                     f"{self.health_url} (attempt {attempt}/{self.health_retries})"
                 )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
             except requests.exceptions.ConnectionError as e:
                 last_error = e
                 logger.debug(
                     "Qwen-TTS health check connection failure at "
                     f"{self.health_url} (attempt {attempt}/{self.health_retries})"
                 )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
             except requests.RequestException as e:
                 last_error = e
                 logger.debug(
                     "Qwen-TTS health check request failed at "
                     f"{self.health_url} (attempt {attempt}/{self.health_retries}): {e}"
                 )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
 
         if isinstance(last_error, requests.exceptions.Timeout):
             logger.warning(
@@ -837,9 +969,15 @@ class QwenTTSConfig(TTSAPIConfig):
         """Synthesize text using Qwen-TTS API."""
         # Map language codes to Qwen-TTS language format
         qwen_language = {
-            "en": "Auto", "es": "Auto", "fr": "Auto",
-            "de": "Auto", "it": "Auto", "pt": "Auto",
-            "zh": "Auto", "ja": "Auto", "hi": "Auto",
+            "en": "Auto",
+            "es": "Auto",
+            "fr": "Auto",
+            "de": "Auto",
+            "it": "Auto",
+            "pt": "Auto",
+            "zh": "Auto",
+            "ja": "Auto",
+            "hi": "Auto",
         }.get(self.language, "Auto")
         payload = {
             "text": text,
@@ -850,7 +988,9 @@ class QwenTTSConfig(TTSAPIConfig):
 
         def _do_request() -> bool:
             response = requests.post(
-                self.tts_url, json=payload, timeout=self.timeout,
+                self.tts_url,
+                json=payload,
+                timeout=self.timeout,
             )
             response.raise_for_status()
             content = response.content
@@ -1100,6 +1240,7 @@ class CommercialAPIConfig(APIConfig):
                 max_tokens=num_predict,
                 seed=seed,
                 request_timeout=self.timeout,
+                num_retries=0,
             )
             return resp.choices[0].message.content
 
@@ -1107,6 +1248,7 @@ class CommercialAPIConfig(APIConfig):
             _do_request,
             api_name=f"Commercial LLM API ({self.model})",
             reraise=True,
+            retry_on=_LITELLM_RETRY_EXCEPTIONS,
         )
 
 
@@ -1188,6 +1330,7 @@ class OllamaAPIConfig(APIConfig):
             _do_request,
             api_name=f"Ollama LLM ({self.base_url}, {self.model})",
             reraise=True,
+            retry_on=_LITELLM_RETRY_EXCEPTIONS,
         )
 
 

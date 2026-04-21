@@ -18,6 +18,7 @@ usage
 tasks
 configuration
 rest-api
+troubleshooting-no-audio
 ```
 
 ```{toctree}

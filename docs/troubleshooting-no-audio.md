@@ -62,13 +62,13 @@ export AUDIFY_SKIP_TTS_PREFLIGHT=1
 
 ```bash
 # Start the Qwen TTS container with GPU support
-docker-compose -f docker-compose.yml up -d qwen-tts --profile qwen
+docker compose --profile qwen -f docker-compose.yml up -d qwen-tts
 
 # Check if container is running
-docker-compose ps qwen-tts
+docker compose ps qwen-tts
 
 # View container logs
-docker-compose logs -f qwen-tts
+docker compose logs -f qwen-tts
 
 # Test health endpoint from inside container (should work)
 docker exec $(docker ps -q -f "name=qwen") curl -s http://localhost:8890/health | python3 -m json.tool
@@ -78,10 +78,10 @@ docker exec $(docker ps -q -f "name=qwen") curl -s http://localhost:8890/health 
 
 ```bash
 # Start the Kokoro TTS container
-docker-compose -f docker-compose.yml up -d kokoro --profile kokoro
+docker compose --profile kokoro -f docker-compose.yml up -d kokoro
 
 # Check if container is running
-docker-compose ps kokoro
+docker compose ps kokoro
 ```
 
 ---
@@ -106,7 +106,7 @@ Use the Dockerfile.api to run Audify in a Docker container where it can connect 
 
 ```bash
 # Build and run API container
-docker-compose -f docker-compose.yml up -d api --profile qwen
+docker compose --profile qwen -f docker-compose.yml up -d api
 
 # The API is then available at http://localhost:8000
 # Or run commands inside the container:
@@ -133,7 +133,7 @@ qwen-tts:
 Then restart:
 
 ```bash
-docker-compose -f docker-compose.yml up -d qwen-tts --profile qwen
+docker compose --profile qwen -f docker-compose.yml up -d qwen-tts
 ```
 
 #### Option 3: Use Docker DNS Resolution
@@ -146,10 +146,17 @@ services:
     # ... config ...
 ```
 
-And in audify, use the service name instead of localhost:
+If Audify runs inside the Docker Compose network, use the service name:
 
 ```bash
-export QWEN_API_URL=http://qwen-tts:8890
+docker exec audify-api env QWEN_API_URL=http://qwen-tts:8890 \
+   uv run audify /app/data/input.pdf --tts-provider qwen
+```
+
+If Audify runs on the host machine, use localhost with the mapped port:
+
+```bash
+export QWEN_API_URL=http://localhost:8890
 uv run audify input.pdf --tts-provider qwen
 ```
 
@@ -169,7 +176,7 @@ Qwen TTS takes time to load the model (2-3 minutes) on first run.
 
 ```bash
 # Watch the logs
-docker-compose logs -f qwen-tts
+docker compose logs -f qwen-tts
 
 # Wait until you see: "✓ Model loaded successfully"
 # Then try again
@@ -220,7 +227,7 @@ runtime: nvidia
 Or fall back to CPU (slower):
 
 ```bash
-docker-compose -f docker-compose.yml up qwen-tts -e QWEN_TTS_DEVICE=cpu
+QWEN_TTS_DEVICE=cpu docker compose --profile qwen -f docker-compose.yml up -d qwen-tts
 ```
 
 ---
@@ -233,7 +240,7 @@ docker-compose -f docker-compose.yml up qwen-tts -e QWEN_TTS_DEVICE=cpu
 
    ```bash
    docker ps
-   docker-compose ps
+   docker compose ps
    ```
 
 2. **Check TTS container is running:**
@@ -287,8 +294,8 @@ Check application logs for detailed error messages:
 cat audify.log
 
 # Docker container logs
-docker-compose logs qwen-tts
-docker-compose logs api
+docker compose logs qwen-tts
+docker compose logs api
 
 # System logs (macOS)
 log stream --predicate 'process == "Docker"'
@@ -356,7 +363,7 @@ If issues persist:
 2. **Collect logs:**
 
    ```bash
-   docker-compose logs qwen-tts > qwen_logs.txt
+   docker compose logs qwen-tts > qwen_logs.txt
    cat audify.log > audify_logs.txt
    ```
 
@@ -382,10 +389,10 @@ If issues persist:
 
 ```bash
 # 1. Start Qwen TTS
-docker-compose -f docker-compose.yml up -d qwen-tts --profile qwen
+docker compose --profile qwen -f docker-compose.yml up -d qwen-tts
 
 # 2. Wait for model to load (check logs)
-docker-compose logs -f qwen-tts
+docker compose logs -f qwen-tts
 
 # 3. Verify it's working
 uv run python scripts/check_tts_health.py
@@ -399,7 +406,7 @@ uv run audify input.pdf --task audiobook --language en --tts-provider qwen
 
 ```bash
 # 1. Start all services
-docker-compose -f docker-compose.yml up -d --profile qwen
+docker compose --profile qwen -f docker-compose.yml up -d
 
 # 2. Run Audify inside container
 docker exec audify-api uv run audify /app/data/input.pdf --tts-provider qwen
@@ -414,5 +421,5 @@ docker exec audify-api ls -la /app/data/output/
 
 1. Check the [Docker troubleshooting guide](https://docs.docker.com/config/containers/container-networking/)
 2. Review [NVIDIA Docker setup](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/user-guide.html)
-3. Review the main [README.md](../README.md)
+3. Review the main [README](https://github.com/garciadias/audify#readme)
 4. Check [issue tracker](https://github.com/you/audify/issues) for similar problems
