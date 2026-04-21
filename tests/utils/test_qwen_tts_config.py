@@ -97,9 +97,12 @@ class TestQwenTTSConfig:
     @patch("audify.utils.api_config.requests.post")
     def test_synthesize_success(self, mock_post, tmp_path):
         """Test synthesize creates audio file on success."""
+        # Content must be >= 44 bytes (WAV header size) to pass validation
+        fake_wav = b"\x00" * 44 + b"fake audio content"
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.content = b"fake audio content"
+        mock_response.content = fake_wav
+        mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
 
         config = QwenTTSConfig(voice="Vivian", language="en")
@@ -109,7 +112,7 @@ class TestQwenTTSConfig:
 
         assert result is True
         assert output_path.exists()
-        assert output_path.read_bytes() == b"fake audio content"
+        assert output_path.read_bytes() == fake_wav
 
         # Verify request payload
         call_json = mock_post.call_args.kwargs["json"]
@@ -117,11 +120,15 @@ class TestQwenTTSConfig:
         assert call_json["language"] == "Auto"
         assert call_json["speaker"] == "Vivian"
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.requests.post")
-    def test_synthesize_api_error(self, mock_post, tmp_path):
-        """Test synthesize returns False on API error."""
+    def test_synthesize_api_error(self, mock_post, mock_sleep, tmp_path):
+        """Test synthesize returns False on persistent API error."""
+        import requests as req
+
         mock_response = Mock()
         mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = req.HTTPError("500")
         mock_post.return_value = mock_response
 
         config = QwenTTSConfig()
@@ -131,9 +138,10 @@ class TestQwenTTSConfig:
 
         assert result is False
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.requests.post")
-    def test_synthesize_request_exception(self, mock_post, tmp_path):
-        """Test synthesize returns False on request exception."""
+    def test_synthesize_request_exception(self, mock_post, mock_sleep, tmp_path):
+        """Test synthesize returns False on persistent request exception."""
         import requests
 
         mock_post.side_effect = requests.RequestException("Network error")

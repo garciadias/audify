@@ -3,7 +3,6 @@
 Helper functions for Audify CLI - Factory and utility functions for conversion.
 """
 
-import logging
 
 import requests
 
@@ -17,25 +16,31 @@ from audify.utils.constants import KOKORO_API_BASE_URL
 
 def get_available_models_and_voices():
     """Get available models and voices from Kokoro API."""
-    logger = logging.getLogger(__name__)
-    try:
-        # Get models
-        models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
+    from audify.utils.api_config import _retry_request
+
+    def _fetch():
+        models_response = requests.get(
+            f"{KOKORO_API_BASE_URL}/models", timeout=10
+        )
         models_response.raise_for_status()
         models_data = models_response.json().get("data", [])
-        models = sorted([model.get("id") for model in models_data if "id" in model])
+        models = sorted(
+            [model.get("id") for model in models_data if "id" in model]
+        )
 
-        # Get voices
         voices_response = requests.get(
             f"{KOKORO_API_BASE_URL}/audio/voices", timeout=10
         )
         voices_response.raise_for_status()
         voices_data = voices_response.json().get("voices", [])
         voices = sorted(voices_data)
-
         return models, voices
-    except requests.RequestException as e:
-        logger.error(f"Error fetching models and voices from Kokoro API: {e}")
+
+    try:
+        return _retry_request(
+            _fetch, api_name=f"Kokoro API ({KOKORO_API_BASE_URL})"
+        )
+    except RuntimeError:
         return [], []
 
 

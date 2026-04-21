@@ -453,10 +453,22 @@ def cli(
         click.echo("Available models:".center(terminal_width))
         click.echo("=" * terminal_width)
         try:
-            response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=5)
-            response.raise_for_status()
-            models = response.json().get("data", [])
-            model_names = sorted(model.get("id") for model in models if "id" in model)
+            from audify.utils.api_config import _retry_request
+
+            def _fetch_models():
+                resp = requests.get(
+                    f"{KOKORO_API_BASE_URL}/models", timeout=5
+                )
+                resp.raise_for_status()
+                return resp.json().get("data", [])
+
+            models = _retry_request(
+                _fetch_models,
+                api_name=f"Kokoro API ({KOKORO_API_BASE_URL}/models)",
+            )
+            model_names = sorted(
+                model.get("id") for model in models if "id" in model
+            )
             click.echo("\n".join(model_names))
         except Exception as e:
             click.echo(f"Error fetching models from Kokoro API: {e}")

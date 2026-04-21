@@ -8,9 +8,10 @@ across different modules that interact with external APIs.
 import logging
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional, TypeVar
 
 import boto3
 import requests
@@ -42,6 +43,65 @@ from audify.utils.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+# ---------------------------------------------------------------------------
+# Shared retry helper
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MAX_RETRIES = 5
+_DEFAULT_RETRY_DELAY = 5.0  # seconds between retries
+
+
+def _retry_request(
+    func: Callable[[], T],
+    *,
+    api_name: str,
+    max_retries: int = _DEFAULT_MAX_RETRIES,
+    retry_delay: float = _DEFAULT_RETRY_DELAY,
+    reraise: bool = False,
+) -> T:
+    """Execute *func* with retries on transient HTTP/network failures.
+
+    On each failure the helper waits *retry_delay* seconds before retrying.
+    After all retries are exhausted the last exception is either re-raised
+    (``reraise=True``) or a ``RuntimeError`` is raised with a clear message
+    naming the API that failed.
+
+    Only ``requests.RequestException`` (covers timeouts, connection errors,
+    HTTP errors raised via ``raise_for_status()``) and generic ``Exception``
+    from SDK clients (boto3, google-cloud, litellm) are caught.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return func()
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "%s request failed (attempt %d/%d): %s",
+                api_name,
+                attempt,
+                max_retries,
+                exc,
+            )
+            if attempt < max_retries:
+                logger.info(
+                    "Retrying %s in %.0fs…", api_name, retry_delay
+                )
+                time.sleep(retry_delay)
+
+    # All retries exhausted
+    msg = (
+        f"{api_name} failed after {max_retries} attempts. "
+        f"Last error: {last_exc}"
+    )
+    logger.error(msg)
+    if reraise and last_exc is not None:
+        raise last_exc
+    raise RuntimeError(msg) from last_exc
 
 
 class APIConfig:
@@ -190,7 +250,8 @@ class KokoroTTSConfig(TTSAPIConfig):
 
     def synthesize(self, text: str, output_path: Path) -> bool:
         """Synthesize text using Kokoro API."""
-        try:
+
+        def _do_request() -> bool:
             lang_code = LANG_CODES.get(self.language, "a")
             response = requests.post(
                 self.speech_url,
@@ -204,15 +265,16 @@ class KokoroTTSConfig(TTSAPIConfig):
                 },
                 timeout=self.timeout,
             )
-            if response.status_code == 200:
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-                return True
-            else:
-                logger.error(f"Kokoro API error: {response.status_code}")
-                return False
-        except requests.RequestException as e:
-            logger.error(f"Kokoro synthesis failed: {e}")
+            response.raise_for_status()
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+            return True
+
+        try:
+            return _retry_request(
+                _do_request, api_name=f"Kokoro TTS ({self.speech_url})"
+            )
+        except RuntimeError:
             return False
 
 
@@ -257,7 +319,7 @@ class OpenAITTSConfig(TTSAPIConfig):
             logger.error("OpenAI API key not configured")
             return False
 
-        try:
+        def _do_request() -> bool:
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
@@ -274,17 +336,16 @@ class OpenAITTSConfig(TTSAPIConfig):
                 json=data,
                 timeout=self.timeout,
             )
-            if response.status_code == 200:
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-                return True
-            else:
-                logger.error(
-                    f"OpenAI TTS API error: {response.status_code} - {response.text}"
-                )
-                return False
-        except requests.RequestException as e:
-            logger.error(f"OpenAI TTS synthesis failed: {e}")
+            response.raise_for_status()
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+            return True
+
+        try:
+            return _retry_request(
+                _do_request, api_name=f"OpenAI TTS ({self.base_url})"
+            )
+        except RuntimeError:
             return False
 
 
@@ -381,16 +442,14 @@ class AWSTTSConfig(TTSAPIConfig):
 
     def synthesize(self, text: str, output_path: Path) -> bool:
         """Synthesize text using AWS Polly."""
-        try:
+        # Polly has a 3000 character limit for standard synthesis
+        max_chars = 3000
+        if len(text) > max_chars:
+            logger.warning(f"Text exceeds {max_chars} chars, truncating for Polly")
+            text = text[:max_chars]
+
+        def _do_request() -> bool:
             client = self._get_polly_client()
-
-            # Polly has a 3000 character limit for standard synthesis
-            # Split text if needed
-            max_chars = 3000
-            if len(text) > max_chars:
-                logger.warning(f"Text exceeds {max_chars} chars, truncating for Polly")
-                text = text[:max_chars]
-
             response = client.synthesize_speech(
                 Text=text,
                 OutputFormat="pcm",
@@ -399,24 +458,25 @@ class AWSTTSConfig(TTSAPIConfig):
                 SampleRate="24000",
             )
 
-            # Convert PCM to WAV
-            if "AudioStream" in response:
-                import wave
+            if "AudioStream" not in response:
+                raise RuntimeError("No audio stream in Polly response")
 
-                pcm_data = response["AudioStream"].read()
+            import wave
 
-                with wave.open(str(output_path), "wb") as wav_file:
-                    wav_file.setnchannels(1)
-                    wav_file.setsampwidth(2)  # 16-bit
-                    wav_file.setframerate(24000)
-                    wav_file.writeframes(pcm_data)
-                return True
-            else:
-                logger.error("No audio stream in Polly response")
-                return False
+            pcm_data = response["AudioStream"].read()
 
-        except Exception as e:
-            logger.error(f"AWS Polly synthesis failed: {e}")
+            with wave.open(str(output_path), "wb") as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(24000)
+                wav_file.writeframes(pcm_data)
+            return True
+
+        try:
+            return _retry_request(
+                _do_request, api_name="AWS Polly TTS"
+            )
+        except RuntimeError:
             return False
 
 
@@ -620,7 +680,8 @@ class GoogleTTSConfig(TTSAPIConfig):
 
     def synthesize(self, text: str, output_path: Path) -> bool:
         """Synthesize text using Google Cloud TTS."""
-        try:
+
+        def _do_request() -> bool:
             from google.cloud import texttospeech
 
             client = self._get_client()
@@ -641,13 +702,15 @@ class GoogleTTSConfig(TTSAPIConfig):
                 audio_config=audio_config,
             )
 
-            # Write WAV file
             with open(output_path, "wb") as f:
                 f.write(response.audio_content)
             return True
 
-        except Exception as e:
-            logger.error(f"Google TTS synthesis failed: {e}")
+        try:
+            return _retry_request(
+                _do_request, api_name="Google Cloud TTS"
+            )
+        except RuntimeError:
             return False
 
 
@@ -772,59 +835,40 @@ class QwenTTSConfig(TTSAPIConfig):
 
     def synthesize(self, text: str, output_path: Path) -> bool:
         """Synthesize text using Qwen-TTS API."""
-        try:
-            # Map language codes to Qwen-TTS language format
-            # Qwen-TTS uses "Auto" by default for automatic language detection
-            language_map = {
-                "en": "Auto",
-                "es": "Auto",
-                "fr": "Auto",
-                "de": "Auto",
-                "it": "Auto",
-                "pt": "Auto",
-                "zh": "Auto",
-                "ja": "Auto",
-                "hi": "Auto",
-            }
-            qwen_language = language_map.get(self.language, "Auto")
+        # Map language codes to Qwen-TTS language format
+        qwen_language = {
+            "en": "Auto", "es": "Auto", "fr": "Auto",
+            "de": "Auto", "it": "Auto", "pt": "Auto",
+            "zh": "Auto", "ja": "Auto", "hi": "Auto",
+        }.get(self.language, "Auto")
+        payload = {
+            "text": text,
+            "language": qwen_language,
+            "speaker": self.voice,
+            "instruct": None,
+        }
 
+        def _do_request() -> bool:
             response = requests.post(
-                self.tts_url,
-                json={
-                    "text": text,
-                    "language": qwen_language,
-                    "speaker": self.voice,
-                    "instruct": None,  # Optional instruction for voice style
-                },
-                timeout=self.timeout,
+                self.tts_url, json=payload, timeout=self.timeout,
             )
+            response.raise_for_status()
+            content = response.content
+            if len(content) < 44:
+                raise ValueError(
+                    f"Qwen-TTS returned suspiciously small response "
+                    f"({len(content)} bytes)"
+                )
+            with open(output_path, "wb") as f:
+                f.write(content)
+            return True
 
-            if response.status_code == 200:
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-                return True
-            else:
-                logger.error(f"Qwen-TTS API error: {response.status_code}")
-                if response.status_code == 500:
-                    logger.error(
-                        "Qwen-TTS returned 500 error. Check container logs: "
-                        "`docker-compose logs qwen-tts`"
-                    )
-                return False
-        except requests.exceptions.Timeout:
-            logger.error(
-                f"Qwen-TTS synthesis request timed out after {self.timeout}s. "
-                f"The API may be overloaded or unresponsive at {self.tts_url}"
+        try:
+            return _retry_request(
+                _do_request,
+                api_name=f"Qwen TTS ({self.tts_url})",
             )
-            return False
-        except requests.exceptions.ConnectionError as e:
-            logger.error(
-                f"Qwen-TTS connection error: {e}. "
-                f"Verify the API is accessible at {self.tts_url}"
-            )
-            return False
-        except requests.RequestException as e:
-            logger.error(f"Qwen-TTS synthesis failed: {e}")
+        except RuntimeError:
             return False
 
 
@@ -1047,16 +1091,23 @@ class CommercialAPIConfig(APIConfig):
         if not messages:
             raise ValueError("Must provide either prompt or user_prompt")
 
-        response = completion(
-            model=self.model,
-            messages=messages,
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=num_predict,
-            seed=seed,
-            request_timeout=self.timeout,
+        def _do_request() -> str:
+            resp = completion(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=num_predict,
+                seed=seed,
+                request_timeout=self.timeout,
+            )
+            return resp.choices[0].message.content
+
+        return _retry_request(
+            _do_request,
+            api_name=f"Commercial LLM API ({self.model})",
+            reraise=True,
         )
-        return response.choices[0].message.content
 
 
 class OllamaAPIConfig(APIConfig):
@@ -1117,21 +1168,27 @@ class OllamaAPIConfig(APIConfig):
         if not messages:
             raise ValueError("Must provide either prompt or user_prompt")
 
-        response = completion(
-            model=f"ollama/{self.model}",
-            messages=messages,
-            api_base=self.base_url,
-            temperature=temperature,
-            top_p=top_p,
-            seed=seed,
-            num_ctx=num_ctx,
-            top_k=top_k,
-            max_tokens=num_predict,
-            repeat_penalty=repeat_penalty,
-            request_timeout=self.timeout,
-            # reasoning_effort="high",
+        def _do_request() -> str:
+            resp = completion(
+                model=f"ollama/{self.model}",
+                messages=messages,
+                api_base=self.base_url,
+                temperature=temperature,
+                top_p=top_p,
+                seed=seed,
+                num_ctx=num_ctx,
+                top_k=top_k,
+                max_tokens=num_predict,
+                repeat_penalty=repeat_penalty,
+                request_timeout=self.timeout,
+            )
+            return resp.choices[0].message.content
+
+        return _retry_request(
+            _do_request,
+            api_name=f"Ollama LLM ({self.base_url}, {self.model})",
+            reraise=True,
         )
-        return response.choices[0].message.content
 
 
 class OllamaTranslationConfig(OllamaAPIConfig):
