@@ -3,7 +3,6 @@
 Helper functions for Audify CLI - Factory and utility functions for conversion.
 """
 
-
 import requests
 
 from audify.audiobook_creator import (
@@ -19,14 +18,10 @@ def get_available_models_and_voices():
     from audify.utils.api_config import _retry_request
 
     def _fetch():
-        models_response = requests.get(
-            f"{KOKORO_API_BASE_URL}/models", timeout=10
-        )
+        models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
         models_response.raise_for_status()
         models_data = models_response.json().get("data", [])
-        models = sorted(
-            [model.get("id") for model in models_data if "id" in model]
-        )
+        models = sorted([model.get("id") for model in models_data if "id" in model])
 
         voices_response = requests.get(
             f"{KOKORO_API_BASE_URL}/audio/voices", timeout=10
@@ -37,9 +32,7 @@ def get_available_models_and_voices():
         return models, voices
 
     try:
-        return _retry_request(
-            _fetch, api_name=f"Kokoro API ({KOKORO_API_BASE_URL})"
-        )
+        return _retry_request(_fetch, api_name=f"Kokoro API ({KOKORO_API_BASE_URL})")
     except RuntimeError:
         return [], []
 
@@ -60,6 +53,7 @@ def get_creator(
     tts_provider: str | None = None,
     task: str | None = None,
     prompt_file: str | None = None,
+    mode: str = "full",
 ) -> AudiobookCreator:
     """Get the appropriate AudiobookCreator subclass based on file extension.
 
@@ -90,6 +84,7 @@ def get_creator(
             tts_provider=tts_provider,
             task=task,
             prompt_file=prompt_file,
+            mode=mode,
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
@@ -107,6 +102,7 @@ def get_creator(
             tts_provider=tts_provider,
             task=task,
             prompt_file=prompt_file,
+            mode=mode,
         )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")

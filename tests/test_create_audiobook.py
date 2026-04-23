@@ -54,6 +54,7 @@ class TestGetCreator:
                 tts_provider=None,
                 task=None,
                 prompt_file=None,
+                mode="full",
             )
 
     def test_get_creator_pdf(self):
@@ -91,6 +92,7 @@ class TestGetCreator:
                 tts_provider=None,
                 task=None,
                 prompt_file=None,
+                mode="full",
                 # Note: max_chapters is not passed to PDF creator
             )
 

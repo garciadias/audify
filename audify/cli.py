@@ -333,6 +333,21 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     help="Maximum number of voice samples to create when using --create-voice-samples.",
 )
 @click.option(
+    "--process-only",
+    is_flag=True,
+    default=False,
+    help="Only extract text and generate scripts (no TTS synthesis). "
+    "Use --synthesize-only later to produce audio.",
+)
+@click.option(
+    "--synthesize-only",
+    is_flag=True,
+    default=False,
+    help="Skip text extraction and script generation; synthesise "
+    "audio from previously saved scripts (requires a prior "
+    "--process-only run).",
+)
+@click.option(
     "--verbose",
     is_flag=True,
     help="Show detailed log messages in terminal.",
@@ -361,6 +376,8 @@ def cli(
     list_tts_providers: bool,
     create_voice_samples: bool,
     max_samples: int,
+    process_only: bool,
+    synthesize_only: bool,
     verbose: bool,
     path: str | None,
 ):
@@ -456,9 +473,7 @@ def cli(
             from audify.utils.api_config import _retry_request
 
             def _fetch_models():
-                resp = requests.get(
-                    f"{KOKORO_API_BASE_URL}/models", timeout=5
-                )
+                resp = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=5)
                 resp.raise_for_status()
                 return resp.json().get("data", [])
 
@@ -466,9 +481,7 @@ def cli(
                 _fetch_models,
                 api_name=f"Kokoro API ({KOKORO_API_BASE_URL}/models)",
             )
-            model_names = sorted(
-                model.get("id") for model in models if "id" in model
-            )
+            model_names = sorted(model.get("id") for model in models if "id" in model)
             click.echo("\n".join(model_names))
         except Exception as e:
             click.echo(f"Error fetching models from Kokoro API: {e}")
@@ -514,6 +527,21 @@ def cli(
     output = _resolve_output_path_for_runtime(output, logger)
 
     effective_llm_model = llm_model or OLLAMA_DEFAULT_MODEL
+
+    # Resolve processing mode from CLI flags
+    if process_only and synthesize_only:
+        click.echo(
+            "Error: --process-only and --synthesize-only are mutually exclusive.",
+            err=True,
+        )
+        ctx.exit(1)
+    if process_only:
+        mode = "process"
+    elif synthesize_only:
+        mode = "synthesize"
+    else:
+        mode = "full"
+
     path_obj = Path(path_str)
 
     if not path_obj.exists():
@@ -533,6 +561,7 @@ def cli(
         click.echo(f"LLM Model: {effective_llm_model}")
         click.echo(f"TTS Provider: {tts_provider}")
         click.echo(f"Task: {task}")
+        click.echo(f"Mode: {mode}")
         if prompt_file:
             click.echo(f"Prompt file: {prompt_file}")
         if translate:
@@ -545,6 +574,7 @@ def cli(
         logger.info(f"LLM Model: {effective_llm_model}")
         logger.info(f"TTS Provider: {tts_provider}")
         logger.info(f"Task: {task}")
+        logger.info(f"Mode: {mode}")
         if prompt_file:
             logger.info(f"Prompt file: {prompt_file}")
         if translate:
@@ -565,6 +595,7 @@ def cli(
                 tts_provider=tts_provider,
                 task=task,
                 prompt_file=prompt_file,
+                mode=mode,
             )
             output_path = dir_creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
@@ -620,6 +651,7 @@ def cli(
         click.echo(f"LLM Model: {effective_llm_model}")
         click.echo(f"TTS Provider: {tts_provider}")
         click.echo(f"Task: {task}")
+        click.echo(f"Mode: {mode}")
         if prompt_file:
             click.echo(f"Prompt file: {prompt_file}")
         if translate:
@@ -634,6 +666,7 @@ def cli(
         logger.info(f"LLM Model: {effective_llm_model}")
         logger.info(f"TTS Provider: {tts_provider}")
         logger.info(f"Task: {task}")
+        logger.info(f"Mode: {mode}")
         if prompt_file:
             logger.info(f"Prompt file: {prompt_file}")
         if translate:
@@ -658,6 +691,7 @@ def cli(
                 tts_provider=tts_provider,
                 task=task,
                 prompt_file=prompt_file,
+                mode=mode,
             )
             output_path = creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
