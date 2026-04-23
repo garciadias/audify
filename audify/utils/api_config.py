@@ -1007,6 +1007,7 @@ class QwenTTSConfig(TTSAPIConfig):
             return _retry_request(
                 _do_request,
                 api_name=f"Qwen TTS ({self.tts_url})",
+                retry_on=(requests.RequestException, ValueError),
             )
         except RuntimeError:
             return False
