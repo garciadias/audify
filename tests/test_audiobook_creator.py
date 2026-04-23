@@ -824,6 +824,7 @@ class TestAudiobookCreatorCreateSeries:
         creator.max_chapters = None
         creator.translate = None
         creator.resolved_language = "en"
+        creator.scripts_path = Path("/fake/scripts")
 
         # Mock EPUB reader
         mock_reader = Mock(spec=EpubReader)
@@ -831,6 +832,7 @@ class TestAudiobookCreatorCreateSeries:
             "Chapter 1 content",
             "Chapter 2 content",
         ]
+        mock_reader.get_chapter_title.return_value = "Chapter Title"
         creator.reader = mock_reader
 
         # Mock Path.exists to return True for episodes
@@ -865,6 +867,7 @@ class TestAudiobookCreatorCreateSeries:
         creator.max_chapters = None
         creator.translate = None
         creator.resolved_language = "en"
+        creator.scripts_path = Path("/fake/scripts")
 
         # Mock PDF reader
         mock_reader = Mock()
