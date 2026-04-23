@@ -190,3 +190,5 @@ input
 
 .plans/
 bin/
+
+.sisyphus/
