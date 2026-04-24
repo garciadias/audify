@@ -2,18 +2,13 @@
 
 import io
 import json
-import os
 import threading
 import time
 import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pytest
-
-from audify.utils.api_config import QwenTTSConfig
 
 
 def _make_wav_bytes(duration_s: float = 0.1, sample_rate: int = 24000) -> bytes:
@@ -42,7 +37,6 @@ class QwenMockHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
-
 
     def do_GET(self):
         if self.path.startswith("/models"):
@@ -188,7 +182,7 @@ def unrecov_qwen_server_fixt():
 @pytest.fixture
 def cleanup_qwen_servers():
     """Ensure all mock servers are shut down after test."""
-    yield
+    return
     # Servers should have been shut down by fixtures themselves
     # This is a safety net
 
@@ -208,8 +202,8 @@ def test_flaky_server_recovery(flaky_qwen_server):
     # First two requests should fail
     for i in range(2):
         response = requests.post("http://127.0.0.1:18891/tts", timeout=5)
-        assert response.status_code == 503, f"Expected 503 on attempt {i+1}"
-    
+        assert response.status_code == 503, f"Expected 503 on attempt {i + 1}"
+
     # Third request should succeed
     response = requests.post("http://127.0.0.1:18891/tts", timeout=5)
     assert response.status_code == 200

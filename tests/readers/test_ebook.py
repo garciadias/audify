@@ -1294,7 +1294,7 @@ class TestEpubReaderTocGrouping:
     def test_merge_items_decode_failure(
         self, mock_read_epub, temp_epub_path, mock_epub_book
     ):
-        """Item whose body content cannot be decoded is skipped in a multi-item merge."""
+        """Item with undecodable body is skipped in a multi-item merge."""
         mock_read_epub.return_value = mock_epub_book
         reader = EpubReader(temp_epub_path)
         bad_item = Mock()
@@ -1317,7 +1317,6 @@ class TestEpubReaderTocGrouping:
     ):
         """Content with many links and multiple TOC indicators is classified as TOC."""
         mock_read_epub.return_value = mock_epub_book
-        reader = EpubReader(temp_epub_path)
         html = (
             "<html><body>"
             "<h1>Table of Contents</h1>"
@@ -1342,7 +1341,6 @@ class TestEpubReaderTocGrouping:
     ):
         """Normal chapter prose is not classified as TOC."""
         mock_read_epub.return_value = mock_epub_book
-        reader = EpubReader(temp_epub_path)
         html = (
             "<html><body>"
             "<p>The quick brown fox jumps over the lazy dog. "
@@ -1364,7 +1362,6 @@ class TestEpubReaderTocGrouping:
     ):
         """Text with 3+ copyright indicators returns True."""
         mock_read_epub.return_value = mock_epub_book
-        reader = EpubReader(temp_epub_path)
         # _is_valid_chapter lowercases before calling _looks_like_copyright
         text = (
             "copyright \u00a9 2024 example publishing. "
@@ -1378,7 +1375,6 @@ class TestEpubReaderTocGrouping:
     ):
         """Regular prose without enough indicators returns False."""
         mock_read_epub.return_value = mock_epub_book
-        reader = EpubReader(temp_epub_path)
         text = (
             "This is a regular paragraph without any copyright information. "
             "It contains only normal narrative text."
@@ -1472,7 +1468,7 @@ class TestEpubReaderTocGrouping:
     def test_get_chapters_grouped_by_toc_single_chapter_blob_check(
         self, mock_read_epub, temp_epub_path, mock_epub_book
     ):
-        """Only 1 chapter from many TOC entries triggers fallback (single-blob guard)."""
+        """1 chapter from many TOC entries triggers fallback (single-blob guard)."""
         mock_read_epub.return_value = mock_epub_book
         reader = EpubReader(temp_epub_path)
 
@@ -1519,27 +1515,27 @@ class TestEpubReaderTocGrouping:
             Link("Text/ch4.xhtml", "Ch 4"),
         ]
 
-        valid_body = b"<html><body><p>" + b"Valid content. " * 20 + b"</p></body></html>"
+        body = b"<html><body><p>" + b"Valid content. " * 20 + b"</p></body></html>"
 
         ch1 = Mock()
         ch1.get_name.return_value = "Text/ch1.xhtml"
         ch1.get_type.return_value = ITEM_DOCUMENT
-        ch1.get_body_content.return_value = valid_body
+        ch1.get_body_content.return_value = body
 
         ch2 = Mock()
         ch2.get_name.return_value = "Text/ch2.xhtml"
         ch2.get_type.return_value = ITEM_DOCUMENT
-        ch2.get_body_content.return_value = valid_body
+        ch2.get_body_content.return_value = body
 
         ch3 = Mock()
         ch3.get_name.return_value = "Text/ch3.xhtml"
         ch3.get_type.return_value = ITEM_DOCUMENT
-        ch3.get_body_content.return_value = valid_body
+        ch3.get_body_content.return_value = body
 
         ch4 = Mock()
         ch4.get_name.return_value = "Text/ch4.xhtml"
         ch4.get_type.return_value = ITEM_DOCUMENT
-        ch4.get_body_content.return_value = valid_body
+        ch4.get_body_content.return_value = body
 
         reader.book.spine = [
             ("ch1_id", "yes"),

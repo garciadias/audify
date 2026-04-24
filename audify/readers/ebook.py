@@ -6,8 +6,8 @@ from typing import Optional, Union
 import bs4
 from bs4 import Tag
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
-from audify.domain.reader import Reader
 
+from audify.domain.reader import Reader
 from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 
 # Minimum number of TOC-to-spine matches before we trust TOC-based grouping.
