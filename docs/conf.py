@@ -61,3 +61,15 @@ html_theme_options = {
 # -- Autodoc configuration ---------------------------------------------------
 autodoc_member_order = "bysource"
 autodoc_typehints = "description"
+autodoc_mock_imports = [
+    "boto3",
+    "botocore",
+    "bs4",
+    "ebooklib",
+    "fastapi",
+    "litellm",
+    "numpy",
+    "pydub",
+    "pypdf",
+    "tqdm",
+]
