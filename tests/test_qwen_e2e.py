@@ -232,19 +232,26 @@ class TestQwenE2EPipeline:
             return_value="Hello world. This is a test audiobook episode."
         )
 
-        # Generate script and synthesize episode
-        script = creator.generate_audiobook_script("Test chapter content.", 1)
-        assert script  # script should be non-empty
+        # Mock ffmpeg-dependent MP3 conversion: copy WAV content to .mp3
+        def _fake_convert(self, wav_path):
+            mp3_path = wav_path.with_suffix(".mp3")
+            mp3_path.write_bytes(wav_path.read_bytes())
+            return mp3_path
 
-        episode_path = creator.synthesize_episode(script, 1)
+        with patch.object(
+            type(creator), "_convert_to_mp3", _fake_convert
+        ):
+            script = creator.generate_audiobook_script("Test chapter content.", 1)
+            assert script
 
-        # Verify the episode was created
-        assert episode_path.exists(), (
-            f"Episode file was not created at {episode_path}. "
-            f"Episodes dir contents: {list(creator.episodes_path.iterdir())}"
-        )
-        assert episode_path.suffix == ".mp3"
-        assert episode_path.stat().st_size > 0
+            episode_path = creator.synthesize_episode(script, 1)
+
+            assert episode_path.exists(), (
+                f"Episode file was not created at {episode_path}. "
+                f"Episodes dir contents: {list(creator.episodes_path.iterdir())}"
+            )
+            assert episode_path.suffix == ".mp3"
+            assert episode_path.stat().st_size > 0
 
     def test_full_audiobook_series_with_mock_qwen(self, tmp_path, qwen_mock_server):
         """Full pipeline with multiple chapters."""
@@ -280,14 +287,20 @@ class TestQwenE2EPipeline:
             return_value="Hello world. This is a test audiobook episode."
         )
 
-        # Run full pipeline
-        episode_paths = creator.create_audiobook_series()
+        # Mock ffmpeg-dependent MP3 conversion
+        def _fake_convert(self, wav_path):
+            mp3_path = wav_path.with_suffix(".mp3")
+            mp3_path.write_bytes(wav_path.read_bytes())
+            return mp3_path
 
-        assert len(episode_paths) > 0, "No episodes created"
+        with patch.object(type(creator), "_convert_to_mp3", _fake_convert):
+            episode_paths = creator.create_audiobook_series()
 
-        for ep in episode_paths:
-            assert ep.exists(), f"Episode {ep} does not exist"
-            assert ep.stat().st_size > 0, f"Episode {ep} is empty"
+            assert len(episode_paths) > 0, "No episodes created"
+
+            for ep in episode_paths:
+                assert ep.exists(), f"Episode {ep} does not exist"
+                assert ep.stat().st_size > 0, f"Episode {ep} is empty"
 
     def test_qwen_synthesize_writes_valid_wav(self, tmp_path, qwen_mock_server):
         """Verify QwenTTSConfig.synthesize writes a file that pydub can decode."""
