@@ -1114,6 +1114,9 @@ class TestAudiobookCreatorGenerateScript:
         creator.confirm = False  # Don't overwrite existing
         creator.save_text = False
         creator.chapter_titles = []
+        mock_reader = Mock(spec=EpubReader)
+        mock_reader.get_chapter_title.return_value = "Existing Chapter"
+        creator.reader = mock_reader
 
         with (
             patch("pathlib.Path.exists", return_value=True),
@@ -1122,6 +1125,7 @@ class TestAudiobookCreatorGenerateScript:
             result = creator.generate_audiobook_script("Chapter text", 1, language="en")
 
             assert result == "Existing script content"
+            assert creator.chapter_titles == ["Existing Chapter"]
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_generate_audiobook_script_with_translation(self, mock_init):

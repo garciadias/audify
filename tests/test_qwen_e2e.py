@@ -314,7 +314,10 @@ class TestQwenE2EPipeline:
 class TestQwenRetryBehavior:
     """Tests for retry and recovery logic in Qwen TTS synthesis."""
 
-    def test_synthesize_retries_on_server_error(self, tmp_path, flaky_qwen_server):
+    @patch("time.sleep")
+    def test_synthesize_retries_on_server_error(
+        self, mock_sleep, tmp_path, flaky_qwen_server
+    ):
         """Synthesis should retry on 5xx errors and eventually succeed."""
         config = QwenTTSConfig(
             voice="Vivian",

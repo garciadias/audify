@@ -60,7 +60,13 @@ class QwenMockHandler(BaseHTTPRequestHandler):
 
 
 class FlakyQwenHandler(BaseHTTPRequestHandler):
-    """Mock handler that fails the first 2 requests then succeeds."""
+    """Mock handler that fails the first 2 requests then succeeds.
+
+    Uses a class-level counter to persist state across handler instances
+    (BaseHTTPRequestHandler creates a new instance per request).
+    """
+
+    _request_count = 0
 
     def log_message(self, format, *args):
         pass
@@ -78,11 +84,9 @@ class FlakyQwenHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        request_count = getattr(self, "_request_count", 0)
         if self.path == "/tts":
-            if request_count < 2:
-                request_count += 1
-                self._request_count = request_count
+            if FlakyQwenHandler._request_count < 2:
+                FlakyQwenHandler._request_count += 1
                 self.send_error(503, "Service unavailable - model loading")
             else:
                 self.send_response(200)

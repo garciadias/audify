@@ -117,8 +117,11 @@ class TestVoiceSamplesSynthesizer:
         assert voices == ["af_alloy", "af_bella", "en_voice"]
         assert mock_get.call_count == 2
 
+    @patch("time.sleep")
     @patch("requests.get")
-    def test_get_available_models_and_voices_api_error(self, mock_get, synthesizer):
+    def test_get_available_models_and_voices_api_error(
+        self, mock_get, mock_sleep, synthesizer
+    ):
         """Test API error handling in model/voice retrieval."""
         mock_get.side_effect = requests.RequestException("API Error")
 
