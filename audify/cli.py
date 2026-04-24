@@ -420,6 +420,12 @@ def cli(
                 "name": "Google Cloud TTS",
                 "config": "GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_TTS_VOICE",
             },
+            "qwen": {
+                "name": "QWEN (Local)",
+                "config": (
+                    "QWEN_API_URL (default: http://localhost:8890), QWEN_TTS_VOICE"
+                ),
+            },
         }
 
         for provider in AVAILABLE_TTS_PROVIDERS:
