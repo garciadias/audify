@@ -1,6 +1,7 @@
 """Tests for Qwen TTS API configuration."""
 
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -9,6 +10,13 @@ from unittest.mock import Mock, patch
 import pytest
 
 from audify.utils.api_config import QwenTTSConfig
+
+
+def _free_port() -> int:
+    """Return an available TCP port number."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 
 class TestQwenTTSConfig:
@@ -187,25 +195,21 @@ class TestQwenTTSConfig:
 class TestQwenTTSIntegration:
     """Integration tests with actual mock server."""
 
+    @pytest.mark.integration
     def test_qwen_tts_config_with_mock_server(self, tmp_path):
         """Test QwenTTSConfig works with a live mock server."""
 
-        # Start mock server
+        port = _free_port()
+
         env = os.environ.copy()
         env["QWEN_TTS_MOCK"] = "1"
-        env["QWEN_TTS_PORT"] = "8892"
+        env["QWEN_TTS_PORT"] = str(port)
 
-        # Get project root
         project_root = os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )
         script_path = os.path.join(project_root, "scripts", "qwen_tts_api.py")
-        print(f"Project root: {project_root}")
-        print(f"Script path: {script_path}")
-        print(f"Script exists: {os.path.exists(script_path)}")
-
-        if not os.path.exists(script_path):
-            pytest.skip("qwen_tts_api.py script not found")
+        assert os.path.exists(script_path), f"Script not found: {script_path}"
 
         proc = subprocess.Popen(
             [sys.executable, script_path],
@@ -215,8 +219,9 @@ class TestQwenTTSIntegration:
             cwd=project_root,
         )
 
+        base_url = f"http://localhost:{port}"
         try:
-            config = QwenTTSConfig(base_url="http://localhost:8892")
+            config = QwenTTSConfig(base_url=base_url)
 
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
@@ -231,7 +236,6 @@ class TestQwenTTSIntegration:
 
             # Get voices
             voices = config.get_available_voices()
-            print(f"Voices: {voices}")
             assert isinstance(voices, list)
             assert len(voices) > 0
 
@@ -241,7 +245,6 @@ class TestQwenTTSIntegration:
             assert result is True
             assert output_path.exists()
             assert output_path.stat().st_size > 0
-            print(f"Output file size: {output_path.stat().st_size}")
 
         finally:
             proc.terminate()
