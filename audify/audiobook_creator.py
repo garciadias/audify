@@ -467,6 +467,13 @@ class AudiobookCreator(BaseSynthesizer):
             logger.info(
                 f"Script for Episode {chapter_number} already exists, loading..."
             )
+            chapter_title = (
+                self.reader.get_chapter_title(chapter_text)
+                if isinstance(self.reader, EpubReader)
+                else self.reader.path.stem
+            )
+            self.chapter_titles.append(chapter_title)
+            logger.info(f"Chapter {chapter_number} title: {chapter_title}")
             with open(script_path, "r", encoding="utf-8") as f:
                 return f.read()
 
