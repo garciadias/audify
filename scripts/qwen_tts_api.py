@@ -48,8 +48,9 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = os.getenv("QWEN_TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice")
 DEVICE = os.getenv("QWEN_TTS_DEVICE", "cuda:0" if torch.cuda.is_available() else "cpu")
 DTYPE = os.getenv("QWEN_TTS_DTYPE", "bfloat16")
+ATTN_IMPLEMENTATION = os.getenv("QWEN_TTS_ATTN", "eager")  # New environment variable
 PORT = int(os.getenv("QWEN_TTS_PORT", "8890"))
-HOST = os.getenv("QWEN_TTS_HOST", "0.0.0.0")
+HOST = os.getenv("QWEN_TTS_HOST", "127.0.0.1")  # Explicitly set default to loopback
 MOCK_MODE = os.getenv("QWEN_TTS_MOCK", "false").lower() in ("true", "1", "yes")
 
 # Try to import Qwen3TTSModel
@@ -119,51 +120,83 @@ class TTSRequest(BaseModel):
     instruct: Optional[str] = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Load the TTS model on startup."""
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manages the lifecycle of the Qwen3-TTS model: loads on startup, cleans up on shutdown.
+    Runs before endpoint handlers and after graceful shutdown.
+    """
     global tts_model
+
+    # --- Startup Logic (Replaces @app.on_event("startup")) ---
+    logger.info("Starting Qwen3-TTS API lifecycle management.")
 
     if not QWEN_TTS_AVAILABLE:
         logger.error(
             "qwen-tts package not installed. Please install with: pip install qwen-tts"
         )
+        yield  # Yield immediately if not available
         return
 
     if MOCK_MODE:
-        logger.info("Mock mode enabled - using mock model")
+        logger.warning("Mock mode enabled - using mock model")
         tts_model = MockTTSModel()
-        return
+    else:
+        try:
+            logger.info(f"Attempting to load model: {MODEL_NAME}")
+            logger.info(f"Device: {DEVICE}, Dtype: {DTYPE}, Attn: {ATTN_IMPLEMENTATION}")
 
-    try:
-        logger.info(f"Loading model: {MODEL_NAME}")
-        logger.info(f"Device: {DEVICE}, Dtype: {DTYPE}")
+            # Map dtype string to torch dtype
+            dtype_map = {
+                "bfloat16": torch.bfloat16,
+                "bf16": torch.bfloat16,
+                "float16": torch.float16,
+                "fp16": torch.float16,
+                "float32": torch.float32,
+                "fp32": torch.float32,
+            }
+            torch_dtype = dtype_map.get(DTYPE.lower(), torch.bfloat16)
 
-        # Map dtype string to torch dtype
-        dtype_map = {
-            "bfloat16": torch.bfloat16,
-            "bf16": torch.bfloat16,
-            "float16": torch.float16,
-            "fp16": torch.float16,
-            "float32": torch.float32,
-            "fp32": torch.float32,
-        }
-        torch_dtype = dtype_map.get(DTYPE.lower(), torch.bfloat16)
+            attn_config = {}
+            if importlib.util.find_spec("flash_attn") is not None and ATTN_IMPLEMENTATION in ["flash", "flash_attention_2"]:
+                attn_config["attn_implementation"] = "flash_attention_2"
+            elif ATTN_IMPLEMENTATION == "sdpa":
+                # Assume sdpa is an option if it matches some recognized pattern, otherwise keep it general
+                attn_config["attn_implementation"] = "sdpa"
+            elif ATTN_IMPLEMENTATION == "eager":
+                # For compatibility, we explicitly pass it if the library might support it
+                pass
+            # Note: The actual implementation might depend on the underlying model library's exact API.
+            # For robustness, we only override if we detect flash_attn, otherwise, we pass the variable name if it's a known option.
 
-        tts_model = Qwen3TTSModel.from_pretrained(
-            MODEL_NAME,
-            device_map=DEVICE,
-            dtype=torch_dtype,
-            **(
-                {"attn_implementation": "flash_attention_2"}
-                if importlib.util.find_spec("flash_attn") is not None
-                else {}
-            ),
-        )
-        logger.info("Model loaded successfully")
-    except Exception as e:
-        logger.error(f"Failed to load model: {e}")
-        tts_model = None
+            tts_model = Qwen3TTSModel.from_pretrained(
+                MODEL_NAME,
+                device_map=DEVICE,
+                dtype=torch_dtype,
+                **attn_config
+            )
+            logger.info("Model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}", exc_info=True)
+            tts_model = None
+
+    yield  # Execution proceeds to endpoint handlers with model loaded/failed
+
+    # --- Teardown Logic ---
+    logger.info("Shutting down Qwen3-TTS API gracefully.")
+    # Simple cleanup mock or explicit model unload if necessary (model handles shutdown internally for now)
+    tts_model = None
+
+
+app = FastAPI(
+    title="Qwen3-TTS API",
+    description="Simple FastAPI wrapper for Qwen3-TTS models",
+    version="0.1.0",
+    lifespan=lifespan  # Use the lifespan context manager
+)
 
 
 @app.get("/health")
@@ -272,8 +305,8 @@ async def synthesize_speech(request: TTSRequest):
         logger.error(f"Synthesis failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Synthesis failed: {str(e)}",
-        )
+            detail=f"Synthesis failed: {e!s}",
+        ) from e
 
 
 @app.get("/")
