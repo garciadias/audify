@@ -65,10 +65,13 @@ GOOGLE_TTS_LANGUAGE_CODE=en-US
 # =============================================================================
 # Qwen-TTS (Local/Free)
 # =============================================================================
-# Base URL for Qwen3-TTS API (default: http://localhost:8890)
+# Qwen-TTS (Local FastAPI Wrapper)
+# Run: python scripts/qwen_tts_api.py
+# API exposed at: http://localhost:8890
+# Qwen-TTS service runs on http://localhost:8890 (FastAPI wrapper around local Kokoro TTS logic)
 QWEN_API_URL=http://localhost:8890
 
-# Voice options: Vivian (more may be available in future)
+# Voice options: Vivian (Qwen-TTS)
 QWEN_TTS_VOICE=Vivian
 
 # =============================================================================
