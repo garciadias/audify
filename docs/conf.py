@@ -2,6 +2,10 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import importlib.metadata
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parents[1]))
 
 project = "Audify"
 copyright = "2024, Audify Contributors"
@@ -57,3 +61,15 @@ html_theme_options = {
 # -- Autodoc configuration ---------------------------------------------------
 autodoc_member_order = "bysource"
 autodoc_typehints = "description"
+autodoc_mock_imports = [
+    "boto3",
+    "botocore",
+    "bs4",
+    "ebooklib",
+    "fastapi",
+    "litellm",
+    "numpy",
+    "pydub",
+    "pypdf",
+    "tqdm",
+]

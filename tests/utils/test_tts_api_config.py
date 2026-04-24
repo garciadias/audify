@@ -9,6 +9,7 @@ from audify.utils.api_config import (
     GoogleTTSConfig,
     KokoroTTSConfig,
     OpenAITTSConfig,
+    QwenTTSConfig,
     get_tts_config,
 )
 
@@ -134,11 +135,17 @@ class TestKokoroTTSConfig:
         assert output_path.exists()
         assert output_path.read_bytes() == b"fake audio content"
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.requests.post")
-    def test_synthesize_api_error(self, mock_post, tmp_path):
+    def test_synthesize_api_error(self, mock_post, mock_sleep, tmp_path):
         """Test synthesize returns False on API error."""
+        import requests
+
         mock_response = Mock()
         mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = requests.HTTPError(
+            "500 Server Error", response=mock_response
+        )
         mock_post.return_value = mock_response
 
         config = KokoroTTSConfig()
@@ -148,8 +155,9 @@ class TestKokoroTTSConfig:
 
         assert result is False
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.requests.post")
-    def test_synthesize_request_exception(self, mock_post, tmp_path):
+    def test_synthesize_request_exception(self, mock_post, mock_sleep, tmp_path):
         """Test synthesize returns False on request exception."""
         import requests
 
@@ -270,9 +278,14 @@ class TestOpenAITTSConfig:
     @patch("audify.utils.api_config.requests.post")
     def test_synthesize_api_error(self, mock_post, tmp_path):
         """Test synthesize returns False on API error."""
+        import requests
+
         mock_response = Mock()
         mock_response.status_code = 401
         mock_response.text = "Unauthorized"
+        mock_response.raise_for_status.side_effect = requests.HTTPError(
+            "401 Unauthorized", response=mock_response
+        )
         mock_post.return_value = mock_response
 
         config = OpenAITTSConfig(api_key="bad-key")
@@ -282,8 +295,9 @@ class TestOpenAITTSConfig:
 
         assert result is False
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.requests.post")
-    def test_synthesize_request_exception(self, mock_post, tmp_path):
+    def test_synthesize_request_exception(self, mock_post, mock_sleep, tmp_path):
         """Test synthesize returns False on request exception."""
         import requests
 
@@ -444,11 +458,14 @@ class TestAWSTTSConfig:
         call_kwargs = mock_client.synthesize_speech.call_args.kwargs
         assert len(call_kwargs["Text"]) == 3000
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.boto3.client")
-    def test_synthesize_error(self, mock_boto_client, tmp_path):
+    def test_synthesize_error(self, mock_boto_client, mock_sleep, tmp_path):
         """Test synthesize returns False on error."""
+        from botocore.exceptions import BotoCoreError
+
         mock_client = Mock()
-        mock_client.synthesize_speech.side_effect = Exception("Polly error")
+        mock_client.synthesize_speech.side_effect = BotoCoreError()
         mock_boto_client.return_value = mock_client
 
         config = AWSTTSConfig(access_key_id="test-key", secret_access_key="test-secret")
@@ -614,11 +631,16 @@ class TestGoogleTTSConfig:
             assert output_path.exists()
             assert output_path.read_bytes() == b"fake audio content"
 
+    @patch("time.sleep")
     @patch("audify.utils.api_config.GoogleTTSConfig._get_client")
-    def test_synthesize_error(self, mock_get_client, tmp_path):
+    def test_synthesize_error(self, mock_get_client, mock_sleep, tmp_path):
         """Test synthesize returns False on error."""
+        import requests
+
         mock_client = Mock()
-        mock_client.synthesize_speech.side_effect = Exception("Synthesis error")
+        mock_client.synthesize_speech.side_effect = requests.RequestException(
+            "Synthesis error"
+        )
         mock_get_client.return_value = mock_client
 
         with patch.dict(
@@ -656,6 +678,11 @@ class TestGetTTSConfig:
         config = get_tts_config(provider="google")
         assert isinstance(config, GoogleTTSConfig)
 
+    def test_get_qwen_config(self):
+        """Test get_tts_config returns QwenTTSConfig for 'qwen'."""
+        config = get_tts_config(provider="qwen")
+        assert isinstance(config, QwenTTSConfig)
+
     def test_get_config_with_voice(self):
         """Test get_tts_config passes voice parameter."""
         config = get_tts_config(provider="openai", voice="nova")
@@ -680,4 +707,4 @@ class TestGetTTSConfig:
         """Test get_tts_config uses default provider when none specified."""
         config = get_tts_config()
         # Should use DEFAULT_TTS_PROVIDER which is "kokoro"
-        assert config.provider_name in ["kokoro", "openai", "aws", "google"]
+        assert config.provider_name in ["kokoro", "openai", "aws", "google", "qwen"]

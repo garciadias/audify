@@ -77,6 +77,9 @@ omit = ["*.venv/*"]
 python_files = ["test_*.py", "*_test.py"]
 addopts = []
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+markers = [
+    "integration: marks tests that require a live subprocess or external service (deselect with '-m \"not integration\"')",
+]
 
 
 [tool.ruff]

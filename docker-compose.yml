@@ -1,42 +1,44 @@
 services:
   ollama:
     image: ollama/ollama:latest
+    gpus: all
     volumes:
       - $HOME/.ollama:/root/.ollama
     ports:
       - "11434:11434"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/version" ]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    profiles: [ "ollama" ]
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
   kokoro:
     image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
     ports:
       - "8887:8880"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8880/health" ]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    profiles: [ "kokoro" ]
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
-
+              capabilities: [ gpu ]
   api:
     build:
       context: .
@@ -46,12 +48,47 @@ services:
     environment:
       - KOKORO_API_URL=http://kokoro:8880/v1
       - OLLAMA_API_URL=http://ollama:11434
+      - QWEN_API_URL=http://qwen-tts:8890
       - TTS_PROVIDER=kokoro
-    depends_on:
-      kokoro:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+
+  qwen-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.qwen-tts
+    gpus: all
+    ports:
+      - "8890:8890"
+    environment:
+      - QWEN_TTS_HOST=0.0.0.0
+      - QWEN_TTS_PORT=8890
+      - QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+      - QWEN_TTS_DEVICE=cuda:0
+      - QWEN_TTS_DTYPE=bfloat16
+    volumes:
+      - qwen_hf_cache:/home/appuser/.cache/huggingface
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8890/health | grep -q
+            '\"model_loaded\":true'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: unless-stopped
+    profiles: [ "qwen" ]
+
+volumes:
+  qwen_hf_cache:

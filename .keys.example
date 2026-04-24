@@ -5,7 +5,7 @@
 # =============================================================================
 # TTS Provider Selection
 # =============================================================================
-# Options: kokoro, openai, aws, google
+# Options: kokoro, openai, aws, google, qwen
 TTS_PROVIDER=kokoro
 
 # =============================================================================
@@ -61,6 +61,18 @@ GOOGLE_TTS_VOICE=en-US-Chirp-HD-F
 
 # Language code for synthesis
 GOOGLE_TTS_LANGUAGE_CODE=en-US
+
+# =============================================================================
+# Qwen-TTS (Local/Free)
+# =============================================================================
+# Qwen-TTS (Local FastAPI Wrapper)
+# Run: python scripts/qwen_tts_api.py
+# API exposed at: http://localhost:8890
+# Qwen-TTS service runs on http://localhost:8890 (FastAPI wrapper around local Kokoro TTS logic)
+QWEN_API_URL=http://localhost:8890
+
+# Voice options: Vivian (Qwen-TTS)
+QWEN_TTS_VOICE=Vivian
 
 # =============================================================================
 # LLM Configuration (for audiobook script generation)

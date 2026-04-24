@@ -2,6 +2,7 @@ import contextlib
 import shutil
 import sys
 import tempfile
+import time
 import warnings
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -80,7 +81,7 @@ class BaseSynthesizer:
     model_name: str
         Model name for synthesis. To see available models, run: `audify --list-models`
     tts_provider: str
-        TTS provider to use. Options: "kokoro", "openai", "aws", "google".
+        TTS provider to use. Options: "kokoro", "openai", "aws", "google", "qwen".
         Defaults to DEFAULT_TTS_PROVIDER from environment or "kokoro".
 
     """
@@ -130,6 +131,41 @@ class BaseSynthesizer:
             )
         return self._tts_config
 
+    def _batch_sentences(
+        self, sentences: List[str], max_length: int
+    ) -> List[List[str]]:
+        """Group sentences into batches where each batch's total character
+        length <= max_length."""
+        batches: List[List[str]] = []
+        current_batch: List[str] = []
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_len = len(sentence)
+            if sentence_len > max_length:
+                # Sentence already exceeds limit; should not happen if
+                # sentences are pre-split
+                # Add as its own batch
+                if current_batch:
+                    batches.append(current_batch)
+                    current_batch = []
+                    current_length = 0
+                batches.append([sentence])
+                continue
+
+            if current_length + sentence_len <= max_length:
+                current_batch.append(sentence)
+                current_length += sentence_len
+            else:
+                if current_batch:
+                    batches.append(current_batch)
+                current_batch = [sentence]
+                current_length = sentence_len
+
+        if current_batch:
+            batches.append(current_batch)
+        return batches
+
     def _synthesize_with_provider(
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
@@ -138,6 +174,9 @@ class BaseSynthesizer:
         temp_audio_files: List[Path] = []
         attempted_sentences = 0
         failed_sentences = 0
+        consecutive_failures = 0
+        _MAX_CONSECUTIVE_FAILURES = 5
+        _RECOVERY_WAIT_SECONDS = 15
 
         try:
             logger.info(f"Starting {tts_config.provider_name} TTS synthesis...")
@@ -158,29 +197,64 @@ class BaseSynthesizer:
                     f"Available voices: {available_voices[:5]}..."
                 )
 
-            for i, sentence in track(
-                enumerate(sentences),
+            # Group sentences into batches based on provider's max text length
+            batches = self._batch_sentences(sentences, tts_config.max_text_length)
+            logger.info(
+                f"Processing {len(batches)} batch(es) for {len(sentences)} sentences"
+            )
+
+            for batch_idx, batch_sentences in track(
+                enumerate(batches),
                 description=f"{tts_config.provider_name.title()} Synthesizing",
-                total=len(sentences),
+                total=len(batches),
             ):
-                if not sentence.strip():
+                # Filter out empty sentences within batch
+                batch_sentences = [s for s in batch_sentences if s.strip()]
+                if not batch_sentences:
                     continue
 
-                attempted_sentences += 1
+                attempted_sentences += len(batch_sentences)
+
+                # If we've had many consecutive failures the server may have
+                # crashed/restarted.  Wait for it to come back before wasting
+                # more requests.
+                if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                    logger.warning(
+                        f"{consecutive_failures} consecutive synthesis failures. "
+                        f"Waiting {_RECOVERY_WAIT_SECONDS}s for TTS server to "
+                        "recover..."
+                    )
+                    time.sleep(_RECOVERY_WAIT_SECONDS)
+
+                    if not tts_config.is_available():
+                        raise RuntimeError(
+                            f"TTS provider '{tts_config.provider_name}' became "
+                            f"unavailable after {consecutive_failures} consecutive "
+                            "failures and did not recover. Check the TTS server."
+                        )
+                    logger.info("TTS server recovered, resuming synthesis.")
+                    consecutive_failures = 0
 
                 try:
-                    temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
-                    success = tts_config.synthesize(sentence, temp_wav_path)
+                    temp_wav_path = self.tmp_dir / f"batch_{batch_idx}.wav"
+                    # Concatenate sentences with a space
+                    batch_text = " ".join(batch_sentences)
+                    success = tts_config.synthesize(batch_text, temp_wav_path)
 
                     if success and temp_wav_path.exists():
                         temp_audio_files.append(temp_wav_path)
+                        consecutive_failures = 0
                     else:
-                        failed_sentences += 1
-                        logger.warning(f"Synthesis failed for sentence {i}, skipping.")
+                        failed_sentences += len(batch_sentences)
+                        consecutive_failures += 1
+                        logger.warning(
+                            f"Synthesis failed for batch {batch_idx}, skipping."
+                        )
 
                 except Exception as e:
-                    failed_sentences += 1
-                    logger.warning(f"Error synthesizing sentence {i}: {e}")
+                    failed_sentences += len(batch_sentences)
+                    consecutive_failures += 1
+                    logger.warning(f"Error synthesizing batch {batch_idx}: {e}")
                     continue
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")
@@ -790,27 +864,38 @@ class VoiceSamplesSynthesizer:
 
     def _get_available_models_and_voices(self) -> Tuple[List[str], List[str]]:
         """Get available models and voices from Kokoro API."""
-        try:
-            # Get models
-            models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
+        from audify.utils.api_config import KokoroAPIConfig, _retry_request
+
+        api_config = KokoroAPIConfig()
+
+        def _fetch():
+            models_response = requests.get(
+                f"{KOKORO_API_BASE_URL}/models", timeout=10
+            )
             models_response.raise_for_status()
             models_data = models_response.json().get("data", [])
-            models = sorted([model.get("id") for model in models_data if "id" in model])
+            models = sorted(
+                [m.get("id") for m in models_data if "id" in m]
+            )
 
-            # Get voices - use the API config to get the correct endpoint
-            from audify.utils.api_config import KokoroAPIConfig
-
-            api_config = KokoroAPIConfig()
-            voices_response = requests.get(api_config.voices_url, timeout=10)
+            voices_response = requests.get(
+                api_config.voices_url, timeout=10
+            )
             voices_response.raise_for_status()
             voices_data = voices_response.json().get("voices", [])
             voices = sorted(voices_data)
 
-            logger.info(f"Found {len(models)} models and {len(voices)} voices")
+            logger.info(
+                f"Found {len(models)} models and {len(voices)} voices"
+            )
             return models, voices
 
-        except requests.RequestException as e:
-            logger.error(f"Error fetching models and voices from Kokoro API: {e}")
+        try:
+            return _retry_request(
+                _fetch,
+                api_name=f"Kokoro API ({KOKORO_API_BASE_URL})",
+            )
+        except RuntimeError:
             return [], []
 
     def _create_sample_for_combination(

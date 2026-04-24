@@ -6,9 +6,14 @@ from typing import Optional, Union
 import bs4
 from bs4 import Tag
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE, epub
-from typing_extensions import Reader
 
+from audify.domain.reader import Reader
 from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
+
+# Minimum number of TOC-to-spine matches before we trust TOC-based grouping.
+# If fewer items match, the TOC structure probably doesn't align with the
+# spine and we fall back to legacy per-item extraction.
+_MIN_TOC_MATCHES = 3
 
 logger = logging.getLogger(__name__)
 
@@ -99,17 +104,43 @@ class EpubReader(Reader):
         self.title = self.get_title()
         self.llm_config = llm_config
 
-    def read(self):
+    def read(self) -> epub.EpubBook:
         return epub.read_epub(self.path)
 
     def get_chapters(self) -> list[str]:
-        """Get chapter content in spine order.
+        """Get chapter content in spine order, grouped by TOC boundaries.
 
-        Filters out TOC and other non-chapter documents.
+        Uses the EPUB table of contents to merge spine items that belong to
+        the same logical chapter. Falls back to per-spine-item extraction when
+        the TOC structure doesn't align with the spine.
         """
-        chapters = []
+        chapters = self._get_chapters_grouped_by_toc()
+        if chapters:
+            return chapters
+        logger.info(
+            "TOC grouping produced no chapters, using legacy per-item extraction"
+        )
+        return self._get_chapters_legacy()
 
-        # Process items in spine order (reading order)
+    # ------------------------------------------------------------------
+    # TOC-based chapter grouping
+    # ------------------------------------------------------------------
+
+    def _get_chapters_grouped_by_toc(self) -> list[str]:
+        """Extract chapters by grouping spine items via EPUB TOC entries.
+
+        Spine items that fall between two TOC chapter boundaries are merged
+        into a single logical chapter.  Returns an empty list when the TOC
+        cannot be used (empty, unparseable, or mismatched with the spine).
+        """
+        toc_item_names = self._build_toc_item_name_set()
+        if not toc_item_names:
+            return []
+
+        chapters: list[str] = []
+        current_group: list = []
+        matches_found = 0
+
         for spine_id, linear in self.book.spine:
             item = self.book.get_item_with_id(spine_id)
             if not item or item.get_type() != ITEM_DOCUMENT:
@@ -117,7 +148,177 @@ class EpubReader(Reader):
 
             item_name = item.get_name().lower()
 
-            # Skip obvious non-chapter files
+            if self._should_skip_document_by_name(item_name):
+                continue
+
+            is_toc_boundary = item_name in toc_item_names
+
+            if is_toc_boundary and current_group:
+                merged = self._merge_items(current_group)
+                if merged and self._is_valid_chapter(merged):
+                    chapters.append(merged)
+                current_group = [item]
+                matches_found += 1
+            else:
+                current_group.append(item)
+
+        if current_group:
+            merged = self._merge_items(current_group)
+            if merged and self._is_valid_chapter(merged):
+                chapters.append(merged)
+
+        # If we didn't find enough TOC-to-spine matches or ended up with
+        # a single blob, the TOC likely doesn't align with the spine —
+        # fall back to legacy extraction.
+        if matches_found < min(_MIN_TOC_MATCHES, len(toc_item_names)):
+            logger.debug(
+                f"TOC-based grouping: only {matches_found} spine matches "
+                f"(need ≥{_MIN_TOC_MATCHES}), falling back"
+            )
+            return []
+        if len(chapters) <= 1 and len(toc_item_names) > 2:
+            logger.debug(
+                f"TOC-based grouping: produced {len(chapters)} chapter(s) "
+                f"from {len(toc_item_names)} TOC entries, falling back"
+            )
+            return []
+
+        return chapters
+
+    def _flatten_toc_hrefs(self) -> list[str]:
+        """Flatten the hierarchical TOC into a flat list of href strings."""
+        raw = getattr(self.book, "toc", None)
+        if not isinstance(raw, list):
+            return []
+
+        hrefs: list[str] = []
+
+        def _walk(entries: list) -> None:
+            for entry in entries:
+                if isinstance(entry, tuple) and len(entry) == 2:
+                    nav_point, sub = entry
+                    href = getattr(nav_point, "href", None)
+                    if href:
+                        hrefs.append(href)
+                    _walk(sub)
+                else:
+                    href = getattr(entry, "href", None)
+                    if href:
+                        hrefs.append(href)
+
+        try:
+            _walk(raw)
+        except (TypeError, Exception):
+            return []
+
+        return hrefs
+
+    def _build_toc_item_name_set(self) -> set[str]:
+        """Normalise TOC hrefs into a set of spine item names for fast lookup."""
+        hrefs = self._flatten_toc_hrefs()
+        names: set[str] = set()
+        for href in hrefs:
+            # Strip fragment, leading './' and '/', case-fold.
+            name = href.split("#")[0].lstrip("./").lower()
+            if name:
+                names.add(name)
+        return names
+
+    def _merge_items(self, items: list) -> str | None:
+        """Merge the body contents of *items* into a single chapter HTML.
+
+        Returns *None* when no content could be extracted from any item.
+        """
+        if not items:
+            return None
+        if len(items) == 1:
+            try:
+                return items[0].get_body_content().decode("utf-8", errors="ignore")
+            except Exception as e:
+                logger.warning(f"Could not decode item {items[0].get_name()}: {e}")
+                return None
+
+        bodies: list[str] = []
+        for item in items:
+            try:
+                content = item.get_body_content().decode("utf-8", errors="ignore")
+                soup = bs4.BeautifulSoup(content, "html.parser")
+                body = soup.find("body")
+                if body is not None:
+                    bodies.append(str(body))
+            except Exception as e:
+                logger.warning(f"Could not decode/parse item {item.get_name()}: {e}")
+
+        if not bodies:
+            return None
+
+        return "<html><body>" + "\n".join(bodies) + "</body></html>"
+
+    @staticmethod
+    def _looks_like_toc(soup: bs4.BeautifulSoup, text: str) -> bool:
+        """Heuristic: return True when *soup* looks like a table of contents."""
+        toc_indicators = [
+            "table of contents",
+            "contents",
+            "目录",
+            "chapter",
+            "part",
+            "section",
+            "章",
+        ]
+        indicator_count = sum(1 for ind in toc_indicators if ind in text)
+        links = soup.find_all("a")
+        list_items = soup.find_all(["li", "dt", "dd"])
+        return (len(links) > 5 or len(list_items) > 5) and indicator_count > 1
+
+    @staticmethod
+    def _looks_like_copyright(text: str) -> bool:
+        """Heuristic: return True when *text* resembles a copyright page."""
+        indicators = [
+            "copyright",
+            "©",
+            "isbn",
+            "published by",
+            "all rights reserved",
+            "责任编辑",
+            "封面设计",
+            "图书在版编目",
+        ]
+        return sum(1 for ind in indicators if ind in text) > 2
+
+    def _is_valid_chapter(self, merged_html: str) -> bool:
+        """Return True when *merged_html* has enough content to be a chapter."""
+        if len(merged_html.strip()) < 100:
+            return False
+        soup = bs4.BeautifulSoup(merged_html, "html.parser")
+        visible_text = soup.get_text(separator=" ", strip=True)
+        if len(visible_text) < 80:
+            return False
+        text = visible_text.lower()
+        if self._looks_like_toc(soup, text):
+            return False
+        chinese_patterns = re.findall(r"第[一二三四五六七八九十\d]+章", text)
+        if len(chinese_patterns) > 2:
+            return False
+        if self._looks_like_copyright(text):
+            return False
+        return True
+
+    # ------------------------------------------------------------------
+    # Legacy per-spine-item extraction (fallback)
+    # ------------------------------------------------------------------
+
+    def _get_chapters_legacy(self) -> list[str]:
+        """Original per-spine-item chapter extraction (unchanged logic)."""
+        chapters: list[str] = []
+
+        for spine_id, linear in self.book.spine:
+            item = self.book.get_item_with_id(spine_id)
+            if not item or item.get_type() != ITEM_DOCUMENT:
+                continue
+
+            item_name = item.get_name().lower()
+
             if self._should_skip_document_by_name(item_name):
                 continue
 
@@ -127,80 +328,37 @@ class EpubReader(Reader):
                 logger.warning(f"Could not decode item {item.get_name()}: {e}")
                 continue
 
-            # Skip empty or very short content
             if len(content.strip()) < 100:
                 continue
 
-            # Parse HTML to check document type
             soup = bs4.BeautifulSoup(content, "html.parser")
             visible_text = soup.get_text(separator=" ", strip=True)
             text = visible_text.lower()
 
-            # Skip documents with too little readable text.
             if len(visible_text) < 80:
                 continue
 
-            # Check for TOC indicators in content
-            toc_indicators = [
-                "table of contents",
-                "contents",
-                "目录",  # Chinese for TOC
-                "chapter",  # Might appear in TOC listing chapters
-                "part",
-                "section",
-                "章",  # Chinese chapter character
-            ]
-
-            # Count how many TOC indicators appear
-            toc_indicator_count = sum(
-                1 for indicator in toc_indicators if indicator in text
-            )
-
-            # Check if this looks like a TOC by analyzing structure
-            # TOCs often have many links or list items
-            links = soup.find_all("a")
-            list_items = soup.find_all(["li", "dt", "dd"])
-
-            # If it has many links/list items AND contains TOC indicators, likely a TOC
-            if (len(links) > 5 or len(list_items) > 5) and toc_indicator_count > 1:
+            if self._looks_like_toc(soup, text):
                 logger.info(f"Skipping TOC document: {item.get_name()}")
                 continue
 
-            # Check for Chinese chapter patterns like "第一章", "第二章"
             chinese_chapter_patterns = re.findall(
-                r"第[一二三四五六七八九十\d]+章", text
+                r"第[一二三四五六七八九十\d]+章",
+                text,
             )
             if len(chinese_chapter_patterns) > 2:
-                # If we see multiple chapter titles in one document, it's likely a TOC
                 logger.info(
                     "Skipping document with multiple chapter titles "
                     f"(likely TOC): {item.get_name()}"
                 )
                 continue
 
-            # Check for copyright/credits pages
-            copyright_indicators = [
-                "copyright",
-                "©",
-                "isbn",
-                "published by",
-                "all rights reserved",
-                "责任编辑",
-                "封面设计",
-                "版式设计",
-                "图书在版编目",
-            ]
-
-            copyright_indicator_count = sum(
-                1 for indicator in copyright_indicators if indicator in text
-            )
-            if copyright_indicator_count > 2:
+            if self._looks_like_copyright(text):
                 logger.info(f"Skipping copyright/credits page: {item.get_name()}")
                 continue
 
             chapters.append(content)
 
-        # If no chapters found with filtering, fall back to all documents
         if not chapters:
             logger.warning(
                 "No chapters found with filtering, falling back to all documents"
@@ -209,7 +367,6 @@ class EpubReader(Reader):
                 if item.get_type() != ITEM_DOCUMENT:
                     continue
                 item_name = item.get_name().lower()
-                # Skip obvious non-chapter files
                 if self._should_skip_document_by_name(item_name):
                     continue
                 try:
@@ -217,11 +374,9 @@ class EpubReader(Reader):
                 except Exception as e:
                     logger.warning(f"Could not decode item {item.get_name()}: {e}")
                     continue
-
                 visible_text = bs4.BeautifulSoup(content, "html.parser").get_text(
                     separator=" ", strip=True
                 )
-                # Skip empty or very short readable content (likely metadata)
                 if len(visible_text) < 20:
                     continue
                 chapters.append(content)

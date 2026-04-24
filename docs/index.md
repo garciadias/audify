@@ -18,6 +18,7 @@ usage
 tasks
 configuration
 rest-api
+troubleshooting-no-audio
 ```
 
 ```{toctree}
@@ -25,6 +26,7 @@ rest-api
 :caption: Reference
 
 cli-reference
+api-reference
 architecture
 commercial-apis
 ```

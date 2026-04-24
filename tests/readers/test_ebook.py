@@ -5,6 +5,7 @@ from unittest.mock import Mock, mock_open, patch
 import bs4
 import pytest
 from ebooklib import ITEM_COVER, ITEM_DOCUMENT, ITEM_IMAGE
+from ebooklib.epub import Link
 
 from audify.readers.ebook import EpubReader
 
@@ -28,6 +29,7 @@ def mock_epub_book():
     mock_book.get_metadata.return_value = [("Test Metadata Title", {})]
     mock_book.spine = []  # Empty spine to fall back to all items
     mock_book.get_item_with_id = Mock(return_value=None)
+    mock_book.toc = []  # Explicit empty TOC (Mock.toc returns a non-list Mock)
     return mock_book
 
 
@@ -1133,3 +1135,426 @@ class TestEpubReader:
         result = reader._extract_short_paragraph_title(soup)
         # Should skip the div (nested) and the p is too long
         assert result == ""
+
+
+class TestEpubReaderTocGrouping:
+    """TOC-based chapter grouping unit tests."""
+
+    # ------------------------------------------------------------------
+    # _flatten_toc_hrefs
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_flatten_toc_hrefs_empty(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Empty TOC list yields empty href list."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = []
+        assert reader._flatten_toc_hrefs() == []
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_flatten_toc_hrefs_flat(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Flat TOC of Link objects yields matching hrefs in order."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = [
+            Link("Text/ch1.xhtml", "Ch 1"),
+            Link("Text/ch2.xhtml", "Ch 2"),
+            Link("Text/ch3.xhtml", "Ch 3"),
+        ]
+        assert reader._flatten_toc_hrefs() == [
+            "Text/ch1.xhtml",
+            "Text/ch2.xhtml",
+            "Text/ch3.xhtml",
+        ]
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_flatten_toc_hrefs_nested(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Nested (Link, [Link]) tuples are flattened into a single list."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = [
+            (
+                Link("Text/part1.xhtml", "Part 1"),
+                [
+                    Link("Text/ch1.xhtml", "Ch 1"),
+                    Link("Text/ch2.xhtml", "Ch 2"),
+                ],
+            ),
+            Link("Text/ch3.xhtml", "Ch 3"),
+        ]
+        assert reader._flatten_toc_hrefs() == [
+            "Text/part1.xhtml",
+            "Text/ch1.xhtml",
+            "Text/ch2.xhtml",
+            "Text/ch3.xhtml",
+        ]
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_flatten_toc_hrefs_fragment(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """href values with URI fragments are returned as-is (stripped later)."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = [Link("Text/ch1.xhtml#section1", "Ch 1")]
+        assert reader._flatten_toc_hrefs() == ["Text/ch1.xhtml#section1"]
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_flatten_toc_hrefs_non_list(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """TOC attribute that is not a list returns empty list."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = None
+        assert reader._flatten_toc_hrefs() == []
+
+    # ------------------------------------------------------------------
+    # _build_toc_item_name_set
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_build_toc_item_name_set(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """TOC hrefs are normalized: fragment stripped, leading ./ and /
+        removed, lowercased."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = [
+            Link("Text/Chapter1.xhtml", "Ch 1"),
+            Link("./Text/Chapter2.xhtml#frag", "Ch 2"),
+            Link("/Text/Chapter3.xhtml", "Ch 3"),
+            Link("Text/Chapter4.xhtml", "Ch 4"),
+        ]
+        result = reader._build_toc_item_name_set()
+        assert result == {
+            "text/chapter1.xhtml",
+            "text/chapter2.xhtml",
+            "text/chapter3.xhtml",
+            "text/chapter4.xhtml",
+        }
+
+    # ------------------------------------------------------------------
+    # _merge_items
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_merge_items_empty(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Empty items list returns None."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        assert reader._merge_items([]) is None
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_merge_items_single(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Single item returns its decoded body content directly."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        item = Mock()
+        item.get_body_content.return_value = b"<html><body>Hello</body></html>"
+        item.get_name.return_value = "ch1.xhtml"
+        assert reader._merge_items([item]) == "<html><body>Hello</body></html>"
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_merge_items_multiple(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Multiple items are merged into a single combined HTML document."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        item1 = Mock()
+        item1.get_body_content.return_value = (
+            b"<html><body><p>First item</p></body></html>"
+        )
+        item1.get_name.return_value = "ch1.xhtml"
+        item2 = Mock()
+        item2.get_body_content.return_value = (
+            b"<html><body><p>Second item</p></body></html>"
+        )
+        item2.get_name.return_value = "ch2.xhtml"
+        result = reader._merge_items([item1, item2])
+        assert result is not None
+        assert "<p>First item</p>" in result
+        assert "<p>Second item</p>" in result
+        assert result.startswith("<html><body>")
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_merge_items_decode_failure(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Item with undecodable body is skipped in a multi-item merge."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        bad_item = Mock()
+        bad_item.get_body_content.side_effect = Exception("decode error")
+        bad_item.get_name.return_value = "bad.xhtml"
+        good_item = Mock()
+        good_item.get_body_content.return_value = b"<html><body>Good</body></html>"
+        good_item.get_name.return_value = "good.xhtml"
+        result = reader._merge_items([bad_item, good_item])
+        assert result is not None
+        assert "Good" in result
+
+    # ------------------------------------------------------------------
+    # _looks_like_toc (static)
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_toc_true(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Content with many links and multiple TOC indicators is classified as TOC."""
+        mock_read_epub.return_value = mock_epub_book
+        html = (
+            "<html><body>"
+            "<h1>Table of Contents</h1>"
+            "<ul>"
+            "<li><a href='#c1'>Chapter 1</a></li>"
+            "<li><a href='#c2'>Chapter 2</a></li>"
+            "<li><a href='#c3'>Chapter 3</a></li>"
+            "<li><a href='#c4'>Chapter 4</a></li>"
+            "<li><a href='#c5'>Chapter 5</a></li>"
+            "<li><a href='#c6'>Chapter 6</a></li>"
+            "</ul>"
+            "</body></html>"
+        )
+        soup = bs4.BeautifulSoup(html, "html.parser")
+        # _is_valid_chapter lowercases the text before calling _looks_like_toc
+        text = soup.get_text(separator=" ", strip=True).lower()
+        assert EpubReader._looks_like_toc(soup, text) is True
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_toc_false(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Normal chapter prose is not classified as TOC."""
+        mock_read_epub.return_value = mock_epub_book
+        html = (
+            "<html><body>"
+            "<p>The quick brown fox jumps over the lazy dog. "
+            "This is a normal paragraph with no table of contents indicators. "
+            "It goes on and on about nothing in particular.</p>"
+            "</body></html>"
+        )
+        soup = bs4.BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator=" ", strip=True)
+        assert EpubReader._looks_like_toc(soup, text) is False
+
+    # ------------------------------------------------------------------
+    # _looks_like_copyright (static)
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_copyright_true(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Text with 3+ copyright indicators returns True."""
+        mock_read_epub.return_value = mock_epub_book
+        # _is_valid_chapter lowercases before calling _looks_like_copyright
+        text = (
+            "copyright \u00a9 2024 example publishing. "
+            "all rights reserved. isbn 978-1-234-56789-0."
+        )
+        assert EpubReader._looks_like_copyright(text) is True
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_copyright_false(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Regular prose without enough indicators returns False."""
+        mock_read_epub.return_value = mock_epub_book
+        text = (
+            "This is a regular paragraph without any copyright information. "
+            "It contains only normal narrative text."
+        )
+        assert EpubReader._looks_like_copyright(text) is False
+
+    # ------------------------------------------------------------------
+    # _is_valid_chapter
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_is_valid_chapter_too_short_bytes(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """HTML shorter than 100 bytes is rejected."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        assert reader._is_valid_chapter("<html><body></body></html>") is False
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_is_valid_chapter_too_short_visible(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """HTML with fewer than 80 visible characters is rejected."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        html = "<html><body><p>Short text.</p></body></html>"
+        assert reader._is_valid_chapter(html) is False
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_is_valid_chapter_valid(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Chapter with enough content passes all validation checks."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        html = "<html><body><p>" + ("A" * 200) + "</p></body></html>"
+        assert reader._is_valid_chapter(html) is True
+
+    # ------------------------------------------------------------------
+    # _get_chapters_grouped_by_toc
+    # ------------------------------------------------------------------
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapters_grouped_by_toc_empty_toc(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Empty TOC yields empty chapter list (falls through to legacy)."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        reader.book.toc = []
+        assert reader._get_chapters_grouped_by_toc() == []
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapters_grouped_by_toc_insufficient_matches(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Too few TOC-to-spine matches triggers fallback (empty list)."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+
+        reader.book.toc = [
+            Link("Text/ch1.xhtml", "Ch 1"),
+            Link("Text/ch2.xhtml", "Ch 2"),
+            Link("Text/ch3.xhtml", "Ch 3"),
+            Link("Text/ch4.xhtml", "Ch 4"),
+        ]
+
+        ch1 = Mock()
+        ch1.get_name.return_value = "Text/ch1.xhtml"
+        ch1.get_type.return_value = ITEM_DOCUMENT
+        ch1.get_body_content.return_value = (
+            b"<html><body><p>" + b"Valid content " * 20 + b"</p></body></html>"
+        )
+        ch2 = Mock()
+        ch2.get_name.return_value = "Text/ch2.xhtml"
+        ch2.get_type.return_value = ITEM_DOCUMENT
+        ch2.get_body_content.return_value = (
+            b"<html><body><p>" + b"Valid content " * 20 + b"</p></body></html>"
+        )
+
+        reader.book.spine = [("ch1_id", "yes"), ("ch2_id", "yes")]
+        reader.book.get_item_with_id.side_effect = lambda sid: {
+            "ch1_id": ch1,
+            "ch2_id": ch2,
+        }.get(sid)
+
+        assert reader._get_chapters_grouped_by_toc() == []
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapters_grouped_by_toc_single_chapter_blob_check(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """1 chapter from many TOC entries triggers fallback (single-blob guard)."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+
+        reader.book.toc = [
+            Link("Text/ch1.xhtml", "Ch 1"),
+            Link("Text/ch2.xhtml", "Ch 2"),
+            Link("Text/ch3.xhtml", "Ch 3"),
+        ]
+
+        ch1 = Mock()
+        ch1.get_name.return_value = "Text/ch1.xhtml"
+        ch1.get_type.return_value = ITEM_DOCUMENT
+        ch1.get_body_content.return_value = (
+            b"<html><body><p>" + b"Valid content " * 20 + b"</p></body></html>"
+        )
+        sub1 = Mock()
+        sub1.get_name.return_value = "Text/sub1.xhtml"
+        sub1.get_type.return_value = ITEM_DOCUMENT
+        sub1.get_body_content.return_value = (
+            b"<html><body><p>" + b"More valid content " * 20 + b"</p></body></html>"
+        )
+
+        reader.book.spine = [("ch1_id", "yes"), ("sub1_id", "yes")]
+        reader.book.get_item_with_id.side_effect = lambda sid: {
+            "ch1_id": ch1,
+            "sub1_id": sub1,
+        }.get(sid)
+
+        chapters = reader._get_chapters_grouped_by_toc()
+        assert chapters == []
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_get_chapters_grouped_by_toc_success(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Spine items are correctly grouped by TOC boundaries with 4+ entries."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+
+        reader.book.toc = [
+            Link("Text/ch1.xhtml", "Ch 1"),
+            Link("Text/ch2.xhtml", "Ch 2"),
+            Link("Text/ch3.xhtml", "Ch 3"),
+            Link("Text/ch4.xhtml", "Ch 4"),
+        ]
+
+        body = b"<html><body><p>" + b"Valid content. " * 20 + b"</p></body></html>"
+
+        ch1 = Mock()
+        ch1.get_name.return_value = "Text/ch1.xhtml"
+        ch1.get_type.return_value = ITEM_DOCUMENT
+        ch1.get_body_content.return_value = body
+
+        ch2 = Mock()
+        ch2.get_name.return_value = "Text/ch2.xhtml"
+        ch2.get_type.return_value = ITEM_DOCUMENT
+        ch2.get_body_content.return_value = body
+
+        ch3 = Mock()
+        ch3.get_name.return_value = "Text/ch3.xhtml"
+        ch3.get_type.return_value = ITEM_DOCUMENT
+        ch3.get_body_content.return_value = body
+
+        ch4 = Mock()
+        ch4.get_name.return_value = "Text/ch4.xhtml"
+        ch4.get_type.return_value = ITEM_DOCUMENT
+        ch4.get_body_content.return_value = body
+
+        reader.book.spine = [
+            ("ch1_id", "yes"),
+            ("ch2_id", "yes"),
+            ("ch3_id", "yes"),
+            ("ch4_id", "yes"),
+        ]
+
+        def _get_item(spine_id):
+            mapping = {
+                "ch1_id": ch1,
+                "ch2_id": ch2,
+                "ch3_id": ch3,
+                "ch4_id": ch4,
+            }
+            return mapping.get(spine_id)
+
+        reader.book.get_item_with_id.side_effect = _get_item
+
+        chapters = reader._get_chapters_grouped_by_toc()
+        assert len(chapters) == 4
+        assert all("Valid content" in ch for ch in chapters)
