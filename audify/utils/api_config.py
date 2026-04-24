@@ -29,7 +29,7 @@ from litellm import exceptions as litellm_exceptions
 try:
     from google.api_core import exceptions as google_api_exceptions
 except ImportError:
-    google_api_exceptions = None
+    google_api_exceptions = None  # type: ignore[assignment]
 
 from audify.utils.constants import (
     AWS_ACCESS_KEY_ID,
