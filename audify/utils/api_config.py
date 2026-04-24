@@ -298,6 +298,14 @@ class TTSAPIConfig(ABC):
         """Return the name of the TTS provider."""
         pass
 
+    @property
+    def max_text_length(self) -> int:
+        """Maximum text length (in characters) for a single synthesis request.
+
+        Defaults to 5000 characters. Subclasses can override.
+        """
+        return 5000
+
 
 class KokoroTTSConfig(TTSAPIConfig):
     """TTS configuration for local Kokoro API."""
@@ -501,6 +509,11 @@ class AWSTTSConfig(TTSAPIConfig):
     @property
     def provider_name(self) -> str:
         return "aws"
+
+    @property
+    def max_text_length(self) -> int:
+        """AWS Polly has a 3000 character limit per request."""
+        return 3000
 
     def _get_polly_client(self):
         """Get or create AWS Polly client."""
@@ -858,6 +871,11 @@ class QwenTTSConfig(TTSAPIConfig):
     @property
     def provider_name(self) -> str:
         return "qwen"
+
+    @property
+    def max_text_length(self) -> int:
+        """Qwen TTS maximum text length per request."""
+        return 5000
 
     @property
     def health_url(self) -> str:

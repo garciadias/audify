@@ -131,6 +131,41 @@ class BaseSynthesizer:
             )
         return self._tts_config
 
+    def _batch_sentences(
+        self, sentences: List[str], max_length: int
+    ) -> List[List[str]]:
+        """Group sentences into batches where each batch's total character
+        length <= max_length."""
+        batches: List[List[str]] = []
+        current_batch: List[str] = []
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_len = len(sentence)
+            if sentence_len > max_length:
+                # Sentence already exceeds limit; should not happen if
+                # sentences are pre-split
+                # Add as its own batch
+                if current_batch:
+                    batches.append(current_batch)
+                    current_batch = []
+                    current_length = 0
+                batches.append([sentence])
+                continue
+
+            if current_length + sentence_len <= max_length:
+                current_batch.append(sentence)
+                current_length += sentence_len
+            else:
+                if current_batch:
+                    batches.append(current_batch)
+                current_batch = [sentence]
+                current_length = sentence_len
+
+        if current_batch:
+            batches.append(current_batch)
+        return batches
+
     def _synthesize_with_provider(
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
@@ -162,15 +197,23 @@ class BaseSynthesizer:
                     f"Available voices: {available_voices[:5]}..."
                 )
 
-            for i, sentence in track(
-                enumerate(sentences),
+            # Group sentences into batches based on provider's max text length
+            batches = self._batch_sentences(sentences, tts_config.max_text_length)
+            logger.info(
+                f"Processing {len(batches)} batch(es) for {len(sentences)} sentences"
+            )
+
+            for batch_idx, batch_sentences in track(
+                enumerate(batches),
                 description=f"{tts_config.provider_name.title()} Synthesizing",
-                total=len(sentences),
+                total=len(batches),
             ):
-                if not sentence.strip():
+                # Filter out empty sentences within batch
+                batch_sentences = [s for s in batch_sentences if s.strip()]
+                if not batch_sentences:
                     continue
 
-                attempted_sentences += 1
+                attempted_sentences += len(batch_sentences)
 
                 # If we've had many consecutive failures the server may have
                 # crashed/restarted.  Wait for it to come back before wasting
@@ -193,21 +236,25 @@ class BaseSynthesizer:
                     consecutive_failures = 0
 
                 try:
-                    temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
-                    success = tts_config.synthesize(sentence, temp_wav_path)
+                    temp_wav_path = self.tmp_dir / f"batch_{batch_idx}.wav"
+                    # Concatenate sentences with a space
+                    batch_text = " ".join(batch_sentences)
+                    success = tts_config.synthesize(batch_text, temp_wav_path)
 
                     if success and temp_wav_path.exists():
                         temp_audio_files.append(temp_wav_path)
                         consecutive_failures = 0
                     else:
-                        failed_sentences += 1
+                        failed_sentences += len(batch_sentences)
                         consecutive_failures += 1
-                        logger.warning(f"Synthesis failed for sentence {i}, skipping.")
+                        logger.warning(
+                            f"Synthesis failed for batch {batch_idx}, skipping."
+                        )
 
                 except Exception as e:
-                    failed_sentences += 1
+                    failed_sentences += len(batch_sentences)
                     consecutive_failures += 1
-                    logger.warning(f"Error synthesizing sentence {i}: {e}")
+                    logger.warning(f"Error synthesizing batch {batch_idx}: {e}")
                     continue
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")

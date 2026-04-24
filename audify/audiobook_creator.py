@@ -304,6 +304,10 @@ class AudiobookCreator(BaseSynthesizer):
         self._requires_llm = True
         self._resolve_task_prompt()
 
+        # For audiobook task, always save scripts to enable resumability
+        if self.task_name == "audiobook":
+            save_text = True
+
         super().__init__(
             path=path,
             language=self.language,
@@ -439,7 +443,13 @@ class AudiobookCreator(BaseSynthesizer):
                     "  • Verify KOKORO_API_URL is set correctly\n"
                 )
 
-            if _env_flag("AUDIFY_STRICT_TTS_PREFLIGHT", default=False):
+            # For audiobook task, fail fast by default; for other tasks,
+            # respect env flag
+            strict_preflight = (
+                self.task_name == "audiobook"
+                or _env_flag("AUDIFY_STRICT_TTS_PREFLIGHT", default=False)
+            )
+            if strict_preflight:
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
 
@@ -462,24 +472,40 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
+        # Early exit for empty text
+        if not chapter_text.strip():
+            logger.warning(f"No text found in Chapter {chapter_number}")
+            return "This chapter contains no readable text content."
+
+        # Extract chapter title for metadata (needed whether we skip or not)
+        chapter_title = (
+            self.reader.get_chapter_title(chapter_text)
+            if isinstance(self.reader, EpubReader)
+            else self.reader.path.stem
+        )
+        logger.info(f"Chapter {chapter_number} title: {chapter_title}")
+
+        # Check if episode MP3 already exists - if so, skip script generation
+        episodes_path = getattr(self, "episodes_path", None)
+        if episodes_path is not None:
+            episode_mp3_path = episodes_path / f"episode_{chapter_number:03d}.mp3"
+            if episode_mp3_path.exists():
+                logger.info(
+                    f"Episode {chapter_number} MP3 already exists, "
+                    "skipping script generation."
+                )
+                self.chapter_titles.append(chapter_title)
+                return ""
+
         script_path = self.scripts_path / f"episode_{chapter_number:03d}_script.txt"
         if script_path.exists() and not self.confirm:
             logger.info(
                 f"Script for Episode {chapter_number} already exists, loading..."
             )
-            chapter_title = (
-                self.reader.get_chapter_title(chapter_text)
-                if isinstance(self.reader, EpubReader)
-                else self.reader.path.stem
-            )
             self.chapter_titles.append(chapter_title)
             logger.info(f"Chapter {chapter_number} title: {chapter_title}")
             with open(script_path, "r", encoding="utf-8") as f:
                 return f.read()
-
-        if not chapter_text.strip():
-            logger.warning(f"No text found in Chapter {chapter_number}")
-            return "This chapter contains no readable text content."
 
         cleaned_text = self._clean_text_for_audiobook(chapter_text)
         logger.info(
@@ -490,13 +516,6 @@ class AudiobookCreator(BaseSynthesizer):
             f"Original length: {len(chapter_text.split())} words, "
             f"Cleaned length: {len(cleaned_text.split())} words"
         )
-        chapter_title = (
-            self.reader.get_chapter_title(chapter_text)
-            if isinstance(self.reader, EpubReader)
-            else self.reader.path.stem
-        )
-        logger.info(f"Chapter {chapter_number} title: {chapter_title}")
-        self.chapter_titles.append(chapter_title)
 
         if getattr(self, "_requires_llm", True) is False:
             task_name = getattr(self, "task_name", "unknown")
@@ -542,6 +561,8 @@ class AudiobookCreator(BaseSynthesizer):
                     )
                     chunk_scripts.append(chunk_script)
                 audiobook_script = " ".join(chunk_scripts)
+
+        self.chapter_titles.append(chapter_title)
 
         # Save the script if requested
         if self.save_text:
