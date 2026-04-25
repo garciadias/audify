@@ -418,9 +418,10 @@ class AudiobookCreator(BaseSynthesizer):
             error_msg += (
                 "Please verify:\n"
                 "  1. TTS service is running and accessible\n"
-                "  2. Environment variables are correctly set "
+                "  2. Environment variables are correctly set"
                 " (TTS provider URL, etc.)\n"
-                "  3. Network connectivity to the TTS API endpoint\n"
+                "  3. Network connectivity to the TTS API"
+                " endpoint\n"
                 "  4. API credentials if required\n"
             )
 
@@ -460,7 +461,7 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
-        # Early exit for empty text
+        # Early exit for empty text (before reader access for safety)
         if not chapter_text.strip():
             logger.warning(f"No text found in Chapter {chapter_number}")
             return "This chapter contains no readable text content."
@@ -769,6 +770,8 @@ class AudiobookCreator(BaseSynthesizer):
         ``scripts_path/episode_XXX_script.txt`` files, synthesises each,
         and produces the final M4B.
         """
+        self._verify_tts_provider_available()
+
         script_files = sorted(self.scripts_path.glob("episode_*_script.txt"))
         if not script_files:
             logger.error(
@@ -879,7 +882,7 @@ class AudiobookCreator(BaseSynthesizer):
             self.progress.start()
 
         # ------------------------------------------------------------------
-        # Phase 1 – generate scripts for every chapter
+        # Phase 1 - generate scripts for every chapter
         # ------------------------------------------------------------------
         script_word_counts: list[tuple[str, int]] = []
         chapter_scripts: list[tuple[int, str]] = []
@@ -916,7 +919,7 @@ class AudiobookCreator(BaseSynthesizer):
                 continue
 
         # ------------------------------------------------------------------
-        # Phase 2 – validate chapter lengths
+        # Phase 2 - validate chapter lengths
         # ------------------------------------------------------------------
         self.progress.set_phase("Validating")
         self._validate_chapters(script_word_counts)
@@ -931,7 +934,7 @@ class AudiobookCreator(BaseSynthesizer):
             return []
 
         # ------------------------------------------------------------------
-        # Phase 3 – synthesise TTS audio
+        # Phase 3 - synthesise TTS audio
         # ------------------------------------------------------------------
         episode_paths: list[Path] = []
 

@@ -153,12 +153,13 @@ class EpubReader(Reader):
 
             is_toc_boundary = item_name in toc_item_names
 
-            if is_toc_boundary and current_group:
-                merged = self._merge_items(current_group)
-                if merged and self._is_valid_chapter(merged):
-                    chapters.append(merged)
-                current_group = [item]
+            if is_toc_boundary:
                 matches_found += 1
+                if current_group:
+                    merged = self._merge_items(current_group)
+                    if merged and self._is_valid_chapter(merged):
+                        chapters.append(merged)
+                current_group = [item]
             else:
                 current_group.append(item)
 
@@ -208,7 +209,7 @@ class EpubReader(Reader):
 
         try:
             _walk(raw)
-        except (TypeError, Exception):
+        except (TypeError, AttributeError):
             return []
 
         return hrefs

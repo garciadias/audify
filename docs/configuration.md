@@ -78,16 +78,17 @@ GOOGLE_TTS_LANGUAGE_CODE=<lang-code> # e.g., es-ES for Spanish
 
 ## Docker Services
 
-The `docker-compose.yml` provides local services:
+The `docker-compose.yml` provides local services via profiles:
 
-| Service    | Port  | Description                           |
-|------------|-------|---------------------------------------|
-| Kokoro TTS | 8887  | GPU-accelerated speech synthesis       |
-| Ollama     | 11434 | Local LLM for script/translation       |
-| Audify API | 8000  | REST API (starts after dependencies)   |
+| Service    | Profile  | Port  | Description                           |
+|------------|----------|-------|---------------------------------------|
+| Kokoro TTS | `kokoro` | 8887  | GPU-accelerated speech synthesis       |
+| Ollama     | `ollama` | 11434 | Local LLM for script/translation       |
+| Audify API | `api`    | 8000  | REST API (depends on Kokoro & Ollama)  |
 
 ```bash
-docker compose up -d      # Start all services
+docker compose --profile kokoro --profile ollama up -d  # Start TTS + LLM
+docker compose --profile kokoro --profile ollama --profile api up -d  # Include API
 docker compose ps         # Check status
 docker compose logs -f    # Follow logs
 docker compose down       # Stop all services

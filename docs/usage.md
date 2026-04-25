@@ -64,7 +64,7 @@ audify audiobook book.epub --translate pt
 
 # Full workflow: extract as English, LLM processes English text, translate script to Spanish, synthesize
 audify audiobook book.epub --language en --translate es -m "api:deepseek/deepseek-chat"
-
+```
 
 :::{note}
 When using `--translate` with audiobook generation, the LLM processes the extracted text in the source language to generate the script, then that script is translated to the target language before synthesis. This ensures the LLM has access to the original text for best results.

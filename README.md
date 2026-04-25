@@ -85,10 +85,13 @@ cd audify
 
 ```bash
 # Start Kokoro TTS and Ollama services
-docker compose up -d
+docker compose --profile kokoro --profile ollama up -d
 
 # Wait for services to be ready (~2-3 minutes)
 # Check status: docker compose ps
+
+# Optionally start the REST API service as well
+docker compose --profile kokoro --profile ollama --profile api up -d
 ```
 
 ### 3. Install Python Dependencies
@@ -401,13 +404,21 @@ export OLLAMA_MODEL="magistral:24b"
 
 ### Docker Services
 
-The `docker-compose.yml` configures local services:
+The `docker-compose.yml` configures local services using Docker Compose profiles:
 
-- **Kokoro TTS**: Port 8887 (GPU-accelerated speech synthesis, local)
-- **Ollama**: Port 11434 (LLM for translation and audiobook generation, optional)
-- **Audify API**: Port 8000 (REST API server, starts after Kokoro and Ollama are healthy)
+| Service      | Profile   | Port  | Description                                |
+|--------------|-----------|-------|--------------------------------------------|
+| Kokoro TTS   | `kokoro`  | 8887  | GPU-accelerated speech synthesis (local)   |
+| Ollama       | `ollama`  | 11434 | LLM for translation and audiobook gen.     |
+| Audify API   | `api`     | 8000  | REST API (depends on Kokoro and Ollama)    |
 
-The `api` service waits for Kokoro and Ollama to pass their healthchecks before starting, so services are always ready when the API accepts requests.
+```bash
+# Start specific services by profile
+docker compose --profile kokoro --profile ollama up -d
+
+# Start all local services including the API
+docker compose --profile kokoro --profile ollama --profile api up -d
+```
 
 Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
 

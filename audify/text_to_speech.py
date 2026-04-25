@@ -153,9 +153,10 @@ class BaseSynthesizer:
                 batches.append([sentence])
                 continue
 
-            if current_length + sentence_len <= max_length:
+            separator_len = 1 if current_batch else 0
+            if current_length + sentence_len + separator_len <= max_length:
                 current_batch.append(sentence)
-                current_length += sentence_len
+                current_length += sentence_len + separator_len
             else:
                 if current_batch:
                     batches.append(current_batch)

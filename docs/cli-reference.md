@@ -42,16 +42,16 @@ directory, processes all supported files inside it.
 
 ### Info / listing options
 
-| Option                   | Short  | Description                                               |
-|--------------------------|--------|-----------------------------------------------------------|
-| `--list-languages`       | `-ll`  | Print all supported language codes                        |
-| `--list-models`          | `-lmm` | List TTS models available from Kokoro API                 |
-| `--list-voices`          | `-lv`  | List voices available from the selected TTS provider      |
-| `--list-tts-providers`   | `-ltp` | Show all TTS providers and their configuration status     |
-| `--create-voice-samples` | `-cvs` | Generate an M4B sample file with all available voices     |
-| `--max-samples`          | `-ms`  | Maximum number of voice samples to create                 | `5` |
-| `--version`              | `-V`   | Print version and exit                                    |
-| `--help`                 |        | Show help and exit                                        |
+| Option                   | Short  | Description                                               | Default |
+|--------------------------|--------|---------------------------------------------------------  |---------|
+| `--list-languages`       | `-ll`  | Print all supported language codes                        |         |
+| `--list-models`          | `-lmm` | List TTS models available from Kokoro API                 |         |
+| `--list-voices`          | `-lv`  | List voices available from the selected TTS provider      |         |
+| `--list-tts-providers`   | `-ltp` | Show all TTS providers and their configuration status     |         |
+| `--create-voice-samples` | `-cvs` | Generate an M4B sample file with all available voices     |         |
+| `--max-samples`          | `-ms`  | Maximum number of voice samples to create                 | `5`     |
+| `--version`              | `-V`   | Print version and exit                                    |         |
+| `--help`                 |        | Show help and exit                                        |         |
 
 ### Examples
 

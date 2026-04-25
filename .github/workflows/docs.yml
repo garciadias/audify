@@ -32,7 +32,7 @@ jobs:
 
       - name: Build documentation with uv
         run: |
-          uv sync --frozen
+          uv sync --frozen --group docs
           uv run task docs
 
       - name: Upload docs artifact

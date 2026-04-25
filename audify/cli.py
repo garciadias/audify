@@ -110,13 +110,20 @@ def _stage_input_to_host_data(path_obj: Path, logger: logging.Logger) -> Path:
     if resolved.is_relative_to(_CONTAINER_DATA_ROOT):
         return resolved
 
-    _CONTAINER_INPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    staged_path = _CONTAINER_INPUT_ROOT / resolved.name
+    try:
+        _CONTAINER_INPUT_ROOT.mkdir(parents=True, exist_ok=True)
+        staged_path = _CONTAINER_INPUT_ROOT / resolved.name
 
-    if resolved.is_dir():
-        shutil.copytree(resolved, staged_path, dirs_exist_ok=True)
-    else:
-        shutil.copy2(resolved, staged_path)
+        if resolved.is_dir():
+            shutil.copytree(resolved, staged_path, dirs_exist_ok=True)
+        else:
+            shutil.copy2(resolved, staged_path)
+    except OSError as e:
+        logger.warning(
+            f"Failed to stage input to {_CONTAINER_INPUT_ROOT}: {e}. "
+            "Falling back to original path."
+        )
+        return path_obj
 
     logger.info(f"Staged input for host visibility: {resolved} -> {staged_path}")
     return staged_path
@@ -165,13 +172,20 @@ def _ensure_output_synced_to_host_data(
     if resolved.is_relative_to(_CONTAINER_DATA_ROOT):
         return resolved
 
-    _CONTAINER_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    target = _CONTAINER_OUTPUT_ROOT / resolved.name
+    try:
+        _CONTAINER_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+        target = _CONTAINER_OUTPUT_ROOT / resolved.name
 
-    if resolved.is_dir():
-        shutil.copytree(resolved, target, dirs_exist_ok=True)
-    else:
-        shutil.copy2(resolved, target)
+        if resolved.is_dir():
+            shutil.copytree(resolved, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(resolved, target)
+    except OSError as e:
+        logger.warning(
+            f"Failed to sync output to {_CONTAINER_OUTPUT_ROOT}: {e}. "
+            "Returning original path."
+        )
+        return output_path
 
     logger.info(f"Copied output artifact to host-visible path: {target}")
     return target
@@ -420,7 +434,6 @@ def cli(
                 "name": "Google Cloud TTS",
                 "config": "GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_TTS_VOICE",
             },
-
         }
 
         for provider in AVAILABLE_TTS_PROVIDERS:

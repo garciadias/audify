@@ -37,7 +37,7 @@ Requires Docker and a CUDA GPU. Fast and low-latency synthesis.
 ```bash
 git clone https://github.com/garciadias/audify.git
 cd audify
-docker compose up -d
+docker compose --profile kokoro --profile ollama up -d
 # Wait ~2-3 minutes for services to start
 ```
 
