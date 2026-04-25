@@ -5,23 +5,23 @@
 Convert ebooks directly to audio without LLM processing:
 
 ```bash
-# EPUB to audiobook
-audify run book.epub
+# EPUB to audiobook (direct TTS, no LLM)
+audify book.epub --task direct
 
 # PDF to audio
-audify run document.pdf
+audify document.pdf --task direct
 
 # Specify language (affects voice selection and TTS)
-audify run book.epub --language pt
+audify book.epub --task direct --language pt
 
 # Translate content (text is translated before TTS)
-audify run book.epub --translate es
+audify book.epub --task direct --translate es
 
 # Combined: source language with translation
-audify run book.epub --language en --translate es
+audify book.epub --task direct --language en --translate es
 
 # Choose TTS provider
-audify run book.epub --tts-provider openai
+audify book.epub --task direct --tts-provider openai
 ```
 
 ### Understanding --language and --translate
@@ -36,13 +36,13 @@ audify run book.epub --tts-provider openai
 
 ```bash
 # Translate an English book to Spanish audio
-audify run english-book.epub --language en --translate es
+audify english-book.epub --task direct --language en --translate es
 
 # Portuguese book to French audio
-audify run book.epub --language pt --translate fr
+audify book.epub --task direct --language pt --translate fr
 
 # Without source language specified, translation uses the autodetected language
-audify run mixed-language-book.epub --translate es
+audify mixed-language-book.epub --task direct --translate es
 ```
 
 ## LLM-Powered Audiobook Generation
@@ -50,20 +50,20 @@ audify run mixed-language-book.epub --translate es
 Use an LLM to transform text into engaging audiobook scripts before TTS:
 
 ```bash
-# Default audiobook style
-audify audiobook book.epub
+# Default audiobook style (--task audiobook is the default)
+audify book.epub
 
 # Limit chapters
-audify audiobook book.epub --max-chapters 5
+audify book.epub --max-chapters 5
 
 # Custom voice and language
-audify audiobook book.epub --voice af_bella --language en
+audify book.epub --voice af_bella --language en
 
 # With translation (LLM processes source text, then script is translated for synthesis)
-audify audiobook book.epub --translate pt
+audify book.epub --translate pt
 
 # Full workflow: extract as English, LLM processes English text, translate script to Spanish, synthesize
-audify audiobook book.epub --language en --translate es -m "api:deepseek/deepseek-chat"
+audify book.epub --language en --translate es -m "api:deepseek/deepseek-chat"
 ```
 
 :::{note}
@@ -74,16 +74,16 @@ When using `--translate` with audiobook generation, the LLM processes the extrac
 
 ```bash
 # DeepSeek (cost-effective)
-audify audiobook book.epub -m "api:deepseek/deepseek-chat"
+audify book.epub -m "api:deepseek/deepseek-chat"
 
 # Claude (high quality)
-audify audiobook book.epub -m "api:anthropic/claude-3-5-sonnet-20240620"
+audify book.epub -m "api:anthropic/claude-3-5-sonnet-20240620"
 
 # GPT-4
-audify audiobook book.epub -m "api:openai/gpt-4-turbo-preview"
+audify book.epub -m "api:openai/gpt-4-turbo-preview"
 
 # Gemini
-audify audiobook book.epub -m "api:gemini/gemini-1.5-pro"
+audify book.epub -m "api:gemini/gemini-1.5-pro"
 ```
 
 See [Commercial APIs](commercial-apis.md) for API key setup.
@@ -94,22 +94,22 @@ Use the `--task` flag to control how the LLM transforms your text:
 
 ```bash
 # Audiobook style (default)
-audify audiobook book.epub --task audiobook
+audify book.epub --task audiobook
 
 # Podcast/lecture style
-audify audiobook book.epub --task podcast
+audify book.epub --task podcast
 
 # Summary
-audify audiobook book.epub --task summary
+audify book.epub --task summary
 
 # Guided meditation
-audify audiobook book.epub --task meditation
+audify book.epub --task meditation
 
 # Classroom lecture
-audify audiobook book.epub --task lecture
+audify book.epub --task lecture
 
 # Custom prompt file
-audify audiobook book.epub --prompt-file my-prompt.txt
+audify book.epub --prompt-file my-prompt.txt
 ```
 
 See [Tasks](tasks.md) for details on creating custom tasks.
@@ -121,12 +121,12 @@ into two stages:
 
 ```bash
 # Stage 1: Extract text and generate LLM scripts (no TTS)
-audify audiobook book.epub --process-only
+audify book.epub --process-only
 
 # Review or edit generated scripts in audiobooks/[book_name]/scripts/
 
 # Stage 2: Synthesise audio from saved scripts
-audify audiobook book.epub --synthesize-only
+audify book.epub --synthesize-only
 ```
 
 This is useful when:
@@ -149,30 +149,15 @@ Process multiple files into a single audiobook:
 
 ```bash
 # All supported files in a directory
-audify audiobook path/to/articles/
+audify path/to/articles/
 
 # With translation
-audify audiobook path/to/articles/ --translate es
+audify path/to/articles/ --translate es
 ```
 
 **Supported file types**: EPUB, PDF, TXT, MD
 
 Each file becomes a separate episode with a synthesized title, and all episodes are combined into a single M4B audiobook with chapter markers.
-
-## Unified Convert Command
-
-The `convert` command unifies `run` and `audiobook` functionality:
-
-```bash
-# Direct TTS (equivalent to audify run)
-audify convert book.epub --task direct
-
-# Audiobook (equivalent to audify audiobook)
-audify convert book.epub --task audiobook
-
-# Podcast style
-audify convert book.epub --task podcast
-```
 
 ## Listing Available Options
 
@@ -198,7 +183,7 @@ audify --list-tts-providers
 
 ## Output Structure
 
-### Basic TTS (`audify run`)
+### Basic TTS (`audify book.epub --task direct`)
 
 ```text
 data/output/[book_name]/
@@ -209,7 +194,7 @@ data/output/[book_name]/
     book_name.m4b          # Final audiobook
 ```
 
-### LLM Audiobook (`audify audiobook`)
+### LLM Audiobook (`audify book.epub`)
 
 ```text
 audiobooks/[book_name]/

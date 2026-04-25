@@ -35,8 +35,12 @@ class TestEnvFlag:
 # ---------------------------------------------------------------------------
 # Helper to build a minimal AudiobookCreator without __init__
 # ---------------------------------------------------------------------------
-def _make_creator(**overrides):
-    """Build an AudiobookCreator via __new__ with just enough state for testing."""
+def _make_creator(base_path=None, **overrides):
+    """Build an AudiobookCreator via __new__ with just enough state for testing.
+
+    When *base_path* is None the path attributes are set to placeholders that
+    should be overridden by each test that actually touches the filesystem.
+    """
     creator = AudiobookCreator.__new__(AudiobookCreator)
     creator.chapter_titles = []
     creator.task_name = "audiobook"
@@ -44,9 +48,10 @@ def _make_creator(**overrides):
     creator.save_text = True
     creator.confirm = False
     creator.progress = MagicMock()
-    creator.scripts_path = Path("/tmp/test_scripts")
-    creator.episodes_path = Path("/tmp/test_episodes")
-    creator.audiobook_path = Path("/tmp/test_audiobook")
+    base = base_path or Path("test_placeholder")
+    creator.scripts_path = base / "scripts"
+    creator.episodes_path = base / "episodes"
+    creator.audiobook_path = base
     creator.file_name = Path("test")
     for k, v in overrides.items():
         setattr(creator, k, v)
@@ -648,70 +653,78 @@ class TestBatchSeparatorAccounting:
 # ebook reader: TOC match counter fix
 # ---------------------------------------------------------------------------
 class TestTocMatchCounter:
-    def test_first_item_boundary_counted(self):
-        """First spine item matching TOC should increment matches_found."""
+    def test_first_item_boundary_counted(self, caplog):
+        """First spine item matching TOC increments matches_found.
+
+        When the very first spine item is a TOC boundary, matches_found
+        should still be incremented (even though current_group is empty).
+        We need >= _MIN_TOC_MATCHES (3) boundaries that produce valid
+        chapters to avoid the fallback path.
+        """
+        from ebooklib import ITEM_DOCUMENT
 
         from audify.readers.ebook import EpubReader
 
         reader = EpubReader.__new__(EpubReader)
 
-        item1 = MagicMock()
-        item1.get_name.return_value = "ch1.xhtml"
-        item1.get_type.return_value = 9  # ITEM_DOCUMENT
-        body1 = b"<html><body><p>" + b"Word " * 100 + b"</p></body></html>"
-        item1.get_body_content.return_value = body1
+        def _make_item(name):
+            item = MagicMock()
+            item.get_name.return_value = name
+            item.get_type.return_value = ITEM_DOCUMENT
+            body = (
+                b"<html><body><p>"
+                + (f"Content for {name}. " * 80).encode()
+                + b"</p></body></html>"
+            )
+            item.get_body_content.return_value = body
+            return item
 
-        item2 = MagicMock()
-        item2.get_name.return_value = "ch2.xhtml"
-        item2.get_type.return_value = 9
-        body2 = b"<html><body><p>" + b"Content " * 100 + b"</p></body></html>"
-        item2.get_body_content.return_value = body2
-
+        items = {f"id{i}": _make_item(f"ch{i}.xhtml") for i in range(1, 5)}
         reader.book = MagicMock()
-        reader.book.spine = [("id1", "yes"), ("id2", "yes")]
-        reader.book.get_item_with_id = lambda sid: {
-            "id1": item1,
-            "id2": item2,
-        }[sid]
+        reader.book.spine = [(sid, "yes") for sid in items]
+        reader.book.get_item_with_id = lambda sid: items[sid]
 
-        toc_item_names = {"ch1.xhtml", "ch2.xhtml"}
+        # Mock TOC so _build_toc_item_name_set returns matching names
+        toc_entries = []
+        for i in range(1, 5):
+            entry = MagicMock()
+            entry.href = f"ch{i}.xhtml"
+            toc_entries.append(entry)
+        reader.book.toc = toc_entries
 
-        chapters = reader._get_chapters_grouped_by_toc.__wrapped__(
-            reader, toc_item_names
-        ) if hasattr(reader._get_chapters_grouped_by_toc, '__wrapped__') else None
+        chapters = reader._get_chapters_grouped_by_toc()
 
-        # Can't easily call the method directly without full init,
-        # so test the logic inline
-        chapters = []
-        current_group = []
-        matches_found = 0
-
-        spine_items = [item1, item2]
-        for item in spine_items:
-            item_name = item.get_name().lower()
-            is_toc_boundary = item_name in toc_item_names
-
-            if is_toc_boundary:
-                matches_found += 1
-                if current_group:
-                    chapters.append("merged")
-                current_group = [item]
-            else:
-                current_group.append(item)
-
-        # Both items are TOC boundaries → matches_found == 2
-        assert matches_found == 2
+        # With 4 TOC boundaries all matching, we should get chapters
+        # (the first boundary starts a group, subsequent ones close/open)
+        assert len(chapters) >= 2
 
     def test_exception_narrowed_to_type_attribute_error(self):
-        """_flatten_toc_hrefs catches TypeError and AttributeError only."""
+        """_flatten_toc_hrefs catches TypeError and AttributeError."""
         from audify.readers.ebook import EpubReader
 
         reader = EpubReader.__new__(EpubReader)
         reader.book = MagicMock()
-        # toc entries that trigger AttributeError
-        reader.book.toc = [42]  # int has no .href → caught by getattr default
+
+        # Create an object whose .href property raises AttributeError
+        class BadEntry:
+            @property
+            def href(self):
+                raise AttributeError("broken href")
+
+        reader.book.toc = [BadEntry()]
         result = reader._flatten_toc_hrefs()
-        # Should return empty since 42 has no href
+        assert result == []
+
+    def test_flatten_toc_catches_type_error(self):
+        """_flatten_toc_hrefs catches TypeError from bad TOC structure."""
+        from audify.readers.ebook import EpubReader
+
+        reader = EpubReader.__new__(EpubReader)
+        reader.book = MagicMock()
+        # A tuple entry with wrong structure triggers TypeError
+        # when _walk tries to unpack it
+        reader.book.toc = [(1, 2, 3)]  # len != 2 → falls to getattr path
+        result = reader._flatten_toc_hrefs()
         assert result == []
 
 
@@ -723,13 +736,14 @@ class TestApiVersionFallback:
         """The app module falls back to '0.1.0' when package not installed."""
         import importlib
 
+        import audify.api.app as app_mod
+
         with patch(
             "importlib.metadata.version",
             side_effect=importlib.metadata.PackageNotFoundError,
         ):
-            # Re-exec the version resolution
-            try:
-                ver = importlib.metadata.version("audify-cli")
-            except importlib.metadata.PackageNotFoundError:
-                ver = "0.1.0"
-            assert ver == "0.1.0"
+            importlib.reload(app_mod)
+            assert app_mod._version == "0.1.0"
+
+        # Reload again to restore normal state
+        importlib.reload(app_mod)

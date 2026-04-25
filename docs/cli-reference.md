@@ -43,7 +43,7 @@ directory, processes all supported files inside it.
 ### Info / listing options
 
 | Option                   | Short  | Description                                               | Default |
-|--------------------------|--------|---------------------------------------------------------  |---------|
+|--------------------------|--------|---------------------------------------------------------|---------|
 | `--list-languages`       | `-ll`  | Print all supported language codes                        |         |
 | `--list-models`          | `-lmm` | List TTS models available from Kokoro API                 |         |
 | `--list-voices`          | `-lv`  | List voices available from the selected TTS provider      |         |

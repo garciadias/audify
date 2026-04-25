@@ -461,9 +461,12 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
-        # Early exit for empty text (before reader access for safety)
+        # Early exit for empty text (before reader access for safety).
+        # Append a placeholder title to keep self.chapter_titles aligned
+        # with episode indices used by M4B metadata creation.
         if not chapter_text.strip():
             logger.warning(f"No text found in Chapter {chapter_number}")
+            self.chapter_titles.append(f"Chapter {chapter_number}")
             return "This chapter contains no readable text content."
 
         # Extract chapter title for metadata (needed whether we skip or not)
@@ -789,7 +792,7 @@ class AudiobookCreator(BaseSynthesizer):
                 episode_num = int(script_file.stem.split("_")[1])
             except (IndexError, ValueError):
                 logger.warning(
-                    "Could not parse episode number from %s", script_file.name
+                    f"Could not parse episode number from {script_file.name}"
                 )
                 continue
 
