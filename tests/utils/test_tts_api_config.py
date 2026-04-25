@@ -9,6 +9,7 @@ from audify.utils.api_config import (
     GoogleTTSConfig,
     KokoroTTSConfig,
     OpenAITTSConfig,
+    QwenTTSConfig,
     get_tts_config,
 )
 
@@ -677,6 +678,11 @@ class TestGetTTSConfig:
         config = get_tts_config(provider="google")
         assert isinstance(config, GoogleTTSConfig)
 
+    def test_get_qwen_config(self):
+        """Test get_tts_config returns QwenTTSConfig for 'qwen'."""
+        config = get_tts_config(provider="qwen")
+        assert isinstance(config, QwenTTSConfig)
+
     def test_get_config_with_voice(self):
         """Test get_tts_config passes voice parameter."""
         config = get_tts_config(provider="openai", voice="nova")
@@ -701,4 +707,4 @@ class TestGetTTSConfig:
         """Test get_tts_config uses default provider when none specified."""
         config = get_tts_config()
         # Should use DEFAULT_TTS_PROVIDER which is "kokoro"
-        assert config.provider_name in ["kokoro", "openai", "aws", "google"]
+        assert config.provider_name in ["kokoro", "openai", "aws", "google", "qwen"]

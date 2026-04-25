@@ -278,7 +278,7 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
     default=DEFAULT_TTS_PROVIDER,
     help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
-    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
+    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS), qwen (local).",
 )
 @click.option(
     "--task",
@@ -419,6 +419,12 @@ def cli(
             "google": {
                 "name": "Google Cloud TTS",
                 "config": "GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_TTS_VOICE",
+            },
+            "qwen": {
+                "name": "QWEN (Local)",
+                "config": (
+                    "QWEN_API_URL (default: http://localhost:8890), QWEN_TTS_VOICE"
+                ),
             },
 
         }

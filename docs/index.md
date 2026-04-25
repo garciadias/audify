@@ -43,7 +43,7 @@ changelog
 
 Audify is a pipeline and CLI tool that transforms written content (EPUB, PDF, TXT, MD) into high-quality audiobooks using:
 
-- **Multiple TTS Providers** -- Kokoro (local), OpenAI, AWS Polly, Google Cloud TTS
+- **Multiple TTS Providers** -- Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, Google Cloud TTS
 - **LLM-powered audio generation** -- Transform text into audiobook scripts, podcasts, lectures, summaries, and more
 - **Flexible task system** -- Use built-in prompts or provide your own custom prompts
 

@@ -54,6 +54,65 @@ uv sync
 audify book.epub --task direct
 ```
 
+## Option 3: Qwen-TTS (Local, Free)
+
+Requires a local Qwen-TTS-compatible API and typically a GPU.
+
+### Option 3A: Docker Compose Profile (Recommended)
+
+Run the provided qwen-tts service in this repository:
+
+1. Start Qwen-TTS and Ollama:
+
+   ```bash
+   docker compose --profile qwen up -d qwen-tts ollama
+   ```
+
+2. Confirm Qwen-TTS health:
+
+   ```bash
+   curl http://localhost:8890/health
+   ```
+
+3. Use Qwen in Audify:
+
+   ```bash
+   # Direct TTS
+   audify book.epub --task direct --tts-provider qwen
+
+   # Audiobook generation with Ollama LLM + Qwen-TTS
+   audify book.epub --task audiobook --tts-provider qwen -m gemma4:31b
+   ```
+
+### Option 3B: Local API Wrapper Script
+
+1. Install dependencies:
+
+   ```bash
+   pip install qwen-tts fastapi uvicorn soundfile numpy torch
+   ```
+
+2. Run the wrapper:
+
+   ```bash
+   python scripts/qwen_tts_api.py
+   ```
+
+3. Configure Audify:
+
+   ```bash
+   TTS_PROVIDER=qwen
+   QWEN_API_URL=http://localhost:8890
+   QWEN_TTS_VOICE=Vivian
+   ```
+
+### Equivalent commands
+
+```bash
+audify book.epub --task direct --tts-provider qwen
+audify book.epub --task audiobook --tts-provider qwen --llm-model gemma4:31b
+```
+
 ## Next Steps
 
 - Learn about all [usage options](usage.md) including translation

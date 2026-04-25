@@ -13,11 +13,15 @@ cp .keys.example .keys
 ```
 
 ```ini
-# TTS provider (kokoro, openai, aws, google)
+# TTS provider (kokoro, qwen, openai, aws, google)
 TTS_PROVIDER=kokoro
 
 # Kokoro TTS (local)
 KOKORO_API_URL=http://localhost:8887/v1
+
+# Qwen-TTS (local)
+QWEN_API_URL=http://localhost:8890
+QWEN_TTS_VOICE=Vivian
 
 # OpenAI TTS
 OPENAI_API_KEY=sk-your-key
@@ -57,6 +61,7 @@ Never commit `.keys` to version control. It is already in `.gitignore`.
 | Provider         | Local? | Free? | GPU needed? | Key Features                   |
 |------------------|--------|-------|-------------|-------------------------------|
 | **Kokoro**       | Yes    | Yes   | Recommended | Fast, low-latency synthesis   |
+| **Qwen-TTS**     | Yes    | Yes   | Recommended | Multilingual, high quality    |
 | **OpenAI**       | No     | No    | No          | High quality, easy setup      |
 | **AWS Polly**    | No     | No    | No          | Enterprise, multiple engines  |
 | **Google Cloud** | No     | No    | No          | Multilingual, neural voices   |
@@ -85,12 +90,31 @@ The `docker-compose.yml` provides local services:
 | Kokoro TTS | 8887  | GPU-accelerated speech synthesis       |
 | Ollama     | 11434 | Local LLM for script/translation       |
 | Audify API | 8000  | REST API (starts after dependencies)   |
+| Qwen-TTS   | 8890  | Local Qwen-TTS wrapper (qwen profile)  |
 
 ```bash
 docker compose up -d      # Start all services
 docker compose ps         # Check status
 docker compose logs -f    # Follow logs
 docker compose down       # Stop all services
+```
+
+Enable Qwen-TTS service:
+
+```bash
+docker compose --profile qwen up -d qwen-tts
+```
+
+If Audify runs on host machine, use:
+
+```ini
+QWEN_API_URL=http://localhost:8890
+```
+
+If Audify runs inside the `api` compose service, use:
+
+```ini
+QWEN_API_URL=http://qwen-tts:8890
 ```
 
 ## Supported Languages
