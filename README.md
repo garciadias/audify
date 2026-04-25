@@ -16,6 +16,7 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **📚 Multiple Formats**: Convert EPUB ebooks, PDF documents, TXT, and MD files
 - **📁 Directory Processing**: Create audiobooks from multiple files in a directory
 - **🎙️ Audiobook Creation**: Generate audiobook-style content from books using LLM
+- **🔄 Two-Stage Workflow**: Split processing and synthesis with `--process-only` / `--synthesize-only` for review, editing, and resumability
 - **🎛️ Flexible Task System**: Transform content into audiobooks, podcasts, summaries, meditations, or custom styles
 - **🌐 REST API**: HTTP API for programmatic synthesis and audiobook creation
 - **🔒 Multiple TTS Providers**: Choose from Kokoro (local), OpenAI, AWS Polly, or Google Cloud TTS
@@ -273,6 +274,22 @@ The directory mode will:
 - Combine all episodes into a single M4B audiobook with chapter markers
 - Synthesize the title audio for each episode
 
+### Two-Stage Workflow
+
+Split audiobook creation into script generation and audio synthesis for review, editing, or resumability:
+
+```bash
+# Stage 1: Generate scripts only (no TTS)
+task audiobook "book.epub" --process-only
+
+# Review/edit scripts in audiobooks/[book_name]/scripts/
+
+# Stage 2: Synthesise audio from saved scripts
+task audiobook "book.epub" --synthesize-only
+```
+
+If a run is interrupted, re-running the same command will automatically skip episodes whose MP3 files already exist.
+
 ### Advanced Options
 
 ```bash
@@ -416,6 +433,7 @@ data/output/
         ├── scripts/                # Generated scripts
         │   ├── episode_001_script.txt
         │   ├── original_text_001.txt
+        │   ├── chapter_titles.json
         │   └── ...
         ├── chapters.txt            # FFmpeg metadata
         └── [book_name].m4b         # Final M4B audiobook

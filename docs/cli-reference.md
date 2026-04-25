@@ -36,6 +36,8 @@ directory, processes all supported files inside it.
 | `--output`       | `-o`   | Output directory                                                    |                     |
 | `--save-text`    | `-st`  | Save extracted or generated text to a file                          |                     |
 | `--confirm`      | `-y`   | Skip confirmation prompts                                           |                     |
+| `--process-only` |        | Only extract text and generate scripts (no TTS). Use `--synthesize-only` later to produce audio. |  |
+| `--synthesize-only` |     | Skip extraction/script generation; synthesise audio from previously saved scripts (requires a prior `--process-only` run). | |
 | `--verbose`      |        | Show detailed log output                                            |                     |
 
 ### Info / listing options
@@ -71,6 +73,10 @@ audify book.epub --prompt-file my-prompt.txt
 
 # Process all EPUBs in a directory
 audify ./my-books/ --task audiobook --tts-provider kokoro
+
+# Two-stage workflow: generate scripts first, synthesise later
+audify book.epub --process-only
+audify book.epub --synthesize-only
 
 # List all voices for Kokoro
 audify --list-voices --tts-provider kokoro

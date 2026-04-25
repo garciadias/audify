@@ -98,3 +98,12 @@ docker compose down       # Stop all services
 English, Spanish, French, German, Italian, Portuguese, Polish, Turkish, Russian, Dutch, Czech, Arabic, Chinese, Hungarian, Korean, Japanese, Hindi.
 
 Translation supports any language pair available in your configured LLM.
+
+## Pipeline Environment Variables
+
+These variables control pipeline behaviour during audiobook creation:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUDIFY_STRICT_TTS_PREFLIGHT` | `0` | Set to `1` to fail immediately if TTS provider is unavailable |
+| `AUDIFY_SKIP_TTS_PREFLIGHT` | `0` | Set to `1` to skip TTS availability checks entirely |

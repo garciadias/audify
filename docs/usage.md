@@ -114,6 +114,35 @@ audify audiobook book.epub --prompt-file my-prompt.txt
 
 See [Tasks](tasks.md) for details on creating custom tasks.
 
+## Two-Stage Workflow (Process / Synthesize)
+
+For large books or when iterating on scripts, you can split audiobook creation
+into two stages:
+
+```bash
+# Stage 1: Extract text and generate LLM scripts (no TTS)
+audify audiobook book.epub --process-only
+
+# Review or edit generated scripts in audiobooks/[book_name]/scripts/
+
+# Stage 2: Synthesise audio from saved scripts
+audify audiobook book.epub --synthesize-only
+```
+
+This is useful when:
+
+- You want to review or manually edit scripts before synthesising
+- TTS service is temporarily unavailable
+- You want to re-synthesise with a different voice or provider without re-running the LLM
+
+The `--process-only` flag also saves a `chapter_titles.json` alongside the scripts so that `--synthesize-only` can reconstruct chapter metadata.
+
+### Resumability
+
+If a run is interrupted, re-running the same command will skip episodes whose
+MP3 files already exist. This applies to both full runs and the two-stage
+workflow.
+
 ## Directory Processing
 
 Process multiple files into a single audiobook:
@@ -190,6 +219,7 @@ audiobooks/[book_name]/
     scripts/
         episode_001_script.txt
         original_text_001.txt
+        chapter_titles.json
     chapters.txt
     book_name.m4b
 ```
