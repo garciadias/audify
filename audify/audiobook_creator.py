@@ -418,7 +418,8 @@ class AudiobookCreator(BaseSynthesizer):
             error_msg += (
                 "Please verify:\n"
                 "  1. TTS service is running and accessible\n"
-                "  2. Environment variables are correctly set (TTS provider URL, etc.)\n"
+                "  2. Environment variables are correctly set "
+                " (TTS provider URL, etc.)\n"
                 "  3. Network connectivity to the TTS API endpoint\n"
                 "  4. API credentials if required\n"
             )
@@ -433,9 +434,8 @@ class AudiobookCreator(BaseSynthesizer):
 
             # For audiobook task, fail fast by default; for other tasks,
             # respect env flag
-            strict_preflight = (
-                self.task_name == "audiobook"
-                or _env_flag("AUDIFY_STRICT_TTS_PREFLIGHT", default=False)
+            strict_preflight = self.task_name == "audiobook" or _env_flag(
+                "AUDIFY_STRICT_TTS_PREFLIGHT", default=False
             )
             if strict_preflight:
                 logger.error(error_msg)
