@@ -75,7 +75,7 @@ omit = ["*.venv/*"]
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py", "*_test.py"]
-addopts = []
+addopts = ["-m", "not integration"]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
 markers = [
     "integration: marks tests that require a live subprocess or external service (deselect with '-m \"not integration\"')",

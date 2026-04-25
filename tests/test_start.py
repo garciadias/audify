@@ -1,5 +1,6 @@
 # tests/test_start.py
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -649,78 +650,36 @@ class TestCLISubcommands:
         assert "list-tasks" in cli.commands
         assert "validate-prompt" in cli.commands
 
-    @pytest.mark.skip(
-        reason="CLI design issue: subcommands not reachable with current path argument"
-    )
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
-    def test_list_tasks_command(self, mock_terminal_size, runner):
+    def test_list_tasks_command(self, runner):
         """Test the list-tasks subcommand."""
-        from unittest.mock import Mock
+        result = runner.invoke(cli, ["list-tasks"])
 
-        from audify.prompts.tasks import TaskRegistry
+        assert result.exit_code == 0
+        assert "Available Tasks" in result.output
+        assert "direct" in result.output
+        assert "audiobook" in result.output
 
-        # Mock TaskRegistry.get_all()
-        mock_tasks = {
-            "direct": Mock(requires_llm=False, output_structure="direct"),
-            "audiobook": Mock(requires_llm=True, output_structure="episodes"),
-        }
-        with patch.object(TaskRegistry, "get_all", return_value=mock_tasks):
-            result = runner.invoke(cli, ["list-tasks"])
-
-            if result.exception:
-                print(f"Exception: {result.exception}")
-            print(f"Output: {result.output}")
-            print(f"Exit code: {result.exit_code}")
-
-            assert result.exit_code == 0
-            assert "Available Tasks" in result.output
-            assert "direct" in result.output
-            assert "audiobook" in result.output
-
-    @pytest.mark.skip(
-        reason="CLI design issue: subcommands not reachable with current path argument"
-    )
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
-    def test_validate_prompt_command_valid(self, mock_terminal_size, runner):
+    def test_validate_prompt_command_valid(self, runner):
         """Test validate-prompt subcommand with valid prompt file."""
-        from unittest.mock import Mock, mock_open
+        import tempfile
 
-        # Mock prompt file content
-        prompt_content = "Test prompt content"
-        m = mock_open(read_data=prompt_content)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False
+        ) as f:
+            f.write("A valid prompt with sufficient content for testing")
+            f.flush()
+            result = runner.invoke(cli, ["validate-prompt", f.name])
 
-        # Mock PromptManager.validate_prompt to return valid
-        mock_manager = Mock()
-        mock_manager.load_prompt_file.return_value = prompt_content
-        mock_manager.validate_prompt.return_value = (True, "Valid")
+        assert result.exit_code == 0
+        assert "Prompt file is valid" in result.output
+        assert "Length:" in result.output
+        assert "Preview:" in result.output
+        Path(f.name).unlink(missing_ok=True)
 
-        with patch("builtins.open", m):
-            with patch("audify.cli.PromptManager", return_value=mock_manager):
-                result = runner.invoke(cli, ["validate-prompt", "dummy.prompt"])
-
-                assert result.exit_code == 0
-                assert "Prompt file is valid" in result.output
-                assert "Length:" in result.output
-                assert "Preview:" in result.output
-
-    @pytest.mark.skip(
-        reason="CLI design issue: subcommands not reachable with current path argument"
-    )
-    @patch("os.get_terminal_size", return_value=os.terminal_size((80, 24)))
-    def test_validate_prompt_command_invalid(self, mock_terminal_size, runner):
-        """Test validate-prompt subcommand with invalid prompt file."""
-        from unittest.mock import Mock
-
-        # Mock PromptManager.validate_prompt to return invalid
-        mock_manager = Mock()
-        mock_manager.load_prompt_file.return_value = "Invalid prompt"
-        mock_manager.validate_prompt.return_value = (False, "Prompt too short")
-
-        with patch("audify.cli.PromptManager", return_value=mock_manager):
-            result = runner.invoke(cli, ["validate-prompt", "dummy.prompt"])
-
-            assert result.exit_code == 1
-            assert "Prompt validation failed" in result.output
+    def test_validate_prompt_command_invalid(self, runner):
+        """Test validate-prompt subcommand with nonexistent prompt file."""
+        result = runner.invoke(cli, ["validate-prompt", "/nonexistent/file.txt"])
+        assert result.exit_code == 2
 
 
 def test_cli_no_path_shows_help():
@@ -754,51 +713,19 @@ def test_cli_terminal_width_oserror():
         assert "Available languages" in result.output
 
 
-@pytest.mark.skip(reason="Test implementation issue with mocking click context")
 def test_cli_subcommand_early_return():
-    """Test that cli returns early when invoked_subcommand is not None."""
-    from unittest.mock import Mock, patch
+    """Test that subcommands work and the main CLI callback doesn't run its body."""
+    from click.testing import CliRunner
 
-    # Create a mock context with invoked_subcommand set
-    mock_ctx = Mock()
-    mock_ctx.invoked_subcommand = "list-tasks"
-    mock_ctx.invoke_without_command = True
-    mock_ctx.allow_extra_args = True
-    mock_ctx.args = []
-    mock_ctx.protected_args = []
-    mock_ctx.params = {}
+    from audify.cli import cli
 
-    # Mock the click.echo to avoid side effects
-    with patch("click.echo"):
-        # Import cli function
-        from audify.cli import cli
-
-        # Call cli with mocked context
-        result = cli(
-            mock_ctx,
-            language="en",
-            voice_model="kokoro",
-            voice="af_bella",
-            save_text=False,
-            llm_base_url="http://localhost:11434",
-            llm_model=None,
-            max_chapters=None,
-            confirm=False,
-            output=None,
-            tts_provider="kokoro",
-            task="audiobook",
-            prompt_file=None,
-            list_languages=False,
-            list_models=False,
-            list_voices=False,
-            list_tts_providers=False,
-            create_voice_samples=False,
-            max_samples=5,
-            verbose=False,
-            path=(),
-        )
-        # Should return None (early return)
-        assert result is None
+    runner = CliRunner()
+    # list-tasks should return task list without triggering the main CLI path logic
+    result = runner.invoke(cli, ["list-tasks"])
+    assert result.exit_code == 0
+    assert "Available Tasks" in result.output
+    # Ensure main CLI body didn't run (no "Error: Path" message)
+    assert "Error:" not in result.output
 
 
 def test_cli_directory_mode_with_prompt_file():

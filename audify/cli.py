@@ -37,6 +37,30 @@ from audify.utils.constants import (
 from audify.utils.logging_utils import configure_cli_logging
 from audify.utils.text import get_file_extension
 
+
+class SubcommandAwareGroup(click.Group):
+    """Custom Group that handles subcommand names consumed as the PATH argument.
+
+    With invoke_without_command=True and an optional PATH argument, Click
+    parses e.g. "list-tasks" as the PATH value instead of recognising it
+    as a subcommand.  This override detects the situation and re-routes.
+    """
+
+    def invoke(self, ctx: click.Context) -> None:
+        path_value = ctx.params.get("path")
+        if path_value and path_value in self.commands:
+            cmd = self.commands[path_value]
+            cmd_ctx = cmd.make_context(
+                path_value, list(ctx.protected_args + ctx.args), parent=ctx
+            )
+            ctx.params["path"] = None
+            ctx.invoked_subcommand = path_value
+            with cmd_ctx:
+                cmd.invoke(cmd_ctx)
+            return
+        super().invoke(ctx)
+
+
 # Suppress verbose output from external libraries
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("litellm").setLevel(logging.WARNING)
@@ -207,6 +231,7 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
 
 
 @click.group(
+    cls=SubcommandAwareGroup,
     invoke_without_command=True,
     context_settings={
         "allow_extra_args": True,

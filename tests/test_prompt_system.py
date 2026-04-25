@@ -398,13 +398,6 @@ class TestLLMClientGenerateScript:
 class TestCLIListTasks:
     """Test the list-tasks CLI command."""
 
-    @pytest.mark.skip(
-        reason="Subcommand integration issue: list-tasks returns exit code 1 instead of"
-        "0. The command is registered as @cli.command('list-tasks') but Click is not "
-        "properly invoking it. Issue appears to be in the interaction between "
-        "@click.group(invoke_without_command=True) and @cli.command() registration."
-        "Expected: exit_code=0 and task list in output."
-    )
     def test_list_tasks_command(self):
         from click.testing import CliRunner
 
@@ -424,15 +417,6 @@ class TestCLIListTasks:
 class TestCLIValidatePrompt:
     """Test the validate-prompt CLI command."""
 
-    @pytest.mark.skip(
-        reason="Subcommand integration issue: validate-prompt returns exit code 1 "
-        "instead of 0 even for valid prompts. The command is registered as "
-        "@cli.command('validate-prompt') but Click is not properly invoking it or is "
-        "encountering an unhandled exception. "
-        "Expected behavior: "
-        "exit_code=0 when prompt is valid, exit_code=1 when prompt is invalid or file "
-        "not found."
-    )
     def test_validate_valid_prompt(self):
         from click.testing import CliRunner
 
