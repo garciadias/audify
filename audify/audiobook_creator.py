@@ -418,13 +418,25 @@ class AudiobookCreator(BaseSynthesizer):
             error_msg += (
                 "Please verify:\n"
                 "  1. TTS service is running and accessible\n"
-                "  2. Environment variables are correctly set (TTS provider URL, etc.)\n"
+                "  2. Environment variables are correctly set (QWEN_API_URL, etc.)\n"
                 "  3. Network connectivity to the TTS API endpoint\n"
                 "  4. API credentials if required\n"
             )
 
             # Add provider-specific guidance
-            if self.tts_provider == "kokoro":
+            if self.tts_provider == "qwen":
+                error_msg += (
+                    "\nFor Qwen TTS:\n"
+                    "  • Ensure qwen-tts Docker container is running: "
+                    "`docker-compose -f docker-compose.yml up -d "
+                    "qwen-tts --profile qwen`\n"
+                    "  • Check container health: "
+                    "`curl http://localhost:8890/health`\n"
+                    "  • Verify QWEN_API_URL is set to: http://localhost:8890\n"
+                    "  • Check container logs: "
+                    "`docker-compose logs qwen-tts`\n"
+                )
+            elif self.tts_provider == "kokoro":
                 error_msg += (
                     "\nFor Kokoro TTS:\n"
                     "  • Ensure Kokoro service is running\n"

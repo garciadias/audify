@@ -81,7 +81,7 @@ class BaseSynthesizer:
     model_name: str
         Model name for synthesis. To see available models, run: `audify --list-models`
     tts_provider: str
-        TTS provider to use. Options: "kokoro", "openai", "aws", "google".
+        TTS provider to use. Options: "kokoro", "openai", "aws", "google", "qwen".
         Defaults to DEFAULT_TTS_PROVIDER from environment or "kokoro".
 
     """

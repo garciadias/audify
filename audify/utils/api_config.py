@@ -51,6 +51,8 @@ from audify.utils.constants import (
     OPENAI_API_KEY,
     OPENAI_TTS_MODEL,
     OPENAI_TTS_VOICE,
+    QWEN_API_BASE_URL,
+    QWEN_TTS_VOICE,
     _keys_config,
 )
 
@@ -829,6 +831,206 @@ class GoogleTTSConfig(TTSAPIConfig):
             return False
 
 
+class QwenTTSConfig(TTSAPIConfig):
+    """TTS configuration for Qwen3-TTS API."""
+
+    def __init__(
+        self,
+        voice: Optional[str] = None,
+        language: str = "en",
+        base_url: Optional[str] = None,
+        timeout: int = 60,
+    ):
+        super().__init__(
+            voice=voice or QWEN_TTS_VOICE,
+            language=language,
+            timeout=timeout,
+        )
+        self.base_url = base_url or QWEN_API_BASE_URL
+        self._available_voices: Optional[List[str]] = None
+        self.health_timeout = self._parse_positive_int(
+            os.getenv("QWEN_HEALTH_TIMEOUT")
+            or _keys_config.get("QWEN_HEALTH_TIMEOUT", "8"),
+            default=8,
+        )
+        self.health_retries = self._parse_positive_int(
+            os.getenv("QWEN_HEALTH_RETRIES")
+            or _keys_config.get("QWEN_HEALTH_RETRIES", "3"),
+            default=3,
+        )
+
+    @staticmethod
+    def _parse_positive_int(raw: str, default: int) -> int:
+        """Parse positive integer from env vars with fallback."""
+        try:
+            value = int(raw)
+            return value if value > 0 else default
+        except (TypeError, ValueError):
+            return default
+
+    @property
+    def provider_name(self) -> str:
+        return "qwen"
+
+    @property
+    def max_text_length(self) -> int:
+        """Qwen TTS maximum text length per request."""
+        return 5000
+
+    @property
+    def health_url(self) -> str:
+        """URL for health check."""
+        return f"{self.base_url}/health"
+
+    @property
+    def tts_url(self) -> str:
+        """URL for text-to-speech synthesis."""
+        return f"{self.base_url}/tts"
+
+    def is_available(self) -> bool:
+        """Check if Qwen-TTS API is reachable.
+
+        Uses retries to avoid false negatives under transient load.
+        """
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, self.health_retries + 1):
+            try:
+                response = requests.get(self.health_url, timeout=self.health_timeout)
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                    except ValueError as e:
+                        last_error = e
+                        logger.debug(
+                            "Qwen API health check returned invalid JSON "
+                            f"(attempt {attempt}/{self.health_retries}): {e}"
+                        )
+                        if attempt < self.health_retries:
+                            time.sleep(min(2.0, 0.5 * attempt))
+                        continue
+
+                    is_healthy = data.get("status") == "healthy" and data.get(
+                        "model_loaded", False
+                    )
+                    if is_healthy:
+                        return True
+
+                    logger.debug(
+                        "Qwen API responded but model not ready "
+                        f"(attempt {attempt}/{self.health_retries}): {data}"
+                    )
+                    if attempt < self.health_retries:
+                        time.sleep(min(2.0, 0.5 * attempt))
+                    continue
+
+                logger.debug(
+                    "Qwen API health check returned status "
+                    f"{response.status_code} (attempt {attempt}/{self.health_retries})"
+                )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                logger.debug(
+                    "Qwen-TTS health check timed out at "
+                    f"{self.health_url} (attempt {attempt}/{self.health_retries})"
+                )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                logger.debug(
+                    "Qwen-TTS health check connection failure at "
+                    f"{self.health_url} (attempt {attempt}/{self.health_retries})"
+                )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
+            except requests.RequestException as e:
+                last_error = e
+                logger.debug(
+                    "Qwen-TTS health check request failed at "
+                    f"{self.health_url} (attempt {attempt}/{self.health_retries}): {e}"
+                )
+                if attempt < self.health_retries:
+                    time.sleep(min(2.0, 0.5 * attempt))
+
+        if isinstance(last_error, requests.exceptions.Timeout):
+            logger.warning(
+                "Qwen-TTS health check timed out after "
+                f"{self.health_retries} attempt(s). "
+                f"API may be overloaded or inaccessible at {self.health_url}."
+            )
+        elif isinstance(last_error, requests.exceptions.ConnectionError):
+            logger.warning(
+                "Qwen-TTS connection failed after "
+                f"{self.health_retries} attempt(s). Check if:\n"
+                "  - Container/process is running\n"
+                "  - Port 8890 is exposed/listening\n"
+                f"  - API URL is correct: {self.base_url}"
+            )
+        elif last_error is not None:
+            logger.warning(f"Qwen-TTS request failed: {last_error}")
+
+        return False
+
+    def get_available_voices(self) -> List[str]:
+        """Get available voices for Qwen-TTS.
+
+        Note: Qwen3-TTS supports custom voice cloning, but has default voices.
+        This returns a basic list of common voices.
+        """
+        # Qwen-TTS default voices based on the documentation
+        return ["Vivian"]  # Add more voices as they become available
+
+    def synthesize(self, text: str, output_path: Path) -> bool:
+        """Synthesize text using Qwen-TTS API."""
+        # Map language codes to Qwen-TTS language format
+        qwen_language = {
+            "en": "Auto",
+            "es": "Auto",
+            "fr": "Auto",
+            "de": "Auto",
+            "it": "Auto",
+            "pt": "Auto",
+            "zh": "Auto",
+            "ja": "Auto",
+            "hi": "Auto",
+        }.get(self.language, "Auto")
+        payload = {
+            "text": text,
+            "language": qwen_language,
+            "speaker": self.voice,
+            "instruct": None,
+        }
+
+        def _do_request() -> bool:
+            response = requests.post(
+                self.tts_url,
+                json=payload,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            content = response.content
+            if len(content) < 44:
+                raise ValueError(
+                    f"Qwen-TTS returned suspiciously small response "
+                    f"({len(content)} bytes)"
+                )
+            with open(output_path, "wb") as f:
+                f.write(content)
+            return True
+
+        try:
+            return _retry_request(
+                _do_request,
+                api_name=f"Qwen TTS ({self.tts_url})",
+                retry_on=(requests.RequestException, ValueError),
+            )
+        except RuntimeError:
+            return False
+
+
 def get_tts_config(
     provider: Optional[str] = None,
     voice: Optional[str] = None,
@@ -838,7 +1040,7 @@ def get_tts_config(
     """Factory function to get the appropriate TTS configuration.
 
     Args:
-        provider: TTS provider name ("kokoro", "openai", "aws", "google").
+        provider: TTS provider name ("kokoro", "openai", "aws", "google", "qwen").
                   Defaults to DEFAULT_TTS_PROVIDER from environment.
         voice: Voice identifier for the provider.
         language: Language code (e.g., "en", "es", "fr").
@@ -882,10 +1084,15 @@ def get_tts_config(
         if voice and voice.startswith(("af_", "am_", "bf_", "bm_")):
             voice = None  # Use Google default
         return GoogleTTSConfig(voice=voice, language=language, **kwargs)
+    elif provider == "qwen":
+        # For Qwen, use default voice if Kokoro voice provided
+        if voice and voice.startswith(("af_", "am_", "bf_", "bm_")):
+            voice = None  # Use Qwen default
+        return QwenTTSConfig(voice=voice, language=language, **kwargs)
     else:
         raise ValueError(
             f"Unsupported TTS provider: {provider}. "
-            f"Available providers: kokoro, openai, aws, google"
+            f"Available providers: kokoro, openai, aws, google, qwen"
         )
 
 
