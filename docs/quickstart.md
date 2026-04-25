@@ -25,7 +25,7 @@ TTS_PROVIDER=openai
 ### 3. Convert a book
 
 ```bash
-audify run book.epub --tts-provider openai
+audify book.epub --task direct --tts-provider openai
 ```
 
 ## Option 2: Kokoro TTS (Local, Free)
@@ -51,40 +51,7 @@ docker compose exec ollama ollama pull qwen3:30b
 
 ```bash
 uv sync
-audify run book.epub
-```
-
-## Option 3: Qwen-TTS (Local, Free)
-
-Requires GPU and the Qwen-TTS API server. Offers multilingual support and high-quality synthesis.
-
-### 1. Start Qwen-TTS
-
-```bash
-git clone https://github.com/QwenLM/Qwen3-TTS
-cd Qwen3-TTS
-make up
-# API available at http://localhost:8890
-```
-
-### 2. Install and configure Audify
-
-```bash
-pip install audify-cli
-```
-
-Create a `.keys` file:
-
-```bash
-TTS_PROVIDER=qwen
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
-```
-
-### 3. Convert a book
-
-```bash
-audify run book.epub --tts-provider qwen
+audify book.epub --task direct
 ```
 
 ## Next Steps

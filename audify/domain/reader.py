@@ -10,4 +10,5 @@ class Reader(ABC):
         ...
 
     @abstractmethod
-    def read(self): ...
+    def read(self):
+        pass

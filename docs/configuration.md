@@ -13,15 +13,11 @@ cp .keys.example .keys
 ```
 
 ```ini
-# TTS provider (kokoro, qwen, openai, aws, google)
+# TTS provider (kokoro, openai, aws, google)
 TTS_PROVIDER=kokoro
 
 # Kokoro TTS (local)
 KOKORO_API_URL=http://localhost:8887/v1
-
-# Qwen-TTS (local)
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
 
 # OpenAI TTS
 OPENAI_API_KEY=sk-your-key
@@ -61,7 +57,6 @@ Never commit `.keys` to version control. It is already in `.gitignore`.
 | Provider         | Local? | Free? | GPU needed? | Key Features                   |
 |------------------|--------|-------|-------------|-------------------------------|
 | **Kokoro**       | Yes    | Yes   | Recommended | Fast, low-latency synthesis   |
-| **Qwen-TTS**     | Yes    | Yes   | Recommended | Multilingual, high quality    |
 | **OpenAI**       | No     | No    | No          | High quality, easy setup      |
 | **AWS Polly**    | No     | No    | No          | Enterprise, multiple engines  |
 | **Google Cloud** | No     | No    | No          | Multilingual, neural voices   |

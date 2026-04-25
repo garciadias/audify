@@ -106,6 +106,7 @@ class TestBaseSynthesizer:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
 
         def fake_synthesize(text, path):
             path.write_bytes(b"fake_wav_data")
@@ -167,6 +168,7 @@ class TestBaseSynthesizer:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["valid_voice"]
         mock_tts_config.voice = "invalid_voice"
+        mock_tts_config.max_text_length = 5000
         mock_tts_config.synthesize.return_value = False
 
         with (
@@ -221,6 +223,7 @@ class TestBaseSynthesizer:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
         # First succeeds, second fails
         mock_tts_config.synthesize.side_effect = [True, False]
 
@@ -1039,6 +1042,7 @@ class TestSynthesisIntegration:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1101,6 +1105,7 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
         # First returns True (path exists), second returns False (skipped)
         mock_tts_config.synthesize.side_effect = [True, False]
 
@@ -1159,6 +1164,7 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1191,6 +1197,7 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1224,6 +1231,7 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
         mock_tts_config.synthesize.side_effect = Exception("Synthesis error")
 
         with (
@@ -1256,6 +1264,7 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1633,6 +1642,7 @@ class TestComprehensiveCoverage:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1956,6 +1966,7 @@ class TestComprehensiveCoverage:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
         mock_tts_config.synthesize.return_value = True
 
         with (

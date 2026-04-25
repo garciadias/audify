@@ -1,90 +1,88 @@
 # CLI Reference
 
-## Global
+## Synopsis
 
 ```bash
-audify --version       # Show version
-audify --help          # Show help
+audify [OPTIONS] [PATH]
+audify list-tasks
+audify validate-prompt PROMPT_FILE
 ```
 
-## `audify run`
+## `audify [OPTIONS] [PATH]`
 
-Basic TTS conversion without LLM processing.
-
-```text
-audify run [OPTIONS] FILE_PATH
-```
+Main conversion command. When `PATH` is omitted, prints help. When `PATH` is a
+directory, processes all supported files inside it.
 
 ### Arguments
 
-| Argument    | Description            | Default |
-|-------------|------------------------|---------|
-| `FILE_PATH` | Path to EPUB or PDF    | `./`    |
+| Argument | Description                                |
+|----------|--------------------------------------------|
+| `PATH`   | Path to an EPUB, PDF, or directory         |
 
-### Options
+### Conversion options
 
-| Option                    | Short | Description                        | Default   |
-|---------------------------|-------|------------------------------------|-----------|
-| `--language`              | `-l`  | Audio language                     | `en`      |
-| `--model`                 | `-m`  | TTS model                          | `kokoro`  |
-| `--voice`                 | `-v`  | Voice name                         | `af_bella`|
-| `--translate`             | `-t`  | Translate to language              |           |
-| `--save-text`             | `-st` | Save extracted text                |           |
-| `--output`                | `-o`  | Output directory                   |           |
-| `--tts-provider`          | `-tp` | TTS provider                       | `kokoro`  |
-| `--list-languages`        | `-ll` | List available languages           |           |
-| `--list-models`           | `-lm` | List available TTS models          |           |
-| `--list-voices`           | `-lv` | List available voices              |           |
-| `--list-tts-providers`    | `-ltp`| List TTS providers                 |           |
-| `--create-voice-samples`  | `-cvs`| Create sample M4B with all voices  |           |
-| `--max-samples`           | `-ms` | Max voice samples                  | `5`       |
-| `-y`                      | `-y`  | Skip confirmation                  |           |
+| Option           | Short  | Description                                                         | Default             |
+|------------------|--------|---------------------------------------------------------------------|---------------------|
+| `--task`         | `-T`   | Task name: `direct`, `audiobook`, `podcast`, `summary`, `meditation`, `lecture` | `audiobook` |
+| `--prompt-file`  | `-pf`  | Path to a custom prompt file (overrides `--task`)                   |                     |
+| `--tts-provider` | `-tp`  | TTS provider: `kokoro`, `openai`, `aws`, `google`           | `kokoro`            |
+| `--voice`        | `-v`   | Voice name or ID for the selected TTS provider                      | `af_bella`          |
+| `--voice-model`  | `-vm`  | TTS model name or path                                              | `kokoro`            |
+| `--language`     | `-l`   | Language code for synthesized audio                                 | `en`                |
+| `--translate`    | `-t`   | Translate text to this language before synthesis                    |                     |
+| `--llm-model`    | `-m`   | LLM model name. Prefix with `api:` for cloud (e.g. `api:openai/gpt-4o`) | `magistral:24b` |
+| `--llm-base-url` |        | Base URL for local Ollama API                                       | `http://localhost:11434` |
+| `--max-chapters` | `-mc`  | Maximum chapters to process (EPUB only)                             |                     |
+| `--output`       | `-o`   | Output directory                                                    |                     |
+| `--save-text`    | `-st`  | Save extracted or generated text to a file                          |                     |
+| `--confirm`      | `-y`   | Skip confirmation prompts                                           |                     |
+| `--verbose`      |        | Show detailed log output                                            |                     |
 
-## `audify audiobook`
+### Info / listing options
 
-LLM-powered audiobook generation.
+| Option                   | Short  | Description                                               |
+|--------------------------|--------|-----------------------------------------------------------|
+| `--list-languages`       | `-ll`  | Print all supported language codes                        |
+| `--list-models`          | `-lmm` | List TTS models available from Kokoro API                 |
+| `--list-voices`          | `-lv`  | List voices available from the selected TTS provider      |
+| `--list-tts-providers`   | `-ltp` | Show all TTS providers and their configuration status     |
+| `--create-voice-samples` | `-cvs` | Generate an M4B sample file with all available voices     |
+| `--max-samples`          | `-ms`  | Maximum number of voice samples to create                 | `5` |
+| `--version`              | `-V`   | Print version and exit                                    |
+| `--help`                 |        | Show help and exit                                        |
 
-```text
-audify audiobook [OPTIONS] PATH
+### Examples
+
+```bash
+# Direct TTS (no LLM)
+audify book.epub --task direct
+
+# LLM-enhanced audiobook (default task)
+audify book.epub
+
+# Podcast-style audio using OpenAI TTS
+audify book.epub --task podcast --tts-provider openai
+
+# Use a cloud LLM with local Kokoro TTS
+audify book.epub --llm-model api:openai/gpt-4o
+
+# Use a custom prompt
+audify book.epub --prompt-file my-prompt.txt
+
+# Process all EPUBs in a directory
+audify ./my-books/ --task audiobook --tts-provider kokoro
+
+# List all voices for Kokoro
+audify --list-voices --tts-provider kokoro
+
+# Translate to Spanish
+audify book.epub --translate es
 ```
-
-### Arguments
-
-| Argument | Description                        |
-|----------|------------------------------------|
-| `PATH`   | Path to EPUB, PDF, or directory    |
-
-### Options
-
-| Option           | Short | Description                          | Default          |
-|------------------|-------|--------------------------------------|------------------|
-| `--language`     | `-l`  | Audio language                       | `en`             |
-| `--voice`        | `-v`  | Voice name                           | `af_bella`       |
-| `--voice-model`  | `-vm` | TTS model                            | `kokoro`         |
-| `--translate`    | `-t`  | Translate to language                |                  |
-| `--save-scripts` | `-st` | Save generated scripts               |                  |
-| `--llm-base-url` |       | LLM API base URL                     | `localhost:11434`|
-| `--llm-model`    | `-m`  | LLM model (`api:` prefix for cloud)  | `magistral:24b`  |
-| `--max-chapters` | `-mc` | Max chapters (EPUB only)             |                  |
-| `--confirm`      | `-y`  | Ask for confirmation                 |                  |
-| `--output`       | `-o`  | Output directory                     |                  |
-| `--tts-provider` | `-tp` | TTS provider                         | `kokoro`         |
-| `--task`         | `-T`  | Task name (audiobook, podcast, etc.) |                  |
-| `--prompt-file`  | `-pf` | Custom prompt file path              |                  |
-
-## `audify convert`
-
-Unified command combining `run` and `audiobook` functionality.
-
-```text
-audify convert [OPTIONS] INPUT_PATH
-```
-
-Supports all options from both `run` and `audiobook` commands, plus `--task` and `--prompt-file`.
 
 ## `audify list-tasks`
 
-List all registered transformation tasks.
+Print all registered transformation tasks with their description and whether they
+require an LLM.
 
 ```bash
 audify list-tasks
@@ -92,8 +90,14 @@ audify list-tasks
 
 ## `audify validate-prompt`
 
-Validate a custom prompt file.
+Validate a custom prompt file before use.
 
 ```bash
 audify validate-prompt my-prompt.txt
 ```
+
+### Arguments
+
+| Argument      | Description                       |
+|---------------|-----------------------------------|
+| `PROMPT_FILE` | Path to the prompt file to check  |

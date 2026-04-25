@@ -418,6 +418,7 @@ class TestGenerateAudiobookScriptChunking:
         creator.save_text = False
         creator.language = "en"
         creator.scripts_path = Path(tempfile.mkdtemp())
+        creator.episodes_path = Path(tempfile.mkdtemp())
 
         mock_llm = MagicMock()
         mock_llm.generate_script.return_value = "script output"
@@ -445,6 +446,7 @@ class TestGenerateAudiobookScriptChunking:
         creator.save_text = False
         creator.language = "en"
         creator.scripts_path = Path(tempfile.mkdtemp())
+        creator.episodes_path = Path(tempfile.mkdtemp())
 
         mock_llm = MagicMock()
         mock_llm.generate_script.return_value = "chunk output"
@@ -478,6 +480,7 @@ class TestGenerateAudiobookScriptChunking:
         creator.save_text = False
         creator.language = "en"
         creator.scripts_path = Path(tempfile.mkdtemp())
+        creator.episodes_path = Path(tempfile.mkdtemp())
 
         outputs = iter(["Part one.", "Part two.", "Part three."])
         mock_llm = MagicMock()
@@ -824,6 +827,7 @@ class TestAudiobookCreatorCreateSeries:
         creator.max_chapters = None
         creator.translate = None
         creator.resolved_language = "en"
+        creator.scripts_path = Path("/fake/scripts")
 
         # Mock EPUB reader
         mock_reader = Mock(spec=EpubReader)
@@ -831,6 +835,7 @@ class TestAudiobookCreatorCreateSeries:
             "Chapter 1 content",
             "Chapter 2 content",
         ]
+        mock_reader.get_chapter_title.return_value = "Chapter Title"
         creator.reader = mock_reader
 
         # Mock Path.exists to return True for episodes
@@ -865,6 +870,7 @@ class TestAudiobookCreatorCreateSeries:
         creator.max_chapters = None
         creator.translate = None
         creator.resolved_language = "en"
+        creator.scripts_path = Path("/fake/scripts")
 
         # Mock PDF reader
         mock_reader = Mock()
@@ -1027,6 +1033,7 @@ class TestAudiobookCreatorGenerateScript:
         """Test basic audiobook script generation."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.scripts_path = Path("/fake/scripts")
+        creator.episodes_path = Path("/fake/episodes")
         creator.confirm = True
         creator.save_text = False
         creator.translate = None
@@ -1065,6 +1072,7 @@ class TestAudiobookCreatorGenerateScript:
         """Test audiobook script generation with empty text."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.scripts_path = Path("/fake/scripts")
+        creator.episodes_path = Path("/fake/episodes")
         creator.confirm = True
         creator.save_text = False
         creator.chapter_titles = []
@@ -1078,6 +1086,7 @@ class TestAudiobookCreatorGenerateScript:
         """Test audiobook script generation with very short text."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.scripts_path = Path("/fake/scripts")
+        creator.episodes_path = Path("/fake/episodes")
         creator.confirm = True
         creator.save_text = False
         creator.translate = None
@@ -1107,24 +1116,40 @@ class TestAudiobookCreatorGenerateScript:
     def test_generate_audiobook_script_with_existing_script(self, mock_init):
         """Test script generation when script file already exists."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
-        creator.scripts_path = Path("/fake/scripts")
+        # Mock scripts_path to return a mock for script file with exists=True
+        mock_script_file = MagicMock()
+        mock_script_file.exists.return_value = True
+        mock_scripts_path = MagicMock()
+        mock_scripts_path.__truediv__.return_value = mock_script_file
+        creator.scripts_path = mock_scripts_path
+        # Mock episodes_path to return a mock for mp3 file with exists=False
+        mock_mp3_file = MagicMock()
+        mock_mp3_file.exists.return_value = False
+        mock_episodes_path = MagicMock()
+        mock_episodes_path.__truediv__.return_value = mock_mp3_file
+        creator.episodes_path = mock_episodes_path
         creator.confirm = False  # Don't overwrite existing
         creator.save_text = False
         creator.chapter_titles = []
+        mock_reader = MagicMock()
+        mock_reader.get_chapter_title.return_value = "Chapter Title"
+        mock_path = MagicMock()
+        mock_path.stem = "Chapter Title"
+        mock_reader.path = mock_path
+        creator.reader = mock_reader
 
-        with (
-            patch("pathlib.Path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="Existing script content")),
-        ):
+        with patch("builtins.open", mock_open(read_data="Existing script content")):
             result = creator.generate_audiobook_script("Chapter text", 1, language="en")
 
             assert result == "Existing script content"
+            assert creator.chapter_titles == ["Chapter Title"]
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     def test_generate_audiobook_script_with_translation(self, mock_init):
         """Test script generation with translation enabled."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.scripts_path = Path("/fake/scripts")
+        creator.episodes_path = Path("/fake/episodes")
         creator.confirm = True
         creator.save_text = False
         creator.translate = "es"
@@ -1167,6 +1192,7 @@ class TestAudiobookCreatorGenerateScript:
         """Test script generation with text saving enabled."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.scripts_path = Path("/fake/scripts")
+        creator.episodes_path = Path("/fake/episodes")
         creator.confirm = True
         creator.save_text = True
         creator.translate = None
