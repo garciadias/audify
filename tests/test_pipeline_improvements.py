@@ -747,3 +747,213 @@ class TestApiVersionFallback:
 
         # Reload again to restore normal state
         importlib.reload(app_mod)
+
+
+# ---------------------------------------------------------------------------
+# Byte-aware batching
+# ---------------------------------------------------------------------------
+class TestByteAwareBatching:
+    """Test _batch_sentences with unit='bytes' for multi-byte UTF-8 text."""
+
+    def _make_synth(self):
+        from audify.text_to_speech import BaseSynthesizer
+
+        synth = BaseSynthesizer.__new__(BaseSynthesizer)
+        return synth
+
+    def test_ascii_bytes_equals_chars(self):
+        """For pure ASCII text, bytes and chars modes produce identical batches."""
+        synth = self._make_synth()
+        sentences = ["Hello world", "Test sentence", "Another one"]
+        chars_batches = synth._batch_sentences(sentences, 25, unit="chars")
+        bytes_batches = synth._batch_sentences(sentences, 25, unit="bytes")
+        assert chars_batches == bytes_batches
+
+    def test_multibyte_text_respects_byte_limit(self):
+        """Portuguese text with accents must not exceed byte limit."""
+        synth = self._make_synth()
+        # Each accented char is 2 bytes in UTF-8
+        pt_sentence = "ração"  # 5 chars, 7 bytes (ç=2B, ã=2B)
+        assert len(pt_sentence) == 5
+        assert len(pt_sentence.encode("utf-8")) == 7
+
+        # 7-byte limit: one sentence fits exactly
+        batches = synth._batch_sentences([pt_sentence, pt_sentence], 7, unit="bytes")
+        assert len(batches) == 2  # Can't fit two in one batch (7+1+7=15 > 7)
+
+    def test_multibyte_fits_when_limit_is_chars(self):
+        """Same text fits in fewer batches when measured by chars."""
+        synth = self._make_synth()
+        pt_sentence = "ração"  # 6 chars
+        batches = synth._batch_sentences([pt_sentence, pt_sentence], 13, unit="chars")
+        assert len(batches) == 1  # 6 + 1 + 6 = 13 ≤ 13
+
+    def test_oversized_sentence_split_by_words(self):
+        """A sentence exceeding byte limit is split at word boundaries."""
+        synth = self._make_synth()
+        sentence = "Olá mundo maravilhoso"  # multi-byte + long
+        # Each word: "Olá"=4B, "mundo"=5B, "maravilhoso"=11B
+        batches = synth._batch_sentences([sentence], 12, unit="bytes")
+        # Should be split into parts that each fit in 12 bytes
+        assert len(batches) >= 2
+        for batch in batches:
+            batch_text = " ".join(batch)
+            assert len(batch_text.encode("utf-8")) <= 12
+
+    def test_oversized_single_word_hard_split(self):
+        """A single word exceeding limit is hard-split by characters."""
+        synth = self._make_synth()
+        # A long word that exceeds 5-byte limit
+        word = "abcdefghij"  # 10 bytes (ASCII)
+        batches = synth._batch_sentences([word], 5, unit="bytes")
+        assert len(batches) >= 2
+        for batch in batches:
+            assert len(" ".join(batch).encode("utf-8")) <= 5
+
+
+# ---------------------------------------------------------------------------
+# Provider limit properties
+# ---------------------------------------------------------------------------
+class TestProviderLimits:
+    """Test that each TTS provider has correct limit configuration."""
+
+    def test_google_limit_unit_is_bytes(self):
+        with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS": "/fake"}):
+            from audify.utils.api_config import GoogleTTSConfig
+
+            config = GoogleTTSConfig.__new__(GoogleTTSConfig)
+            assert config.limit_unit == "bytes"
+
+    def test_google_max_text_length(self):
+        with patch.dict("os.environ", {"GOOGLE_APPLICATION_CREDENTIALS": "/fake"}):
+            from audify.utils.api_config import GoogleTTSConfig
+
+            config = GoogleTTSConfig.__new__(GoogleTTSConfig)
+            assert config.max_text_length == 4800
+
+    def test_openai_max_text_length(self):
+        from audify.utils.api_config import OpenAITTSConfig
+
+        config = OpenAITTSConfig.__new__(OpenAITTSConfig)
+        assert config.max_text_length == 4096
+
+    def test_aws_limit_unit_is_bytes(self):
+        from audify.utils.api_config import AWSTTSConfig
+
+        config = AWSTTSConfig.__new__(AWSTTSConfig)
+        assert config.limit_unit == "bytes"
+
+    def test_kokoro_limit_unit_is_chars(self):
+        from audify.utils.api_config import KokoroTTSConfig
+
+        config = KokoroTTSConfig.__new__(KokoroTTSConfig)
+        assert config.limit_unit == "chars"
+
+    def test_kokoro_max_text_length(self):
+        from audify.utils.api_config import KokoroTTSConfig
+
+        config = KokoroTTSConfig.__new__(KokoroTTSConfig)
+        assert config.max_text_length == 5000
+
+
+# ---------------------------------------------------------------------------
+# TTSSynthesisError threshold
+# ---------------------------------------------------------------------------
+class TestTTSSynthesisThreshold:
+    """Test the failure-rate gate in _synthesize_with_provider."""
+
+    def _make_synth(self):
+        from audify.text_to_speech import BaseSynthesizer
+
+        synth = BaseSynthesizer.__new__(BaseSynthesizer)
+        synth.tmp_dir = Path("/tmp/test_tts")
+        return synth
+
+    def test_raises_on_high_failure_rate(self):
+        """Should raise TTSSynthesisError when >5% of sentences fail."""
+        from audify.text_to_speech import TTSSynthesisError
+
+        synth = self._make_synth()
+        mock_config = MagicMock()
+        mock_config.provider_name = "test"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = []
+        mock_config.voice = "v"
+        mock_config.max_text_length = 5000
+        mock_config.limit_unit = "chars"
+        # All batches fail
+        mock_config.synthesize.return_value = False
+
+        with (
+            patch.object(synth, "_get_tts_config", return_value=mock_config),
+            pytest.raises(TTSSynthesisError, match="failure threshold"),
+        ):
+            synth._synthesize_with_provider(
+                ["sentence one", "sentence two"], Path("/tmp/out.wav")
+            )
+
+    def test_no_error_on_zero_failures(self):
+        """Should succeed when all batches pass."""
+        synth = self._make_synth()
+        mock_config = MagicMock()
+        mock_config.provider_name = "test"
+        mock_config.is_available.return_value = True
+        mock_config.get_available_voices.return_value = []
+        mock_config.voice = "v"
+        mock_config.max_text_length = 5000
+        mock_config.limit_unit = "chars"
+
+        def fake_synth(text, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"wav")
+            return True
+
+        mock_config.synthesize.side_effect = fake_synth
+
+        with (
+            patch.object(synth, "_get_tts_config", return_value=mock_config),
+            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+        ):
+            # Should not raise
+            synth._synthesize_with_provider(
+                ["hello world"], Path("/tmp/out.wav")
+            )
+
+
+# ---------------------------------------------------------------------------
+# LLM token size validation
+# ---------------------------------------------------------------------------
+class TestLLMTokenValidation:
+    """Test that _split_text_into_chunks warns on oversized chunks."""
+
+    def _make_creator(self):
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        return creator
+
+    def test_no_warning_for_small_text(self, caplog):
+        import logging
+
+        creator = self._make_creator()
+        with caplog.at_level(logging.WARNING):
+            chunks = creator._split_text_into_chunks("Short text " * 10)
+        assert len(chunks) == 1
+        assert "context window" not in caplog.text
+
+    def test_warns_for_oversized_chunk(self):
+        creator = self._make_creator()
+        # Create text large enough that a single chunk exceeds 90% of context.
+        # Two paragraphs of 15000 words each → split into two 15000-word chunks.
+        # Each chunk ≈ 75000 chars → ~18750 tokens.
+        # max_input = 28672. 90% = 25805. 18750 < 25805, no warning.
+        # So use 30001 words in a single paragraph to force the word-based
+        # split, producing a chunk of exactly max_words words.
+        # Actually, we need a chunk with > 25805*4 ≈ 103220 chars.
+        # Use two paragraphs so it goes through the split path, but make
+        # each paragraph large enough.
+        para = "word " * 26000  # 130000 chars → ~32500 tokens > 25805
+        big_text = para + "\n\n" + "small paragraph"
+        with patch("audify.audiobook_creator.logger") as mock_logger:
+            creator._split_text_into_chunks(big_text, max_words=26001)
+        assert mock_logger.warning.called
+        warning_msg = mock_logger.warning.call_args[0][0]
+        assert "context window" in warning_msg

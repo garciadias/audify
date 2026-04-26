@@ -11,6 +11,7 @@ from audify.text_to_speech import (
     BaseSynthesizer,
     EpubSynthesizer,
     PdfSynthesizer,
+    TTSSynthesisError,
     suppress_stdout,
 )
 from audify.utils.api_config import KokoroAPIConfig
@@ -106,9 +107,11 @@ class TestBaseSynthesizer:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
-        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
+        mock_tts_config.max_text_length = 15  # Force each sentence into its own batch
+        mock_tts_config.limit_unit = "chars"
 
         def fake_synthesize(text, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"fake_wav_data")
             return True
 
@@ -169,13 +172,15 @@ class TestBaseSynthesizer:
         mock_tts_config.get_available_voices.return_value = ["valid_voice"]
         mock_tts_config.voice = "invalid_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = False
 
         with (
             patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
             patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+            pytest.raises(TTSSynthesisError, match="failure threshold"),
         ):
-            # With new implementation a missing voice logs a warning but does not raise
             synthesizer._synthesize_with_provider(
                 ["Hello world"], Path("/tmp/output.wav")
             )
@@ -224,6 +229,8 @@ class TestBaseSynthesizer:
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         # First succeeds, second fails
         mock_tts_config.synthesize.side_effect = [True, False]
 
@@ -1042,7 +1049,9 @@ class TestSynthesisIntegration:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
-        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
+        mock_tts_config.max_text_length = 15  # Force each sentence into its own batch
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1105,7 +1114,9 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
-        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
+        mock_tts_config.max_text_length = 15  # Force each sentence into its own batch
+
+        mock_tts_config.limit_unit = "chars"
         # First returns True (path exists), second returns False (skipped)
         mock_tts_config.synthesize.side_effect = [True, False]
 
@@ -1113,13 +1124,11 @@ class TestAdvancedKokoroScenarios:
             patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
             patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
             patch("pathlib.Path.exists", side_effect=[True, False]),
+            pytest.raises(TTSSynthesisError, match="failure threshold"),
         ):
             synthesizer._synthesize_with_provider(
                 ["Hello world", "Test sentence"], Path("/tmp/output.wav")
             )
-
-        # Should have tried both sentences
-        assert mock_tts_config.synthesize.call_count == 2
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_synthesize_kokoro_api_non_200_response(self, mock_temp_dir):
@@ -1164,7 +1173,8 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.is_available.return_value = True
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
-        mock_tts_config.max_text_length = 1  # Force each sentence into its own batch
+        mock_tts_config.max_text_length = 20  # Each sentence fits, but not two together
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1198,6 +1208,8 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1205,13 +1217,11 @@ class TestAdvancedKokoroScenarios:
             patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
             # File doesn't exist after synthesis
             patch("pathlib.Path.exists", return_value=False),
+            pytest.raises(TTSSynthesisError, match="failure threshold"),
         ):
             synthesizer._synthesize_with_provider(
                 ["Hello world"], Path("/tmp/output.wav")
             )
-
-        # Should have attempted synthesis, then skipped (file not found)
-        mock_tts_config.synthesize.assert_called_once()
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_synthesize_kokoro_decode_error_cleanup(self, mock_temp_dir):
@@ -1232,19 +1242,18 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.side_effect = Exception("Synthesis error")
 
         with (
             patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
             patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
+            pytest.raises(TTSSynthesisError, match="failure threshold"),
         ):
-            # Should handle per-sentence error gracefully and not raise
             synthesizer._synthesize_with_provider(
                 ["Hello world"], Path("/tmp/output.wav")
             )
-
-        # Synthesis was attempted
-        mock_tts_config.synthesize.assert_called_once()
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_synthesize_kokoro_all_invalid_segments_raises(self, mock_temp_dir):
@@ -1265,6 +1274,8 @@ class TestAdvancedKokoroScenarios:
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = True
 
         with (
@@ -1643,19 +1654,19 @@ class TestComprehensiveCoverage:
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = True
 
         with (
             patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
             patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
             patch("pathlib.Path.exists", return_value=False),  # Files don't exist
+            pytest.raises(TTSSynthesisError, match="failure threshold"),
         ):
             synthesizer._synthesize_with_provider(
                 ["Hello world"], Path("/tmp/output.wav")
             )
-
-        # Should have attempted synthesis once
-        mock_tts_config.synthesize.assert_called_once()
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
@@ -1967,6 +1978,8 @@ class TestComprehensiveCoverage:
         mock_tts_config.get_available_voices.return_value = ["test_voice"]
         mock_tts_config.voice = "test_voice"
         mock_tts_config.max_text_length = 5000
+
+        mock_tts_config.limit_unit = "chars"
         mock_tts_config.synthesize.return_value = True
 
         with (

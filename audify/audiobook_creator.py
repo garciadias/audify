@@ -11,7 +11,7 @@ from rich.progress import track
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
-from audify.text_to_speech import BaseSynthesizer
+from audify.text_to_speech import BaseSynthesizer, TTSSynthesisError
 from audify.translate import translate_sentence
 from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
@@ -684,7 +684,24 @@ class AudiobookCreator(BaseSynthesizer):
         if current_words:
             chunks.append(" ".join(current_words))
 
-        return chunks if chunks else [text]
+        result = chunks if chunks else [text]
+
+        # Lightweight token-size safety net: warn if any chunk is likely to
+        # exceed the LLM context window.  Uses the ~4 chars/token heuristic.
+        num_ctx = _DEFAULT_LLM_PARAMS["num_ctx"]
+        num_predict = _DEFAULT_LLM_PARAMS["num_predict"]
+        max_input_tokens = num_ctx - num_predict
+        for idx, chunk in enumerate(result):
+            estimated_tokens = len(chunk) / 4
+            if estimated_tokens > max_input_tokens * 0.9:
+                logger.warning(
+                    f"LLM chunk {idx + 1}/{len(result)} may exceed context "
+                    f"window: ~{estimated_tokens:.0f} estimated tokens vs "
+                    f"{max_input_tokens} available input tokens. Consider "
+                    "reducing --max-chapters or the source text size."
+                )
+
+        return result
 
     def _break_script_into_segments(self, script: str) -> List[str]:
         """Break script into ≤200-char segments for better TTS chunking."""
@@ -961,6 +978,8 @@ class AudiobookCreator(BaseSynthesizer):
                 else:
                     logger.warning(f"Failed to create Episode {episode_number}")
 
+            except TTSSynthesisError:
+                raise  # TTS failures must not be silently skipped
             except Exception as e:
                 logger.error(
                     f"Error creating Episode {episode_number}: {e}",

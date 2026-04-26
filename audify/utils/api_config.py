@@ -298,11 +298,22 @@ class TTSAPIConfig(ABC):
 
     @property
     def max_text_length(self) -> int:
-        """Maximum text length (in characters) for a single synthesis request.
+        """Maximum text length for a single synthesis request.
 
-        Defaults to 5000 characters. Subclasses can override.
+        The unit (characters or bytes) is determined by :pyattr:`limit_unit`.
+        Defaults to 5000. Subclasses can override.
         """
         return 5000
+
+    @property
+    def limit_unit(self) -> str:
+        """Unit for :pyattr:`max_text_length`: ``"chars"`` or ``"bytes"``.
+
+        Providers whose APIs enforce a *byte* limit (e.g. Google Cloud TTS,
+        AWS Polly) should override this to ``"bytes"`` so the batching layer
+        measures text size correctly for multi-byte UTF-8 content.
+        """
+        return "chars"
 
 
 class KokoroTTSConfig(TTSAPIConfig):
@@ -413,6 +424,11 @@ class OpenAITTSConfig(TTSAPIConfig):
     def provider_name(self) -> str:
         return "openai"
 
+    @property
+    def max_text_length(self) -> int:
+        """OpenAI TTS has a 4096-character limit per request."""
+        return 4096
+
     def is_available(self) -> bool:
         """Check if OpenAI API key is configured."""
         return bool(self.api_key)
@@ -510,8 +526,12 @@ class AWSTTSConfig(TTSAPIConfig):
 
     @property
     def max_text_length(self) -> int:
-        """AWS Polly has a 3000 character limit per request."""
+        """AWS Polly has a 3000-byte limit per synthesis request."""
         return 3000
+
+    @property
+    def limit_unit(self) -> str:
+        return "bytes"
 
     def _get_polly_client(self):
         """Get or create AWS Polly client."""
@@ -553,11 +573,13 @@ class AWSTTSConfig(TTSAPIConfig):
 
     def synthesize(self, text: str, output_path: Path) -> bool:
         """Synthesize text using AWS Polly."""
-        # Polly has a 3000 character limit for standard synthesis
-        max_chars = 3000
-        if len(text) > max_chars:
-            logger.warning(f"Text exceeds {max_chars} chars, truncating for Polly")
-            text = text[:max_chars]
+        text_bytes = len(text.encode("utf-8"))
+        if text_bytes > self.max_text_length:
+            logger.error(
+                f"Text exceeds AWS Polly {self.max_text_length}-byte limit "
+                f"({text_bytes} bytes). This is a batching bug."
+            )
+            return False
 
         def _do_request() -> bool:
             client = self._get_polly_client()
@@ -690,6 +712,19 @@ class GoogleTTSConfig(TTSAPIConfig):
     def provider_name(self) -> str:
         return "google"
 
+    @property
+    def max_text_length(self) -> int:
+        """Google Cloud TTS enforces a 5000-byte limit per request.
+
+        Use 4800 bytes to leave a safety margin for the space separators
+        added when joining batched sentences.
+        """
+        return 4800
+
+    @property
+    def limit_unit(self) -> str:
+        return "bytes"
+
     def _get_language_code(self) -> str:
         """Resolve Google TTS language code, preferring explicit voice locale."""
         voice_language = self._extract_language_code_from_voice(self.voice)
@@ -793,6 +828,13 @@ class GoogleTTSConfig(TTSAPIConfig):
 
     def synthesize(self, text: str, output_path: Path) -> bool:
         """Synthesize text using Google Cloud TTS."""
+        text_bytes = len(text.encode("utf-8"))
+        if text_bytes > 5000:
+            logger.error(
+                f"Text exceeds Google TTS 5000-byte limit ({text_bytes} bytes). "
+                "This is a batching bug."
+            )
+            return False
 
         def _do_request() -> bool:
             from google.cloud import texttospeech

@@ -437,25 +437,17 @@ class TestAWSTTSConfig:
         assert result is False
 
     @patch("audify.utils.api_config.boto3.client")
-    def test_synthesize_truncates_long_text(self, mock_boto_client, tmp_path):
-        """Test synthesize truncates text exceeding 3000 chars."""
-        mock_audio_stream = Mock()
-        mock_audio_stream.read.return_value = b"\x00" * 100
-
-        mock_client = Mock()
-        mock_client.synthesize_speech.return_value = {"AudioStream": mock_audio_stream}
-        mock_boto_client.return_value = mock_client
-
+    def test_synthesize_rejects_oversized_text(self, mock_boto_client, tmp_path):
+        """Test synthesize returns False for text exceeding byte limit."""
         config = AWSTTSConfig(access_key_id="test-key", secret_access_key="test-secret")
         output_path = tmp_path / "output.wav"
 
-        long_text = "a" * 5000
+        long_text = "a" * 5000  # 5000 bytes, exceeds 3000 limit
         result = config.synthesize(long_text, output_path)
 
-        assert result is True
-        # Verify text was truncated in the call
-        call_kwargs = mock_client.synthesize_speech.call_args.kwargs
-        assert len(call_kwargs["Text"]) == 3000
+        assert result is False
+        # Verify the API was never called
+        mock_boto_client.return_value.synthesize_speech.assert_not_called()
 
     @patch("time.sleep")
     @patch("audify.utils.api_config.boto3.client")

@@ -39,6 +39,21 @@ from audify.utils.text import break_text_into_sentences, get_file_name_title
 # Configure logging
 logger = setup_logging(module_name=__name__)
 
+# Maximum fraction of sentences that may fail before the pipeline aborts.
+_MAX_BATCH_FAILURE_RATE = 0.05
+
+
+class TTSSynthesisError(RuntimeError):
+    """Raised when TTS synthesis failures exceed the acceptable threshold."""
+
+    def __init__(
+        self, message: str, failed_batches: int, total_batches: int
+    ) -> None:
+        super().__init__(message)
+        self.failed_batches = failed_batches
+        self.total_batches = total_batches
+
+
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -131,26 +146,76 @@ class BaseSynthesizer:
             )
         return self._tts_config
 
+    @staticmethod
+    def _measure_text(text: str, unit: str) -> int:
+        """Return the size of *text* in the requested unit."""
+        if unit == "bytes":
+            return len(text.encode("utf-8"))
+        return len(text)
+
+    @staticmethod
+    def _split_oversized_sentence(
+        sentence: str, max_length: int, unit: str
+    ) -> List[str]:
+        """Split a single sentence that exceeds *max_length* at word boundaries.
+
+        Falls back to hard character splits only for words that individually
+        exceed the limit (should be extremely rare).
+        """
+        measure = (
+            (lambda t: len(t.encode("utf-8")))
+            if unit == "bytes"
+            else (lambda t: len(t))
+        )
+
+        words = sentence.split()
+        parts: List[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}" if current else word
+            if measure(candidate) <= max_length:
+                current = candidate
+            else:
+                if current:
+                    parts.append(current)
+                # If a single word exceeds the limit, hard-split it
+                if measure(word) > max_length:
+                    while word:
+                        # Find the longest prefix that fits
+                        for end in range(len(word), 0, -1):
+                            chunk = word[:end]
+                            if measure(chunk) <= max_length:
+                                parts.append(chunk)
+                                word = word[end:]
+                                break
+                    current = ""
+                else:
+                    current = word
+        if current:
+            parts.append(current)
+        return parts
+
     def _batch_sentences(
-        self, sentences: List[str], max_length: int
+        self, sentences: List[str], max_length: int, unit: str = "chars"
     ) -> List[List[str]]:
-        """Group sentences into batches where each batch's total character
-        length <= max_length."""
+        """Group sentences into batches where each batch's total size
+        (measured in *unit*) does not exceed *max_length*."""
         batches: List[List[str]] = []
         current_batch: List[str] = []
         current_length = 0
 
         for sentence in sentences:
-            sentence_len = len(sentence)
+            sentence_len = self._measure_text(sentence, unit)
             if sentence_len > max_length:
-                # Sentence already exceeds limit; should not happen if
-                # sentences are pre-split
-                # Add as its own batch
+                # Flush current batch, then split the oversized sentence
                 if current_batch:
                     batches.append(current_batch)
                     current_batch = []
                     current_length = 0
-                batches.append([sentence])
+                for part in self._split_oversized_sentence(
+                    sentence, max_length, unit
+                ):
+                    batches.append([part])
                 continue
 
             separator_len = 1 if current_batch else 0
@@ -199,7 +264,9 @@ class BaseSynthesizer:
                 )
 
             # Group sentences into batches based on provider's max text length
-            batches = self._batch_sentences(sentences, tts_config.max_text_length)
+            batches = self._batch_sentences(
+                sentences, tts_config.max_text_length, unit=tts_config.limit_unit
+            )
             logger.info(
                 f"Processing {len(batches)} batch(es) for {len(sentences)} sentences"
             )
@@ -257,6 +324,28 @@ class BaseSynthesizer:
                     consecutive_failures += 1
                     logger.warning(f"Error synthesizing batch {batch_idx}: {e}")
                     continue
+
+            # ----- Failure-rate gate -----
+            if failed_sentences > 0 and attempted_sentences > 0:
+                failure_rate = failed_sentences / attempted_sentences
+                if failure_rate > _MAX_BATCH_FAILURE_RATE:
+                    for temp_file in temp_audio_files:
+                        temp_file.unlink(missing_ok=True)
+                    raise TTSSynthesisError(
+                        f"TTS synthesis failed for {failed_sentences}/"
+                        f"{attempted_sentences} sentences "
+                        f"({failure_rate:.0%}). This exceeds the "
+                        f"{_MAX_BATCH_FAILURE_RATE:.0%} failure threshold. "
+                        f"The audiobook would have significant gaps. "
+                        f"Check TTS provider logs for details.",
+                        failed_batches=failed_sentences,
+                        total_batches=attempted_sentences,
+                    )
+                logger.warning(
+                    f"{failed_sentences}/{attempted_sentences} sentences "
+                    f"failed synthesis ({failure_rate:.0%}), within "
+                    "acceptable threshold."
+                )
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")
             try:
