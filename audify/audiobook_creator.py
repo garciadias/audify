@@ -864,8 +864,10 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info("Starting audiobook series creation...")
 
         # Verify TTS provider before processing, but do not hard-fail unless
-        # strict preflight is explicitly enabled.
-        self._verify_tts_provider_available()
+        # strict preflight is explicitly enabled.  Skip in process-only mode
+        # since no synthesis will happen.
+        if self.mode != "process":
+            self._verify_tts_provider_available()
 
         if isinstance(self.reader, EpubReader):
             chapters = self.reader.get_chapters()
@@ -928,8 +930,11 @@ class AudiobookCreator(BaseSynthesizer):
                 )
                 chapter_scripts.append((episode_number, audiobook_script))
 
-                word_count = len(audiobook_script.split())
-                script_word_counts.append((chapter_title, word_count))
+                # Resumed episodes return "" — exclude them from validation
+                # so they don't trigger spurious SHORT warnings.
+                if audiobook_script:
+                    word_count = len(audiobook_script.split())
+                    script_word_counts.append((chapter_title, word_count))
 
             except Exception as e:
                 logger.error(
@@ -1286,8 +1291,10 @@ class AudiobookPdfCreator(AudiobookCreator):
             return self._synthesize_from_existing_scripts()
 
         # Verify TTS provider before processing, but do not hard-fail unless
-        # strict preflight is explicitly enabled.
-        self._verify_tts_provider_available()
+        # strict preflight is explicitly enabled.  Skip in process-only mode
+        # since no synthesis will happen.
+        if self.mode != "process":
+            self._verify_tts_provider_available()
 
         # Get the full PDF content
         if isinstance(self.reader, PdfReader):
