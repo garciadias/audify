@@ -719,11 +719,16 @@ class TestTocMatchCounter:
         """_flatten_toc_hrefs catches TypeError from bad TOC structure."""
         from audify.readers.ebook import EpubReader
 
+        class BadHref:
+            @property
+            def href(self):
+                raise TypeError("broken")
+
         reader = EpubReader.__new__(EpubReader)
         reader.book = MagicMock()
-        # A tuple entry with wrong structure triggers TypeError
-        # when _walk tries to unpack it
-        reader.book.toc = [(1, 2, 3)]  # len != 2 → falls to getattr path
+        # A 2-tuple whose nav_point.href raises TypeError triggers the
+        # except (TypeError, AttributeError) handler in _walk.
+        reader.book.toc = [(BadHref(), [])]
         result = reader._flatten_toc_hrefs()
         assert result == []
 
@@ -932,27 +937,20 @@ class TestLLMTokenValidation:
         creator = AudiobookCreator.__new__(AudiobookCreator)
         return creator
 
-    def test_no_warning_for_small_text(self, caplog):
-        import logging
-
+    def test_no_warning_for_small_text(self):
         creator = self._make_creator()
-        with caplog.at_level(logging.WARNING):
+        with patch("audify.audiobook_creator.logger") as mock_logger:
             chunks = creator._split_text_into_chunks("Short text " * 10)
         assert len(chunks) == 1
-        assert "context window" not in caplog.text
+        warning_calls = [
+            str(c) for c in mock_logger.warning.call_args_list
+        ]
+        assert not any("context window" in w for w in warning_calls)
 
     def test_warns_for_oversized_chunk(self):
         creator = self._make_creator()
-        # Create text large enough that a single chunk exceeds 90% of context.
-        # Two paragraphs of 15000 words each → split into two 15000-word chunks.
-        # Each chunk ≈ 75000 chars → ~18750 tokens.
-        # max_input = 28672. 90% = 25805. 18750 < 25805, no warning.
-        # So use 30001 words in a single paragraph to force the word-based
-        # split, producing a chunk of exactly max_words words.
-        # Actually, we need a chunk with > 25805*4 ≈ 103220 chars.
-        # Use two paragraphs so it goes through the split path, but make
-        # each paragraph large enough.
-        para = "word " * 26000  # 130000 chars → ~32500 tokens > 25805
+        # ~130k chars → ~32500 tokens, exceeds 90% of context window
+        para = "word " * 26000
         big_text = para + "\n\n" + "small paragraph"
         with patch("audify.audiobook_creator.logger") as mock_logger:
             creator._split_text_into_chunks(big_text, max_words=26001)

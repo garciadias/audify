@@ -808,17 +808,18 @@ def test_cli_single_file_mode_with_prompt_file():
                                 return_value=os.terminal_size((80, 24)),
                             ):
                                 runner = CliRunner()
-                            # Create a dummy prompt file
-                            prompt_file = os.path.join(tmpdir, "test.prompt")
-                            with open(prompt_file, "w") as f:
-                                f.write("Test prompt")
-                            # Invoke CLI with file path and prompt file
-                            result = runner.invoke(
-                                cli, [epub_path, "--prompt-file", prompt_file]
-                            )
-                            assert result.exit_code == 0
-                            # Line 433 should be executed (prompt file logging)
-                            # No exception means success
+                                # Create a dummy prompt file
+                                prompt_file = os.path.join(
+                                    tmpdir, "test.prompt"
+                                )
+                                with open(prompt_file, "w") as f:
+                                    f.write("Test prompt")
+                                # Invoke CLI with file path and prompt file
+                                result = runner.invoke(
+                                    cli,
+                                    [epub_path, "--prompt-file", prompt_file],
+                                )
+                                assert result.exit_code == 0
 
 
 def test_main_module_import():
