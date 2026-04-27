@@ -13,15 +13,11 @@ cp .keys.example .keys
 ```
 
 ```ini
-# TTS provider (kokoro, qwen, openai, aws, google)
+# TTS provider (kokoro, openai, aws, google)
 TTS_PROVIDER=kokoro
 
 # Kokoro TTS (local)
 KOKORO_API_URL=http://localhost:8887/v1
-
-# Qwen-TTS (local)
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
 
 # OpenAI TTS
 OPENAI_API_KEY=sk-your-key
@@ -61,7 +57,6 @@ Never commit `.keys` to version control. It is already in `.gitignore`.
 | Provider         | Local? | Free? | GPU needed? | Key Features                   |
 |------------------|--------|-------|-------------|-------------------------------|
 | **Kokoro**       | Yes    | Yes   | Recommended | Fast, low-latency synthesis   |
-| **Qwen-TTS**     | Yes    | Yes   | Recommended | Multilingual, high quality    |
 | **OpenAI**       | No     | No    | No          | High quality, easy setup      |
 | **AWS Polly**    | No     | No    | No          | Enterprise, multiple engines  |
 | **Google Cloud** | No     | No    | No          | Multilingual, neural voices   |
@@ -83,16 +78,17 @@ GOOGLE_TTS_LANGUAGE_CODE=<lang-code> # e.g., es-ES for Spanish
 
 ## Docker Services
 
-The `docker-compose.yml` provides local services:
+The `docker-compose.yml` provides local services via profiles:
 
-| Service    | Port  | Description                           |
-|------------|-------|---------------------------------------|
-| Kokoro TTS | 8887  | GPU-accelerated speech synthesis       |
-| Ollama     | 11434 | Local LLM for script/translation       |
-| Audify API | 8000  | REST API (starts after dependencies)   |
+| Service    | Profile  | Port  | Description                           |
+|------------|----------|-------|---------------------------------------|
+| Kokoro TTS | `kokoro` | 8887  | GPU-accelerated speech synthesis       |
+| Ollama     | `ollama` | 11434 | Local LLM for script/translation       |
+| Audify API | `api`    | 8000  | REST API (depends on Kokoro & Ollama)  |
 
 ```bash
-docker compose up -d      # Start all services
+docker compose --profile kokoro --profile ollama up -d  # Start TTS + LLM
+docker compose --profile kokoro --profile ollama --profile api up -d  # Include API
 docker compose ps         # Check status
 docker compose logs -f    # Follow logs
 docker compose down       # Stop all services
@@ -103,3 +99,12 @@ docker compose down       # Stop all services
 English, Spanish, French, German, Italian, Portuguese, Polish, Turkish, Russian, Dutch, Czech, Arabic, Chinese, Hungarian, Korean, Japanese, Hindi.
 
 Translation supports any language pair available in your configured LLM.
+
+## Pipeline Environment Variables
+
+These variables control pipeline behaviour during audiobook creation:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUDIFY_STRICT_TTS_PREFLIGHT` | `0` | Set to `1` to fail immediately if TTS provider is unavailable |
+| `AUDIFY_SKIP_TTS_PREFLIGHT` | `0` | Set to `1` to skip TTS availability checks entirely |

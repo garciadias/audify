@@ -30,7 +30,7 @@ KOKORO_API_BASE_URL = _get_config("KOKORO_API_URL", "http://localhost:8887/v1")
 OLLAMA_API_BASE_URL = _get_config("OLLAMA_API_URL", "http://localhost:11434")
 
 DEFAULT_TTS_PROVIDER = _get_config("TTS_PROVIDER", "kokoro")
-AVAILABLE_TTS_PROVIDERS = ["kokoro", "openai", "aws", "google", "qwen"]
+AVAILABLE_TTS_PROVIDERS = ["kokoro", "openai", "aws", "google"]
 
 OPENAI_API_KEY = _get_config("OPENAI_API_KEY", "")
 OPENAI_TTS_MODEL = _get_config("OPENAI_TTS_MODEL", "gpt-4o-mini-tts-2025-03-20")
@@ -65,8 +65,6 @@ GOOGLE_TTS_DEFAULT_VOICE_BY_LANGUAGE = {
     "tr": _get_config("GOOGLE_TTS_VOICE_TR", "tr-TR-Wavenet-B"),
 }
 
-QWEN_API_BASE_URL = _get_config("QWEN_API_URL", "http://localhost:8890")
-QWEN_TTS_VOICE = _get_config("QWEN_TTS_VOICE", "Vivian")
 
 OLLAMA_DEFAULT_TRANSLATION_MODEL = _get_config("OLLAMA_TRANSLATION_MODEL", "qwen3:30b")
 OLLAMA_DEFAULT_MODEL = _get_config("OLLAMA_MODEL", "magistral:24b")

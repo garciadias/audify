@@ -1,57 +1,60 @@
 services:
   ollama:
     image: ollama/ollama:latest
+    gpus: all
     volumes:
       - $HOME/.ollama:/root/.ollama
     ports:
       - "11434:11434"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/version" ]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    profiles: [ "ollama" ]
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
   kokoro:
     image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
     ports:
       - "8887:8880"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8880/health" ]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    profiles: [ "kokoro" ]
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu]
-
+              capabilities: [ gpu ]
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     ports:
       - "8000:8000"
+    depends_on:
+      kokoro:
+        condition: service_started
+      ollama:
+        condition: service_started
     environment:
       - KOKORO_API_URL=http://kokoro:8880/v1
       - OLLAMA_API_URL=http://ollama:11434
       - TTS_PROVIDER=kokoro
-    depends_on:
-      kokoro:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
     volumes:
       - ./data:/app/data
+    profiles: ["api"]
     restart: unless-stopped

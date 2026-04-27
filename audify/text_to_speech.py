@@ -2,6 +2,7 @@ import contextlib
 import shutil
 import sys
 import tempfile
+import time
 import warnings
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
@@ -37,6 +38,21 @@ from audify.utils.text import break_text_into_sentences, get_file_name_title
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
+
+# Maximum fraction of sentences that may fail before the pipeline aborts.
+_MAX_BATCH_FAILURE_RATE = 0.05
+
+
+class TTSSynthesisError(RuntimeError):
+    """Raised when TTS synthesis failures exceed the acceptable threshold."""
+
+    def __init__(
+        self, message: str, failed_batches: int, total_batches: int
+    ) -> None:
+        super().__init__(message)
+        self.failed_batches = failed_batches
+        self.total_batches = total_batches
+
 
 # Mute specific warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -130,6 +146,92 @@ class BaseSynthesizer:
             )
         return self._tts_config
 
+    @staticmethod
+    def _measure_text(text: str, unit: str) -> int:
+        """Return the size of *text* in the requested unit."""
+        if unit == "bytes":
+            return len(text.encode("utf-8"))
+        return len(text)
+
+    @staticmethod
+    def _split_oversized_sentence(
+        sentence: str, max_length: int, unit: str
+    ) -> List[str]:
+        """Split a single sentence that exceeds *max_length* at word boundaries.
+
+        Falls back to hard character splits only for words that individually
+        exceed the limit (should be extremely rare).
+        """
+        measure = (
+            (lambda t: len(t.encode("utf-8")))
+            if unit == "bytes"
+            else (lambda t: len(t))
+        )
+
+        words = sentence.split()
+        parts: List[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}" if current else word
+            if measure(candidate) <= max_length:
+                current = candidate
+            else:
+                if current:
+                    parts.append(current)
+                # If a single word exceeds the limit, hard-split it
+                if measure(word) > max_length:
+                    while word:
+                        # Find the longest prefix that fits
+                        for end in range(len(word), 0, -1):
+                            chunk = word[:end]
+                            if measure(chunk) <= max_length:
+                                parts.append(chunk)
+                                word = word[end:]
+                                break
+                    current = ""
+                else:
+                    current = word
+        if current:
+            parts.append(current)
+        return parts
+
+    def _batch_sentences(
+        self, sentences: List[str], max_length: int, unit: str = "chars"
+    ) -> List[List[str]]:
+        """Group sentences into batches where each batch's total size
+        (measured in *unit*) does not exceed *max_length*."""
+        batches: List[List[str]] = []
+        current_batch: List[str] = []
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_len = self._measure_text(sentence, unit)
+            if sentence_len > max_length:
+                # Flush current batch, then split the oversized sentence
+                if current_batch:
+                    batches.append(current_batch)
+                    current_batch = []
+                    current_length = 0
+                for part in self._split_oversized_sentence(
+                    sentence, max_length, unit
+                ):
+                    batches.append([part])
+                continue
+
+            separator_len = 1 if current_batch else 0
+            if current_length + sentence_len + separator_len <= max_length:
+                current_batch.append(sentence)
+                current_length += sentence_len + separator_len
+            else:
+                if current_batch:
+                    batches.append(current_batch)
+                current_batch = [sentence]
+                current_length = sentence_len
+
+        if current_batch:
+            batches.append(current_batch)
+        return batches
+
     def _synthesize_with_provider(
         self, sentences: List[str], output_wav_path: Path
     ) -> None:
@@ -138,6 +240,9 @@ class BaseSynthesizer:
         temp_audio_files: List[Path] = []
         attempted_sentences = 0
         failed_sentences = 0
+        consecutive_failures = 0
+        _MAX_CONSECUTIVE_FAILURES = 5
+        _RECOVERY_WAIT_SECONDS = 15
 
         try:
             logger.info(f"Starting {tts_config.provider_name} TTS synthesis...")
@@ -158,30 +263,89 @@ class BaseSynthesizer:
                     f"Available voices: {available_voices[:5]}..."
                 )
 
-            for i, sentence in track(
-                enumerate(sentences),
+            # Group sentences into batches based on provider's max text length
+            batches = self._batch_sentences(
+                sentences, tts_config.max_text_length, unit=tts_config.limit_unit
+            )
+            logger.info(
+                f"Processing {len(batches)} batch(es) for {len(sentences)} sentences"
+            )
+
+            for batch_idx, batch_sentences in track(
+                enumerate(batches),
                 description=f"{tts_config.provider_name.title()} Synthesizing",
-                total=len(sentences),
+                total=len(batches),
             ):
-                if not sentence.strip():
+                # Filter out empty sentences within batch
+                batch_sentences = [s for s in batch_sentences if s.strip()]
+                if not batch_sentences:
                     continue
 
-                attempted_sentences += 1
+                attempted_sentences += len(batch_sentences)
+
+                # If we've had many consecutive failures the server may have
+                # crashed/restarted.  Wait for it to come back before wasting
+                # more requests.
+                if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                    logger.warning(
+                        f"{consecutive_failures} consecutive synthesis failures. "
+                        f"Waiting {_RECOVERY_WAIT_SECONDS}s for TTS server to "
+                        "recover..."
+                    )
+                    time.sleep(_RECOVERY_WAIT_SECONDS)
+
+                    if not tts_config.is_available():
+                        raise RuntimeError(
+                            f"TTS provider '{tts_config.provider_name}' became "
+                            f"unavailable after {consecutive_failures} consecutive "
+                            "failures and did not recover. Check the TTS server."
+                        )
+                    logger.info("TTS server recovered, resuming synthesis.")
+                    consecutive_failures = 0
 
                 try:
-                    temp_wav_path = self.tmp_dir / f"segment_{i}.wav"
-                    success = tts_config.synthesize(sentence, temp_wav_path)
+                    temp_wav_path = self.tmp_dir / f"batch_{batch_idx}.wav"
+                    # Concatenate sentences with a space
+                    batch_text = " ".join(batch_sentences)
+                    success = tts_config.synthesize(batch_text, temp_wav_path)
 
                     if success and temp_wav_path.exists():
                         temp_audio_files.append(temp_wav_path)
+                        consecutive_failures = 0
                     else:
-                        failed_sentences += 1
-                        logger.warning(f"Synthesis failed for sentence {i}, skipping.")
+                        failed_sentences += len(batch_sentences)
+                        consecutive_failures += 1
+                        logger.warning(
+                            f"Synthesis failed for batch {batch_idx}, skipping."
+                        )
 
                 except Exception as e:
-                    failed_sentences += 1
-                    logger.warning(f"Error synthesizing sentence {i}: {e}")
+                    failed_sentences += len(batch_sentences)
+                    consecutive_failures += 1
+                    logger.warning(f"Error synthesizing batch {batch_idx}: {e}")
                     continue
+
+            # ----- Failure-rate gate -----
+            if failed_sentences > 0 and attempted_sentences > 0:
+                failure_rate = failed_sentences / attempted_sentences
+                if failure_rate > _MAX_BATCH_FAILURE_RATE:
+                    for temp_file in temp_audio_files:
+                        temp_file.unlink(missing_ok=True)
+                    raise TTSSynthesisError(
+                        f"TTS synthesis failed for {failed_sentences}/"
+                        f"{attempted_sentences} sentences "
+                        f"({failure_rate:.0%}). This exceeds the "
+                        f"{_MAX_BATCH_FAILURE_RATE:.0%} failure threshold. "
+                        f"The audiobook would have significant gaps. "
+                        f"Check TTS provider logs for details.",
+                        failed_batches=failed_sentences,
+                        total_batches=attempted_sentences,
+                    )
+                logger.warning(
+                    f"{failed_sentences}/{attempted_sentences} sentences "
+                    f"failed synthesis ({failure_rate:.0%}), within "
+                    "acceptable threshold."
+                )
 
             logger.info(f"Combining {len(temp_audio_files)} audio segments...")
             try:
@@ -790,27 +954,38 @@ class VoiceSamplesSynthesizer:
 
     def _get_available_models_and_voices(self) -> Tuple[List[str], List[str]]:
         """Get available models and voices from Kokoro API."""
-        try:
-            # Get models
-            models_response = requests.get(f"{KOKORO_API_BASE_URL}/models", timeout=10)
+        from audify.utils.api_config import KokoroAPIConfig, _retry_request
+
+        api_config = KokoroAPIConfig()
+
+        def _fetch():
+            models_response = requests.get(
+                f"{KOKORO_API_BASE_URL}/models", timeout=10
+            )
             models_response.raise_for_status()
             models_data = models_response.json().get("data", [])
-            models = sorted([model.get("id") for model in models_data if "id" in model])
+            models = sorted(
+                [m.get("id") for m in models_data if "id" in m]
+            )
 
-            # Get voices - use the API config to get the correct endpoint
-            from audify.utils.api_config import KokoroAPIConfig
-
-            api_config = KokoroAPIConfig()
-            voices_response = requests.get(api_config.voices_url, timeout=10)
+            voices_response = requests.get(
+                api_config.voices_url, timeout=10
+            )
             voices_response.raise_for_status()
             voices_data = voices_response.json().get("voices", [])
             voices = sorted(voices_data)
 
-            logger.info(f"Found {len(models)} models and {len(voices)} voices")
+            logger.info(
+                f"Found {len(models)} models and {len(voices)} voices"
+            )
             return models, voices
 
-        except requests.RequestException as e:
-            logger.error(f"Error fetching models and voices from Kokoro API: {e}")
+        try:
+            return _retry_request(
+                _fetch,
+                api_name=f"Kokoro API ({KOKORO_API_BASE_URL})",
+            )
+        except RuntimeError:
             return [], []
 
     def _create_sample_for_combination(

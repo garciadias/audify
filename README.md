@@ -7,7 +7,7 @@ Convert ebooks and PDFs to audiobooks using AI text-to-speech and translation se
 
 Audify is a pipeline and REST API that transforms written content into high-quality audio using:
 
-- **Multiple TTS Providers** - Choose from Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, or Google Cloud TTS
+- **Multiple TTS Providers** - Choose from Kokoro (local), OpenAI, AWS Polly, or Google Cloud TTS
 - **Ollama + LiteLLM** for intelligent translation
 - **LLM-powered audiobook generation** for engaging audio content
 
@@ -16,9 +16,10 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **📚 Multiple Formats**: Convert EPUB ebooks, PDF documents, TXT, and MD files
 - **📁 Directory Processing**: Create audiobooks from multiple files in a directory
 - **🎙️ Audiobook Creation**: Generate audiobook-style content from books using LLM
+- **🔄 Two-Stage Workflow**: Split processing and synthesis with `--process-only` / `--synthesize-only` for review, editing, and resumability
 - **🎛️ Flexible Task System**: Transform content into audiobooks, podcasts, summaries, meditations, or custom styles
 - **🌐 REST API**: HTTP API for programmatic synthesis and audiobook creation
-- **🔒 Multiple TTS Providers**: Choose from Kokoro (local), Qwen-TTS (local), OpenAI, AWS Polly, or Google Cloud TTS
+- **🔒 Multiple TTS Providers**: Choose from Kokoro (local), OpenAI, AWS Polly, or Google Cloud TTS
 - **🌍 Multi-language Support**: Translate content
 - **🎵 High-Quality TTS**: Natural-sounding speech with multiple provider options
 - **⚙️ Flexible Configuration**: Environment-based settings and `.keys` file support
@@ -37,16 +38,12 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **Docker & Docker Compose** (for API services)
 - **CUDA-capable GPU** (recommended for optimal performance)
 
-#### Qwen-TTS
-
-- **Qwen-TTS API Server** running on port 8890 (see [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS))
-- **CUDA-capable GPU** (recommended for optimal performance)
-
 ### For Cloud TTS Providers (Optional)
 
 - **OpenAI TTS**: OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 - **AWS Polly**: AWS account with access keys ([AWS setup](https://aws.amazon.com/polly/))
 - **Google Cloud TTS**: Google Cloud project with credentials ([GCP setup](https://cloud.google.com/text-to-speech))
+
 ## 📦 Installation as a command-line tool
 
 You can install Audify as a standalone command-line tool using pip or uv:
@@ -62,10 +59,12 @@ uv pip install audify-cli
 ```
 
 This will install the `audify` command with subcommands:
+
 - `audify run`: Basic TTS conversion of EPUB/PDF files
 - `audify audiobook`: LLM-powered audiobook generation
 
 Alternatively, you can use the direct commands:
+
 - `audify-run`: Alias for `audify run`
 - `audify-audiobook`: Alias for `audify audiobook`
 
@@ -73,7 +72,7 @@ After installation, you can run `audify --help` to see available options.
 
 ## 🐳 Quick Start with Docker (For Kokoro TTS)
 
-> **Note**: Docker is only required if you want to use the local Kokoro TTS provider. For Qwen-TTS, you'll need to run the Qwen-TTS API separately (see Qwen-TTS Setup below). You can skip to "Quick Start with Cloud TTS" if you prefer using OpenAI, AWS Polly, or Google Cloud TTS.
+> **Note**: Docker is only required if you want to use the local Kokoro TTS provider. You can skip to "Quick Start with Cloud TTS" if you prefer using OpenAI, AWS Polly, or Google Cloud TTS.
 
 ### 1. Clone and Setup
 
@@ -86,10 +85,13 @@ cd audify
 
 ```bash
 # Start Kokoro TTS and Ollama services
-docker compose up -d
+docker compose --profile kokoro --profile ollama up -d
 
 # Wait for services to be ready (~2-3 minutes)
 # Check status: docker compose ps
+
+# Optionally start the REST API service as well
+docker compose --profile kokoro --profile ollama --profile api up -d
 ```
 
 ### 3. Install Python Dependencies
@@ -122,57 +124,6 @@ task run path/to/your/document.pdf
 
 # Create audiobook from EPUB
 task audiobook path/to/your/book.epub
-```
-
-## 🚀 Quick Start with Qwen-TTS (Local)
-
-Qwen-TTS is a high-quality, free, and privacy-friendly local TTS solution with excellent multilingual support.
-
-### 1. Setup Qwen-TTS API
-
-First, set up the Qwen-TTS API server (requires GPU):
-
-```bash
-# Clone Qwen-TTS API repository
-git clone https://github.com/QwenLM/Qwen3-TTS
-cd Qwen3-TTS
-
-# Start with Docker (recommended)
-make up
-
-# The API will be available at http://localhost:8890
-```
-
-For detailed setup instructions, see the [Qwen3-TTS documentation](https://github.com/QwenLM/Qwen3-TTS).
-
-### 2. Install Audify
-
-```bash
-git clone https://github.com/garciadias/audify.git
-cd audify
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv sync
-```
-
-### 3. Configure Qwen-TTS
-
-Create a `.keys` file:
-
-```bash
-TTS_PROVIDER=qwen
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
-```
-
-### 4. Convert Your First Book
-
-```bash
-# Convert using Qwen-TTS
-task run path/to/your/book.epub
-
-# Or specify provider explicitly
-task --tts-provider qwen run path/to/your/book.epub
 ```
 
 ## 🚀 Quick Start with Cloud TTS
@@ -326,6 +277,22 @@ The directory mode will:
 - Combine all episodes into a single M4B audiobook with chapter markers
 - Synthesize the title audio for each episode
 
+### Two-Stage Workflow
+
+Split audiobook creation into script generation and audio synthesis for review, editing, or resumability:
+
+```bash
+# Stage 1: Generate scripts only (no TTS)
+task audiobook "book.epub" --process-only
+
+# Review/edit scripts in audiobooks/[book_name]/scripts/
+
+# Stage 2: Synthesise audio from saved scripts
+task audiobook "book.epub" --synthesize-only
+```
+
+If a run is interrupted, re-running the same command will automatically skip episodes whose MP3 files already exist.
+
 ### Advanced Options
 
 ```bash
@@ -345,7 +312,6 @@ task -y run "book.epub"
 task --tts-provider openai run "book.epub"    # OpenAI TTS
 task --tts-provider aws run "book.epub"       # AWS Polly
 task --tts-provider google run "book.epub"    # Google Cloud TTS
-task --tts-provider qwen run "book.epub"      # Qwen-TTS (local)
 
 # List available TTS providers
 task --list-tts-providers run
@@ -391,12 +357,8 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
 GOOGLE_TTS_VOICE=en-US-Chirp-HD-F
 GOOGLE_TTS_LANGUAGE_CODE=en-US
 
-# Qwen-TTS (Local)
-QWEN_API_URL=http://localhost:8890
-QWEN_TTS_VOICE=Vivian
-
 # Default TTS Provider
-TTS_PROVIDER=kokoro  # Options: kokoro, qwen, openai, aws, google
+TTS_PROVIDER=kokoro  # Options: kokoro, openai, aws, google
 ```
 
 #### Option 2: Environment Variables
@@ -422,12 +384,8 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
 export GOOGLE_TTS_VOICE="en-US-Chirp-HD-F"
 export GOOGLE_TTS_LANGUAGE_CODE="en-US"
 
-# Qwen-TTS (Local)
-export QWEN_API_URL="http://localhost:8890"
-export QWEN_TTS_VOICE="Vivian"
-
 # Default Provider
-export TTS_PROVIDER="kokoro"  # Options: kokoro, qwen, openai, aws, google
+export TTS_PROVIDER="kokoro"  # Options: kokoro, openai, aws, google
 
 # Ollama Configuration
 export OLLAMA_API_BASE_URL="http://localhost:11434"
@@ -440,22 +398,29 @@ export OLLAMA_MODEL="magistral:24b"
 | Provider | Pros | Cons | Best For |
 |----------|------|------|----------|
 | **Kokoro** (Local) | Free, privacy-friendly, GPU-accelerated | Requires local setup | Development, privacy-sensitive projects |
-| **Qwen-TTS** (Local) | Free, privacy-friendly, GPU-accelerated, multilingual | Requires separate API setup | Multilingual projects, privacy-sensitive content |
 | **OpenAI** | High quality, easy setup | Pay per character | Production, high-quality output |
 | **AWS Polly** | Neural voices, scalable | AWS account required | Enterprise, AWS-integrated projects |
 | **Google Cloud TTS** | Natural voices, many languages | GCP account required | Multi-language projects |
 
 ### Docker Services
 
-The `docker-compose.yml` configures (only needed for local/Kokoro TTS):
+The `docker-compose.yml` configures local services using Docker Compose profiles:
 
-- **Kokoro TTS**: Port 8887 (GPU-accelerated speech synthesis, local)
-- **Ollama**: Port 11434 (LLM for translation and audiobook generation, optional)
-- **Audify API**: Port 8000 (REST API server, starts after Kokoro and Ollama are healthy)
+| Service      | Profile   | Port  | Description                                |
+|--------------|-----------|-------|--------------------------------------------|
+| Kokoro TTS   | `kokoro`  | 8887  | GPU-accelerated speech synthesis (local)   |
+| Ollama       | `ollama`  | 11434 | LLM for translation and audiobook gen.     |
+| Audify API   | `api`     | 8000  | REST API (depends on Kokoro and Ollama)    |
 
-The `api` service waits for Kokoro and Ollama to pass their healthchecks before starting, so services are always ready when the API accepts requests.
+```bash
+# Start specific services by profile
+docker compose --profile kokoro --profile ollama up -d
 
-Note: Docker services are only required for Kokoro (local TTS). Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
+# Start all local services including the API
+docker compose --profile kokoro --profile ollama --profile api up -d
+```
+
+Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
 
 ## 📁 Output Structure
 
@@ -479,6 +444,7 @@ data/output/
         ├── scripts/                # Generated scripts
         │   ├── episode_001_script.txt
         │   ├── original_text_001.txt
+        │   ├── chapter_titles.json
         │   └── ...
         ├── chapters.txt            # FFmpeg metadata
         └── [book_name].m4b         # Final M4B audiobook
@@ -514,6 +480,7 @@ task api       # Start REST API server (dev mode, port 8000)
 ```
 
 You can also use the installed CLI commands directly:
+
 - `audify run` (or `audify-run`) - equivalent to `task run`
 - `audify audiobook` (or `audify-audiobook`) - equivalent to `task audiobook`
 
@@ -604,7 +571,6 @@ Audify uses a flexible multi-provider architecture supporting both local and clo
        │
        ├─── TTS Providers ───────────┐
        │    ├─ Kokoro (local)        │
-       │    ├─ Qwen-TTS (local)      │
        │    ├─ OpenAI TTS            │
        │    ├─ AWS Polly             │
        │    └─ Google Cloud TTS      │
@@ -739,10 +705,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [DeepSeek](https://www.deepseek.com/) for DeepSeek API
 - [Google](https://cloud.google.com/text-to-speech) for Gemini and Cloud TTS
 - [AWS Polly](https://aws.amazon.com/polly/) for Text-to-Speech service
-# Test release automation
-# Release automation v2 test
-# Release Workflow Test v3
-
-Testing the fixed release workflow with proper breaking change detection.
-# Release Test v4 - Fixed grep patterns
-# Release validation complete - workflow is working
