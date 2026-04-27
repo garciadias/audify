@@ -1722,7 +1722,7 @@ class DirectoryAudiobookCreator:
             prompt_file=self.prompt_file,
         )
         task_config = TaskRegistry.get(self.task or "audiobook")
-        llm_params = task_config.llm_params if task_config else {}
+        llm_params = task_config.get_llm_params() if task_config else {}
 
         audiobook_script = llm_client.generate_script(
             text=cleaned_content,
