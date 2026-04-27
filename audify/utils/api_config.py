@@ -83,9 +83,9 @@ _AWS_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
     ClientError,
 )
 
-_GOOGLE_RETRY_EXCEPTIONS: list[type[BaseException]] = [requests.RequestException]
+_google_retry_exceptions: list[type[BaseException]] = [requests.RequestException]
 if google_api_exceptions is not None:
-    _GOOGLE_RETRY_EXCEPTIONS.extend([
+    _google_retry_exceptions.extend([
         google_api_exceptions.DeadlineExceeded,
         google_api_exceptions.GoogleAPICallError,
         google_api_exceptions.InternalServerError,
@@ -93,6 +93,9 @@ if google_api_exceptions is not None:
         google_api_exceptions.ServiceUnavailable,
         google_api_exceptions.TooManyRequests,
     ])
+_GOOGLE_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = tuple(
+    _google_retry_exceptions
+)
 
 
 def _extract_status_code(exc: BaseException) -> Optional[int]:
@@ -867,7 +870,7 @@ class GoogleTTSConfig(TTSAPIConfig):
             return _retry_request(
                 _do_request,
                 api_name="Google Cloud TTS",
-                retry_on=tuple(_GOOGLE_RETRY_EXCEPTIONS),
+                retry_on=_GOOGLE_RETRY_EXCEPTIONS,
             )
         except RuntimeError:
             return False
