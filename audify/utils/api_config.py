@@ -300,14 +300,14 @@ class TTSAPIConfig(ABC):
     def max_text_length(self) -> int:
         """Maximum text length for a single synthesis request.
 
-        The unit (characters or bytes) is determined by :pyattr:`limit_unit`.
+        The unit (characters or bytes) is determined by :attr:`limit_unit`.
         Defaults to 5000. Subclasses can override.
         """
         return 5000
 
     @property
     def limit_unit(self) -> str:
-        """Unit for :pyattr:`max_text_length`: ``"chars"`` or ``"bytes"``.
+        """Unit for :attr:`max_text_length`: ``"chars"`` or ``"bytes"``.
 
         Providers whose APIs enforce a *byte* limit (e.g. Google Cloud TTS,
         AWS Polly) should override this to ``"bytes"`` so the batching layer
@@ -594,9 +594,11 @@ class AWSTTSConfig(TTSAPIConfig):
             if "AudioStream" not in response:
                 raise RuntimeError("No audio stream in Polly response")
 
+            import contextlib
             import wave
 
-            pcm_data = response["AudioStream"].read()
+            with contextlib.closing(response["AudioStream"]) as stream:
+                pcm_data = stream.read()
 
             with wave.open(str(output_path), "wb") as wav_file:
                 wav_file.setnchannels(1)
@@ -1177,6 +1179,7 @@ class OllamaAPIConfig(APIConfig):
                 max_tokens=num_predict,
                 repeat_penalty=repeat_penalty,
                 request_timeout=self.timeout,
+                num_retries=0,
             )
             return resp.choices[0].message.content
 
