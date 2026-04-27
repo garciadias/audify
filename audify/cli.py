@@ -642,15 +642,19 @@ def cli(
                 logger,
             )
 
-            if output_path.exists() and not _contains_audio_artifacts(output_path):
-                message = (
-                    "No audio artifacts were generated in the output directory. "
-                    "Check TTS/LLM logs for errors and verify provider settings."
-                )
-                logger.error(message)
-                click.echo(f"Error: {message}", err=True)
-                click.echo(f"Output directory: {output_path}", err=True)
-                raise SystemExit(1)
+            if mode != "process":
+                if output_path.exists() and not _contains_audio_artifacts(
+                    output_path
+                ):
+                    message = (
+                        "No audio artifacts were generated in the output "
+                        "directory. Check TTS/LLM logs for errors and verify "
+                        "provider settings."
+                    )
+                    logger.error(message)
+                    click.echo(f"Error: {message}", err=True)
+                    click.echo(f"Output directory: {output_path}", err=True)
+                    raise SystemExit(1)
 
             # Find the M4B file in the output directory
             m4b_files = list(output_path.glob("*.m4b"))
@@ -738,15 +742,19 @@ def cli(
                 logger,
             )
 
-            if output_path.exists() and not _contains_audio_artifacts(output_path):
-                message = (
-                    "No audio artifacts were generated in the output directory. "
-                    "Check TTS/LLM logs for errors and verify provider settings."
-                )
-                logger.error(message)
-                click.echo(f"Error: {message}", err=True)
-                click.echo(f"Output directory: {output_path}", err=True)
-                raise SystemExit(1)
+            if mode != "process":
+                if output_path.exists() and not _contains_audio_artifacts(
+                    output_path
+                ):
+                    message = (
+                        "No audio artifacts were generated in the output "
+                        "directory. Check TTS/LLM logs for errors and verify "
+                        "provider settings."
+                    )
+                    logger.error(message)
+                    click.echo(f"Error: {message}", err=True)
+                    click.echo(f"Output directory: {output_path}", err=True)
+                    raise SystemExit(1)
 
             # Find the M4B file in the output directory
             m4b_files = list(output_path.glob("*.m4b"))
