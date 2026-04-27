@@ -305,7 +305,11 @@ class AudiobookCreator(BaseSynthesizer):
         self._resolve_task_prompt()
 
         # For audiobook task, always save scripts to enable resumability
-        if self.task_name == "audiobook":
+        if self.task_name == "audiobook" and not save_text:
+            logger.info(
+                "Overriding save_text to True for audiobook task "
+                "to enable resumability"
+            )
             save_text = True
 
         super().__init__(
@@ -462,11 +466,20 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
         # Early exit for empty text (before reader access for safety).
-        # Append a placeholder title to keep self.chapter_titles aligned
-        # with episode indices used by M4B metadata creation.
+        # Append a title to keep self.chapter_titles aligned with episode
+        # indices used by M4B metadata creation.
         if not chapter_text.strip():
             logger.warning(f"No text found in Chapter {chapter_number}")
-            self.chapter_titles.append(f"Chapter {chapter_number}")
+            title = ""
+            reader = getattr(self, "reader", None)
+            if reader is not None:
+                if isinstance(reader, EpubReader):
+                    title = str(reader.get_chapter_title(chapter_text) or "")
+                if not title:
+                    title = reader.path.stem
+            if not title:
+                title = f"Chapter {chapter_number}"
+            self.chapter_titles.append(title)
             return "This chapter contains no readable text content."
 
         # Extract chapter title for metadata (needed whether we skip or not)
@@ -736,7 +749,16 @@ class AudiobookCreator(BaseSynthesizer):
             return []
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            if not isinstance(data, list) or not all(
+                isinstance(t, str) for t in data
+            ):
+                logger.warning(
+                    "chapter_titles.json has unexpected format "
+                    "(expected list of strings), ignoring"
+                )
+                return []
+            return data
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to load chapter titles: {e}")
             return []
@@ -1590,43 +1612,44 @@ class DirectoryAudiobookCreator:
     def _process_text_file(
         self, file_path: Path, episode_number: int, article_title: str
     ) -> Optional[Path]:
-        """Process a text file and create an episode."""
+        """Process a text file and create an episode.
+
+        Respects ``self.mode``:
+        * ``"process"``: generate and save the script, then return without TTS.
+        * ``"synthesize"``: load a previously saved script and synthesise audio.
+        * ``"full"`` (default): generate script *and* synthesise audio.
+        """
         try:
-            # Read the text file
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Clean and prepare the text
-            cleaned_content = self._clean_text_for_audiobook(content)
-
-            # Generate script using LLM
-            llm_client = LLMClient(self.llm_base_url, self.llm_model)
-
-            # Resolve task prompt and metadata
-            from audify.prompts.manager import PromptManager
-            from audify.prompts.tasks import TaskRegistry
-
-            manager = PromptManager()
-            prompt = manager.get_prompt(
-                task=self.task or "audiobook",
-                prompt_file=self.prompt_file,
-            )
-            task_config = TaskRegistry.get(self.task or "audiobook")
-            llm_params = task_config.llm_params if task_config else {}
-
-            audiobook_script = llm_client.generate_script(
-                text=cleaned_content,
-                prompt=prompt,
-                language=self.language,
-                **llm_params,
+            script_path = (
+                self.scripts_path / f"episode_{episode_number:03d}_script.txt"
             )
 
-            if self.save_text:
-                script_path = (
-                    self.scripts_path / f"episode_{episode_number:03d}_script.txt"
+            if self.mode == "synthesize":
+                # Load a previously saved script instead of running LLM.
+                if script_path.exists():
+                    with open(script_path, "r", encoding="utf-8") as f:
+                        audiobook_script = f.read()
+                    logger.info(
+                        f"Loaded existing script for episode {episode_number}"
+                    )
+                else:
+                    logger.warning(
+                        f"No saved script for episode {episode_number}, "
+                        "falling back to LLM generation"
+                    )
+                    audiobook_script = self._generate_text_script(
+                        file_path, episode_number, script_path
+                    )
+            else:
+                audiobook_script = self._generate_text_script(
+                    file_path, episode_number, script_path
                 )
-                with open(script_path, "w", encoding="utf-8") as f:
-                    f.write(audiobook_script)
+
+            if self.mode == "process":
+                logger.info(
+                    f"Process-only mode: script for episode {episode_number} saved."
+                )
+                return None
 
             title_audio_path = self._synthesize_title_audio(
                 article_title, episode_number
@@ -1675,6 +1698,41 @@ class DirectoryAudiobookCreator:
                 f"Error processing text file {file_path.name}: {e}", exc_info=True
             )
             return None
+
+    def _generate_text_script(
+        self, file_path: Path, episode_number: int, script_path: Path
+    ) -> str:
+        """Run LLM script generation for a text file and optionally save it."""
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        cleaned_content = self._clean_text_for_audiobook(content)
+
+        llm_client = LLMClient(self.llm_base_url, self.llm_model)
+
+        from audify.prompts.manager import PromptManager
+        from audify.prompts.tasks import TaskRegistry
+
+        manager = PromptManager()
+        prompt = manager.get_prompt(
+            task=self.task or "audiobook",
+            prompt_file=self.prompt_file,
+        )
+        task_config = TaskRegistry.get(self.task or "audiobook")
+        llm_params = task_config.llm_params if task_config else {}
+
+        audiobook_script = llm_client.generate_script(
+            text=cleaned_content,
+            prompt=prompt,
+            language=self.language,
+            **llm_params,
+        )
+
+        if self.save_text:
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(audiobook_script)
+
+        return audiobook_script
 
     def _clean_text_for_audiobook(self, text: str) -> str:
         return _clean_text_for_audiobook(text)
