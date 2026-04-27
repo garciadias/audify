@@ -862,18 +862,19 @@ class TestProviderLimits:
 class TestTTSSynthesisThreshold:
     """Test the failure-rate gate in _synthesize_with_provider."""
 
-    def _make_synth(self):
+    @staticmethod
+    def _make_synth(tmp_path):
         from audify.text_to_speech import BaseSynthesizer
 
         synth = BaseSynthesizer.__new__(BaseSynthesizer)
-        synth.tmp_dir = Path("/tmp/test_tts")
+        synth.tmp_dir = tmp_path / "test_tts"
         return synth
 
-    def test_raises_on_high_failure_rate(self):
+    def test_raises_on_high_failure_rate(self, tmp_path):
         """Should raise TTSSynthesisError when >5% of sentences fail."""
         from audify.text_to_speech import TTSSynthesisError
 
-        synth = self._make_synth()
+        synth = self._make_synth(tmp_path)
         mock_config = MagicMock()
         mock_config.provider_name = "test"
         mock_config.is_available.return_value = True
@@ -889,12 +890,13 @@ class TestTTSSynthesisThreshold:
             pytest.raises(TTSSynthesisError, match="failure threshold"),
         ):
             synth._synthesize_with_provider(
-                ["sentence one", "sentence two"], Path("/tmp/out.wav")
+                ["sentence one", "sentence two"],
+                tmp_path / "out.wav",
             )
 
-    def test_no_error_on_zero_failures(self):
+    def test_no_error_on_zero_failures(self, tmp_path):
         """Should succeed when all batches pass."""
-        synth = self._make_synth()
+        synth = self._make_synth(tmp_path)
         mock_config = MagicMock()
         mock_config.provider_name = "test"
         mock_config.is_available.return_value = True
@@ -916,7 +918,7 @@ class TestTTSSynthesisThreshold:
         ):
             # Should not raise
             synth._synthesize_with_provider(
-                ["hello world"], Path("/tmp/out.wav")
+                ["hello world"], tmp_path / "out.wav"
             )
 
 
