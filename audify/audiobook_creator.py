@@ -963,6 +963,9 @@ class AudiobookCreator(BaseSynthesizer):
                     f"Error generating script for Episode {episode_number}: {e}",
                     exc_info=True,
                 )
+                # Preserve positional alignment for episode-indexed metadata.
+                if len(self.chapter_titles) < episode_number:
+                    self.chapter_titles.append(chapter_title)
                 continue
 
         # ------------------------------------------------------------------
@@ -1633,13 +1636,13 @@ class DirectoryAudiobookCreator:
                         f"Loaded existing script for episode {episode_number}"
                     )
                 else:
-                    logger.warning(
-                        f"No saved script for episode {episode_number}, "
-                        "falling back to LLM generation"
+                    logger.error(
+                        f"No saved script for episode {episode_number}. "
+                        "Synthesize-only mode requires an existing script. "
+                        "Run generation first (full/process mode) or provide "
+                        "saved scripts."
                     )
-                    audiobook_script = self._generate_text_script(
-                        file_path, episode_number, script_path
-                    )
+                    return None
             else:
                 audiobook_script = self._generate_text_script(
                     file_path, episode_number, script_path
