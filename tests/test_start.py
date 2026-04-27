@@ -624,7 +624,7 @@ def test_cli_package_version_fallback():
         "importlib.metadata.version",
         side_effect=importlib.metadata.PackageNotFoundError,
     ):
-        exec(
+        exec(  # noqa: S102
             "try:\n    __version__ = importlib.metadata.version('audify-cli')\n"
             "except importlib.metadata.PackageNotFoundError:\n"
             "    __version__ = '0.1.0'",
@@ -659,22 +659,18 @@ class TestCLISubcommands:
         assert "direct" in result.output
         assert "audiobook" in result.output
 
-    def test_validate_prompt_command_valid(self, runner):
+    def test_validate_prompt_command_valid(self, runner, tmp_path):
         """Test validate-prompt subcommand with valid prompt file."""
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False
-        ) as f:
-            f.write("A valid prompt with sufficient content for testing")
-            f.flush()
-            result = runner.invoke(cli, ["validate-prompt", f.name])
+        prompt_path = tmp_path / "prompt.txt"
+        prompt_path.write_text(
+            "A valid prompt with sufficient content for testing", encoding="utf-8"
+        )
+        result = runner.invoke(cli, ["validate-prompt", str(prompt_path)])
 
         assert result.exit_code == 0
         assert "Prompt file is valid" in result.output
         assert "Length:" in result.output
         assert "Preview:" in result.output
-        Path(f.name).unlink(missing_ok=True)
 
     def test_validate_prompt_command_invalid(self, runner):
         """Test validate-prompt subcommand with nonexistent prompt file."""
