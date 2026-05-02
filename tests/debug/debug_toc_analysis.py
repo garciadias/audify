@@ -1,11 +1,14 @@
 import sys
+
 import bs4
+
 from audify.readers.ebook import EpubReader
+
 
 def debug_toc(file_path):
     reader = EpubReader(file_path)
     toc_names = reader._build_toc_item_name_set()
-    
+
     current_group = []
     for spine_id, _ in reader.book.spine:
         item = reader.book.get_item_with_id(spine_id)
@@ -31,6 +34,7 @@ def debug_toc(file_path):
             current_group = [item]
         else:
             current_group.append(item)
+
 
 if __name__ == "__main__":
     debug_toc(sys.argv[1])

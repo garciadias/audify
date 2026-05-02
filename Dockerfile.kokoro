@@ -1,0 +1,4 @@
+FROM ghcr.io/remsky/kokoro-fastapi-gpu:latest
+
+# Upgrade PyTorch to 2.7.0+cu128 which adds sm_120 support for RTX 5090 (Blackwell)
+RUN /usr/local/bin/uv pip install --python /app/.venv/bin/python torch==2.7.0 --index-url https://download.pytorch.org/whl/cu128 --no-cache

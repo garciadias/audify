@@ -1,11 +1,14 @@
 import sys
+
 import bs4
+
 from audify.readers.ebook import EpubReader
+
 
 def debug_invalid(file_path):
     reader = EpubReader(file_path)
     toc_names = reader._build_toc_item_name_set()
-    
+
     current_group = []
     for spine_id, _ in reader.book.spine:
         item = reader.book.get_item_with_id(spine_id)
@@ -23,11 +26,13 @@ def debug_invalid(file_path):
                         text = soup.get_text(separator=" ", strip=True)
                         print(f"Text snippet: {text[:500]}...")
                         print(f"Links count: {len(soup.find_all('a'))}")
-                        print(f"List items count: {len(soup.find_all(['li', 'dt', 'dd']))}")
+                        list_items = soup.find_all(['li', 'dt', 'dd'])
+                        print(f"List items count: {len(list_items)}")
                         print("-" * 40)
             current_group = [item]
         else:
             current_group.append(item)
+
 
 if __name__ == "__main__":
     debug_invalid(sys.argv[1])

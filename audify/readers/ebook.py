@@ -279,19 +279,20 @@ class EpubReader(Reader):
 
         links = soup.find_all("a")
         list_items = soup.find_all(["li", "dt", "dd"])
-        
-        # A TOC typically has many links AND a matching heading, 
-        # or an extremely high number of links without a heading (very rare for a chapter)
+
+        # A TOC typically has many links AND a matching heading,
+        # or an extremely high number of links without a heading
+        # (very rare for a chapter)
         if has_toc_heading and (len(links) > 5 or len(list_items) > 5):
             return True
-        
+
         # Fallback for books without headings in TOC: very high link density
         # This is usually only safe if there's NO chapter title found in the content,
         # because chapters can be link-heavy (references, citations).
         # However, the current check is too aggressive.
-        if len(links) > 150: 
+        if len(links) > 150:
             return True
-            
+
         return False
 
     @staticmethod
