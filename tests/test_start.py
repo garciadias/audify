@@ -1,6 +1,5 @@
 # tests/test_start.py
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
