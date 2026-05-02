@@ -102,9 +102,9 @@ NON_CHAPTER_FILENAME_TOKENS = [
 
 class EpubReader(Reader):
     """Reader for EPUB ebook files, providing content extraction and chapter splitting.
-    
-    This reader uses a combination of TOC-based grouping and legacy spine-item 
-    extraction to split an ebook into logical chapters, while filtering out 
+
+    This reader uses a combination of TOC-based grouping and legacy spine-item
+    extraction to split an ebook into logical chapters, while filtering out
     non-chapter content like covers and copyright pages.
     """
     def __init__(
@@ -112,7 +112,9 @@ class EpubReader(Reader):
         path: str | Path,
         llm_config: Optional[Union[OllamaAPIConfig, CommercialAPIConfig]] = None,
     ):
-        """Initialize the EpubReader with a file path and optional LLM configuration for title extraction."""
+        """Initialize the EpubReader with a file path and optional LLM
+        configuration for title extraction.
+        """
         self.path = Path(path).resolve()
         self.book = self.read()
         self.title = self.get_title()
@@ -417,7 +419,9 @@ class EpubReader(Reader):
 
     @staticmethod
     def _should_skip_document_by_name(item_name: str) -> bool:
-        """Return True if the item name contains any tokens that typically identify non-chapter content."""
+        """Return True if the item name contains any tokens that typically
+        identify non-chapter content.
+        """
         return any(token in item_name for token in NON_CHAPTER_FILENAME_TOKENS)
 
     def extract_text(self, chapter: str) -> str:
@@ -425,7 +429,9 @@ class EpubReader(Reader):
         return bs4.BeautifulSoup(chapter, "html.parser").get_text()
 
     def get_chapter_title(self, chapter: str) -> str:
-        """Determine the chapter title using a multi-strategy approach, including regex and LLM fallback."""
+        """Determine the chapter title using a multi-strategy approach,
+        including regex and LLM fallback.
+        """
         soup = bs4.BeautifulSoup(chapter, "html.parser")
 
         # Strategy 1: Look for heading tags (h1-h6, title, hgroup, header)
