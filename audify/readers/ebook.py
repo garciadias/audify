@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 CHAPTER_PATTERNS = [
     # "Chapter 1", "Chapter I", "Chapter One", with optional colon/dash and subtitle
     re.compile(
-        r"^(chapter|ch\.?)\s+[\divxlcdm]+[\s.:—\-]*.*",
+        r"^(chapter|ch\.?)\s+([\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[\s.:—\-]*.*",
         re.IGNORECASE,
     ),
     # "Part 1", "Part I", etc.
     re.compile(
-        r"^(part|section|book)\s+[\divxlcdm]+[\s.:—\-]*.*",
+        r"^(part|section|book)\s+([\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[\s.:—\-]*.*",
         re.IGNORECASE,
     ),
     # Standalone Roman numerals (I, II, III, IV, ..., possibly with title)
