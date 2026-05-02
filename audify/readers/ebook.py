@@ -101,17 +101,25 @@ NON_CHAPTER_FILENAME_TOKENS = [
 
 
 class EpubReader(Reader):
+    """Reader for EPUB ebook files, providing content extraction and chapter splitting.
+    
+    This reader uses a combination of TOC-based grouping and legacy spine-item 
+    extraction to split an ebook into logical chapters, while filtering out 
+    non-chapter content like covers and copyright pages.
+    """
     def __init__(
         self,
         path: str | Path,
         llm_config: Optional[Union[OllamaAPIConfig, CommercialAPIConfig]] = None,
     ):
+        """Initialize the EpubReader with a file path and optional LLM configuration for title extraction."""
         self.path = Path(path).resolve()
         self.book = self.read()
         self.title = self.get_title()
         self.llm_config = llm_config
 
     def read(self) -> epub.EpubBook:
+        """Read the EPUB file from the filesystem."""
         return epub.read_epub(self.path)
 
     def get_chapters(self) -> list[str]:
@@ -409,12 +417,15 @@ class EpubReader(Reader):
 
     @staticmethod
     def _should_skip_document_by_name(item_name: str) -> bool:
+        """Return True if the item name contains any tokens that typically identify non-chapter content."""
         return any(token in item_name for token in NON_CHAPTER_FILENAME_TOKENS)
 
     def extract_text(self, chapter: str) -> str:
+        """Extract plain text from a chapter's HTML content."""
         return bs4.BeautifulSoup(chapter, "html.parser").get_text()
 
     def get_chapter_title(self, chapter: str) -> str:
+        """Determine the chapter title using a multi-strategy approach, including regex and LLM fallback."""
         soup = bs4.BeautifulSoup(chapter, "html.parser")
 
         # Strategy 1: Look for heading tags (h1-h6, title, hgroup, header)
