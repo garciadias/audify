@@ -52,7 +52,8 @@ def debug_validity_detailed(file_path):
         merged = reader._merge_items(current_group)
         if merged is None:
             print(
-                f"INVALID: None (content could not be merged from final group {current_group})"
+                f"INVALID: None (content could not be merged "
+                f"from final group {current_group})"
             )
         else:
             title = reader.get_chapter_title(merged)
