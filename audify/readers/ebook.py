@@ -254,6 +254,8 @@ class EpubReader(Reader):
                 body = soup.find("body")
                 if body is not None:
                     bodies.append(str(body))
+                else:
+                    bodies.append(str(soup))
             except Exception as e:
                 logger.warning(f"Could not decode/parse item {item.get_name()}: {e}")
 
@@ -265,18 +267,32 @@ class EpubReader(Reader):
     @staticmethod
     def _looks_like_toc(soup: bs4.BeautifulSoup, text: str) -> bool:
         """Heuristic: return True when *soup* looks like a table of contents."""
-        toc_indicators = [
-            "table of contents",
-            "contents",
-            "index",
-            "目录",
-            "章",
-        ]
-        indicator_count = sum(1 for ind in toc_indicators if ind in text)
+        # Check headings for explicit TOC markers
+        headings = soup.find_all(["h1", "h2", "h3"])
+        toc_markers = ["table of contents", "contents", "index", "目录", "章"]
+        has_toc_heading = False
+        for h in headings:
+            h_text = h.get_text(separator=" ", strip=True).lower()
+            if any(marker in h_text for marker in toc_markers):
+                has_toc_heading = True
+                break
+
         links = soup.find_all("a")
         list_items = soup.find_all(["li", "dt", "dd"])
-        # If it has many links/list items and at least one strong indicator, it's likely a TOC/Index
-        return (len(links) > 5 or len(list_items) > 5) and indicator_count >= 1
+        
+        # A TOC typically has many links AND a matching heading, 
+        # or an extremely high number of links without a heading (very rare for a chapter)
+        if has_toc_heading and (len(links) > 5 or len(list_items) > 5):
+            return True
+        
+        # Fallback for books without headings in TOC: very high link density
+        # This is usually only safe if there's NO chapter title found in the content,
+        # because chapters can be link-heavy (references, citations).
+        # However, the current check is too aggressive.
+        if len(links) > 150: 
+            return True
+            
+        return False
 
     @staticmethod
     def _looks_like_copyright(text: str) -> bool:
