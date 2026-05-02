@@ -90,7 +90,14 @@ NON_CHAPTER_FILENAME_TOKENS = [
     "appendix",
     "apendice",
     "apéndice",
-]
+    "index",
+    "indice",
+    "índice",
+    "bibliography",
+    "bibliografía",
+    "references",
+    "referencias",
+    ]
 
 
 class EpubReader(Reader):
@@ -111,14 +118,14 @@ class EpubReader(Reader):
         """Get chapter content in spine order, grouped by TOC boundaries.
 
         Uses the EPUB table of contents to merge spine items that belong to
-        the same logical chapter. Falls back to per-spine-item extraction when
-        the TOC structure doesn't align with the spine.
+        the same logical chapter. If no TOC is available or it doesn't align
+        with the spine, all valid documents are grouped into a single chapter.
         """
         chapters = self._get_chapters_grouped_by_toc()
         if chapters:
             return chapters
         logger.info(
-            "TOC grouping produced no chapters, using legacy per-item extraction"
+            "TOC grouping produced no chapters, grouping all valid documents into one"
         )
         return self._get_chapters_legacy()
 
@@ -261,16 +268,15 @@ class EpubReader(Reader):
         toc_indicators = [
             "table of contents",
             "contents",
+            "index",
             "目录",
-            "chapter",
-            "part",
-            "section",
             "章",
         ]
         indicator_count = sum(1 for ind in toc_indicators if ind in text)
         links = soup.find_all("a")
         list_items = soup.find_all(["li", "dt", "dd"])
-        return (len(links) > 5 or len(list_items) > 5) and indicator_count > 1
+        # If it has many links/list items and at least one strong indicator, it's likely a TOC/Index
+        return (len(links) > 5 or len(list_items) > 5) and indicator_count >= 1
 
     @staticmethod
     def _looks_like_copyright(text: str) -> bool:
