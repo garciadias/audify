@@ -1308,7 +1308,7 @@ class TestEpubReaderTocGrouping:
         assert "Good" in result
 
     # ------------------------------------------------------------------
-    # _looks_like_toc (static)
+    # _looks_like_toc (classmethod)
     # ------------------------------------------------------------------
 
     @patch("audify.readers.ebook.epub.read_epub")
@@ -1351,6 +1351,89 @@ class TestEpubReaderTocGrouping:
         soup = bs4.BeautifulSoup(html, "html.parser")
         text = soup.get_text(separator=" ", strip=True)
         assert EpubReader._looks_like_toc(soup, text) is False
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_toc_h4_heading(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """TOC with an h4 heading and many links is detected."""
+        mock_read_epub.return_value = mock_epub_book
+        html = (
+            "<html><body>"
+            "<h4>Contents</h4>"
+            "<ul>"
+            "<li><a href='#c1'>Chapter 1</a></li>"
+            "<li><a href='#c2'>Chapter 2</a></li>"
+            "<li><a href='#c3'>Chapter 3</a></li>"
+            "<li><a href='#c4'>Chapter 4</a></li>"
+            "<li><a href='#c5'>Chapter 5</a></li>"
+            "</ul>"
+            "</body></html>"
+        )
+        soup = bs4.BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator=" ", strip=True).lower()
+        assert EpubReader._looks_like_toc(soup, text) is True
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_toc_css_class(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """TOC identified by CSS class 'toc' with many links."""
+        mock_read_epub.return_value = mock_epub_book
+        html = (
+            "<html><body>"
+            "<div class='toc'>"
+            "<ul>"
+            "<li><a href='#c1'>Chapter 1</a></li>"
+            "<li><a href='#c2'>Chapter 2</a></li>"
+            "<li><a href='#c3'>Chapter 3</a></li>"
+            "<li><a href='#c4'>Chapter 4</a></li>"
+            "<li><a href='#c5'>Chapter 5</a></li>"
+            "</ul>"
+            "</div>"
+            "</body></html>"
+        )
+        soup = bs4.BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator=" ", strip=True).lower()
+        assert EpubReader._looks_like_toc(soup, text) is True
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_toc_link_heavy_chapter_not_toc(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """A chapter with many links but substantial text is NOT classified as TOC."""
+        mock_read_epub.return_value = mock_epub_book
+        links = "".join(f"<li><a href='#r{i}'>Ref {i}</a></li>" for i in range(30))
+        body_text = (
+            "This is a substantial chapter about the history of modern philosophy. "
+            * 50
+        )
+        html = (
+            "<html><body>"
+            f"<h1>Chapter 12: References</h1>"
+            f"<p>{body_text}</p>"
+            f"<ul>{links}</ul>"
+            "</body></html>"
+        )
+        soup = bs4.BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator=" ", strip=True).lower()
+        assert EpubReader._looks_like_toc(soup, text) is False
+
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_looks_like_toc_high_link_density(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Content with no heading but very high link-to-text ratio is TOC."""
+        mock_read_epub.return_value = mock_epub_book
+        links = "".join(f"<li><a href='#c{i}'>Item {i}</a></li>" for i in range(25))
+        html = (
+            "<html><body>"
+            f"<ul>{links}</ul>"
+            "</body></html>"
+        )
+        soup = bs4.BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator=" ", strip=True).lower()
+        assert EpubReader._looks_like_toc(soup, text) is True
 
     # ------------------------------------------------------------------
     # _looks_like_copyright (static)
