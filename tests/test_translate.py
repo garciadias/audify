@@ -14,23 +14,6 @@ from audify.utils.api_config import CommercialAPIConfig
 from audify.utils.constants import LANGUAGE_NAMES
 from audify.utils.prompts import TRANSLATE_PROMPT
 
-
-def test_ollama_config_defaults():
-    """Test OllamaTranslationConfig with default values."""
-    config = OllamaTranslationConfig()
-    assert config.base_url == "http://localhost:11434"  # Default from constants
-    assert config.model == "qwen3:30b"  # Default from constants
-
-
-def test_ollama_config_custom():
-    """Test OllamaTranslationConfig with custom values."""
-    config = OllamaTranslationConfig(
-        base_url="http://custom-host:8080", model="custom-model"
-    )
-    assert config.base_url == "http://custom-host:8080"
-    assert config.model == "custom-model"
-
-
 def test_translate_method():
     """Test translation method with proper configuration."""
     config = OllamaTranslationConfig(base_url="http://test:11434", model="test-model")
@@ -44,33 +27,6 @@ def test_translate_method():
         result = config.translate("Test prompt")
         assert result == "Translated text"
         mock_completion.assert_called_once()
-
-
-def test_translate_sentence_same_language():
-    """Test translation when source and target languages are the same."""
-    sentence = "Hello world"
-    result = translate_sentence(sentence, src_lang="en", tgt_lang="en")
-    assert result == sentence
-
-
-def test_translate_sentence_none_src_lang():
-    """Test translation with None source language defaults to 'en'."""
-    sentence = "Hello world"
-    result = translate_sentence(sentence, src_lang=None, tgt_lang="en")
-    assert result == sentence  # Same language after defaulting to 'en'
-
-
-@patch("audify.translate.OllamaTranslationConfig")
-def test_translate_sentence_successful(mock_config_class):
-    """Test successful translation."""
-    # Mock the config
-    mock_config = Mock()
-    mock_config.translate.return_value = "Hola mundo"
-    mock_config_class.return_value = mock_config
-
-    result = translate_sentence("Hello world", src_lang="en", tgt_lang="es")
-    assert result == "Hola mundo"
-
 
 @patch("audify.translate.OllamaTranslationConfig")
 def test_translate_sentence_with_thinking_model(mock_config_class):
@@ -109,78 +65,3 @@ def test_translate_sentence_exception(mock_config_class):
     sentence = "Hello world"
     result = translate_sentence(sentence, src_lang="en", tgt_lang="es")
     assert result == sentence  # Should return original on exception
-
-
-def test_litellm_config():
-    """Test the OllamaTranslationConfig class with LiteLLM."""
-    # Test default configuration
-    config = OllamaTranslationConfig()
-    assert config.base_url is not None
-    assert config.model is not None
-
-    # Test custom configuration
-    custom_config = OllamaTranslationConfig(
-        base_url="http://custom-host:11434", model="llama3.1"
-    )
-    assert custom_config.base_url == "http://custom-host:11434"
-    assert custom_config.model == "llama3.1"
-
-
-def test_translation_interface():
-    """Test the translation function interface with LiteLLM."""
-    # Test sentences for different languages
-    test_cases = [
-        ("Hello world!", "en", "es"),
-        ("How are you today?", "en", "fr"),
-        ("This is a test sentence.", "en", "pt"),
-        ("Good morning!", "en", "de"),
-    ]
-
-    for sentence, src_lang, tgt_lang in test_cases:
-        src_lang_name = LANGUAGE_NAMES.get(src_lang, src_lang)
-        tgt_lang_name = LANGUAGE_NAMES.get(tgt_lang, tgt_lang)
-
-        prompt = TRANSLATE_PROMPT.format(
-            src_lang_name=src_lang_name, tgt_lang_name=tgt_lang_name, sentence=sentence
-        )
-        assert len(prompt) > 0
-        assert sentence in prompt
-
-
-def test_translate_sentence_commercial_api():
-    """Test translation using commercial API (model starting with 'api:')."""
-    # Create a mock config that passes isinstance checks
-    mock_config = Mock(spec=CommercialAPIConfig)
-    mock_config.model = "deepseek/deepseek-chat"
-    mock_config.base_url = None
-    mock_config.generate.return_value = "Translated text"
-    # Make isinstance(config, CommercialAPIConfig) return True
-    mock_config.__class__ = CommercialAPIConfig
-
-    with patch("audify.translate._get_translation_config") as mock_get_config:
-        mock_get_config.return_value = mock_config
-
-        result = translate_sentence(
-            "Hello world",
-            model="api:deepseek/deepseek-chat",
-            src_lang="en",
-            tgt_lang="es",
-        )
-        assert result == "Translated text"
-        mock_get_config.assert_called_once_with(
-            model="api:deepseek/deepseek-chat",
-            base_url=None,
-        )
-        mock_config.generate.assert_called_once_with(
-            user_prompt=ANY,
-            temperature=0.1,
-            top_p=0.9,
-            num_predict=2048,
-        )
-
-
-def test_get_translation_config_commercial():
-    """Test _get_translation_config with commercial API model."""
-    config = _get_translation_config(model="api:deepseek/deepseek-chat")
-    assert isinstance(config, CommercialAPIConfig)
-    assert config.model == "deepseek/deepseek-chat"

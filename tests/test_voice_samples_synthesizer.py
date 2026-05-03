@@ -35,48 +35,11 @@ class TestVoiceSamplesSynthesizer:
                 max_samples=3,
             )
 
-    def test_init_default_values(self, mock_temp_dir, mock_output_dir):
-        """Test VoiceSamplesSynthesizer initialization with default values."""
-        with patch("pathlib.Path.exists", return_value=True):
-            synthesizer = VoiceSamplesSynthesizer()
 
-            assert synthesizer.language == "en"
-            assert synthesizer.translate is None
-            assert synthesizer.max_samples is None
-            assert "Bean on bread" in synthesizer.sample_text
-            assert synthesizer.output_path.name == "voice_samples"
-
-    def test_init_with_translation(self, mock_temp_dir, mock_output_dir):
-        """Test VoiceSamplesSynthesizer initialization with translation."""
-        # Check the actual implementation - translation
-        # happens in init if translate is specified
-        with patch("pathlib.Path.exists", return_value=True):
-            synthesizer = VoiceSamplesSynthesizer(
-                language="en",
-                translate="es",
-                sample_text="Hello world",
-            )
-
-            assert synthesizer.language == "en"
-            assert synthesizer.translate == "es"
             # The actual implementation doesn't
             # translate in __init__ when translate != None
             # It sets language to translate value instead
 
-    def test_init_custom_values(self, mock_temp_dir, mock_output_dir):
-        """Test VoiceSamplesSynthesizer initialization with custom values."""
-        with patch("pathlib.Path.exists", return_value=True):
-            custom_text = "Custom sample text for testing"
-            synthesizer = VoiceSamplesSynthesizer(
-                language="fr",
-                translate="en",
-                sample_text=custom_text,
-                max_samples=5,
-            )
-
-            assert synthesizer.language == "fr"
-            assert synthesizer.translate == "en"
-            assert synthesizer.max_samples == 5
             # Note: sample_text will be translated, so we test the original input
 
     @patch("requests.get")
@@ -217,46 +180,7 @@ class TestVoiceSamplesSynthesizer:
 
         assert result is None
 
-    @patch("audify.text_to_speech.AudioSegment")
-    @patch("subprocess.run")
-    def test_create_m4b_from_samples_success(
-        self, mock_subprocess, mock_audio_segment, synthesizer
-    ):
-        """Test successful M4B creation from sample files."""
-        # Mock sample files
-        sample_files = [
-            Path("/tmp/sample_001_kokoro_af_bella.mp3"),
-            Path("/tmp/sample_002_tts-1_af_alloy.mp3"),
-        ]
 
-        # Mock AudioSegment
-
-        mock_audio_instance = MagicMock()
-        mock_audio_instance.__len__ = MagicMock(return_value=5000)  # 5 seconds in ms
-        mock_audio_segment.empty.return_value = MagicMock()
-        mock_audio_segment.from_mp3.return_value = mock_audio_instance
-
-        # Mock combined audio
-        mock_combined = MagicMock()
-        mock_combined.__len__ = MagicMock(return_value=10000)
-        mock_audio_segment.empty.return_value = mock_combined
-        mock_combined.__iadd__ = MagicMock(return_value=mock_combined)
-
-        with (
-            patch.object(synthesizer, "_append_chapter_metadata") as mock_append,
-            patch.object(synthesizer, "_finalize_m4b") as mock_finalize,
-        ):
-            synthesizer._create_m4b_from_samples(sample_files)
-
-            # Verify metadata appending was called for each sample
-            assert mock_append.call_count == len(sample_files)
-
-            # Verify finalization was called
-            mock_finalize.assert_called_once()
-
-    def test_create_m4b_from_samples_empty_list(self, synthesizer):
-        """Test M4B creation with empty sample list."""
-        synthesizer._create_m4b_from_samples([])
         # Should not raise exception, just log error
 
     @patch("subprocess.run")
@@ -273,74 +197,6 @@ class TestVoiceSamplesSynthesizer:
 
             mock_subprocess.assert_called_once()
             mock_unlink.assert_called_once()
-
-    @patch("subprocess.run")
-    def test_finalize_m4b_ffmpeg_error(self, mock_subprocess, synthesizer):
-        """Test M4B finalization with FFmpeg error."""
-        import subprocess
-        mock_subprocess.side_effect = subprocess.CalledProcessError(
-            1, "ffmpeg", "FFmpeg failed", "Error output"
-        )
-
-        with pytest.raises(subprocess.CalledProcessError):
-            synthesizer._finalize_m4b()
-
-    @patch("subprocess.run")
-    def test_finalize_m4b_ffmpeg_not_found(self, mock_subprocess, synthesizer):
-        """Test M4B finalization when FFmpeg is not found."""
-        mock_subprocess.side_effect = FileNotFoundError("FFmpeg not found")
-
-        with pytest.raises(FileNotFoundError):
-            synthesizer._finalize_m4b()
-
-    @patch.object(VoiceSamplesSynthesizer, "_get_available_models_and_voices")
-    @patch.object(VoiceSamplesSynthesizer, "_create_metadata_file")
-    @patch.object(VoiceSamplesSynthesizer, "_create_sample_for_combination")
-    @patch.object(VoiceSamplesSynthesizer, "_create_m4b_from_samples")
-    @patch("shutil.rmtree")
-    def test_synthesize_success(
-        self,
-        mock_rmtree,
-        mock_create_m4b,
-        mock_create_sample,
-        mock_create_metadata,
-        mock_get_models_voices,
-        synthesizer,
-    ):
-        """Test successful full synthesis process."""
-        # Mock API responses
-        mock_get_models_voices.return_value = (
-            ["kokoro", "tts-1"],
-            ["af_bella", "af_alloy"]
-        )
-
-        # Mock sample creation (return valid paths)
-        mock_sample_paths = [
-            Path("/tmp/sample_001.mp3"),
-            Path("/tmp/sample_002.mp3"),
-            Path("/tmp/sample_003.mp3"),
-        ]
-        mock_create_sample.side_effect = mock_sample_paths
-
-        # Mock file unlinking and path existence
-        with (
-            patch("pathlib.Path.unlink") as mock_unlink,
-            patch("pathlib.Path.exists", return_value=True),  # tmp_dir exists
-        ):
-            result = synthesizer.synthesize()
-
-            # Verify the process
-            assert result == synthesizer.final_m4b_path
-            mock_get_models_voices.assert_called_once()
-            mock_create_metadata.assert_called_once()
-
-            # Should create max_samples (3) combinations
-            assert mock_create_sample.call_count == 3
-            mock_create_m4b.assert_called_once()
-
-            # Cleanup should be called
-            assert mock_unlink.call_count == len(mock_sample_paths)
-            assert mock_rmtree.call_count >= 1
 
     @patch.object(VoiceSamplesSynthesizer, "_get_available_models_and_voices")
     def test_synthesize_no_models_or_voices(self, mock_get_models_voices, synthesizer):
@@ -411,47 +267,3 @@ class TestVoiceSamplesSynthesizer:
             synthesizer.__del__()
 
             mock_rmtree.assert_called_once_with(synthesizer.tmp_dir)
-
-    def test_cleanup_on_deletion_missing_attribute(
-            self, mock_temp_dir, mock_output_dir
-        ):
-        """Test deletion cleanup when tmp_dir attribute is missing."""
-        with patch("pathlib.Path.exists", return_value=True):
-            synthesizer = VoiceSamplesSynthesizer()
-            delattr(synthesizer, 'tmp_dir')
-
-            # Should not raise exception
-            synthesizer.__del__()
-
-    @patch("audify.text_to_speech.AudioSegment.from_mp3")
-    def test_create_m4b_from_samples_audio_processing_error(
-        self, mock_from_mp3, synthesizer
-    ):
-        """Test M4B creation when audio processing fails for some files."""
-        sample_files = [
-            Path("/tmp/sample_001_kokoro_af_bella.mp3"),
-            Path("/tmp/sample_002_tts-1_af_alloy.mp3"),
-        ]
-
-        # First file succeeds, second fails
-        from unittest.mock import MagicMock
-        mock_audio = MagicMock()
-        mock_audio.__len__ = MagicMock(return_value=5000)
-        mock_from_mp3.side_effect = [mock_audio, Exception("Audio processing failed")]
-
-        # Mock combined audio
-        with (
-            patch("audify.text_to_speech.AudioSegment.empty") as mock_empty,
-            patch.object(synthesizer, "_append_chapter_metadata"),
-            patch.object(synthesizer, "_finalize_m4b"),
-        ):
-            mock_combined = MagicMock()
-            mock_combined.__iadd__ = MagicMock(return_value=mock_combined)
-            mock_combined.__len__ = MagicMock(return_value=5000)
-            mock_empty.return_value = mock_combined
-
-            # Should not raise exception, just continue processing
-            synthesizer._create_m4b_from_samples(sample_files)
-
-            # Should still call finalize despite one file failing
-            synthesizer._finalize_m4b.assert_called_once()

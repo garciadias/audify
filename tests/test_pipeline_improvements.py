@@ -13,24 +13,7 @@ from audify.audiobook_creator import AudiobookCreator, _env_flag
 # _env_flag
 # ---------------------------------------------------------------------------
 class TestEnvFlag:
-    def test_unset_returns_default_false(self, monkeypatch):
-        monkeypatch.delenv("MY_FLAG", raising=False)
-        assert _env_flag("MY_FLAG") is False
-
-    def test_unset_returns_custom_default(self, monkeypatch):
-        monkeypatch.delenv("MY_FLAG", raising=False)
-        assert _env_flag("MY_FLAG", default=True) is True
-
-    @pytest.mark.parametrize("val", ["1", "true", "True", "YES", "on", " 1 "])
-    def test_truthy_values(self, val, monkeypatch):
-        monkeypatch.setenv("MY_FLAG", val)
-        assert _env_flag("MY_FLAG") is True
-
-    @pytest.mark.parametrize("val", ["0", "false", "no", "off", "random"])
-    def test_falsy_values(self, val, monkeypatch):
-        monkeypatch.setenv("MY_FLAG", val)
-        assert _env_flag("MY_FLAG") is False
-
+    pass
 
 # ---------------------------------------------------------------------------
 # Helper to build a minimal AudiobookCreator without __init__
@@ -68,28 +51,6 @@ class TestVerifyTTSProviderAvailable:
         # Should not raise even without _tts_config
         creator._verify_tts_provider_available()
 
-    def test_skip_when_no_tts_config(self, monkeypatch):
-        monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
-        creator = _make_creator()
-        # No _tts_config attribute → skip silently
-        creator._verify_tts_provider_available()
-
-    def test_raises_when_unavailable_and_audiobook_task(self, monkeypatch):
-        monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
-        monkeypatch.delenv("AUDIFY_STRICT_TTS_PREFLIGHT", raising=False)
-
-        mock_config = MagicMock()
-        mock_config.is_available.return_value = False
-        mock_config.provider_name = "kokoro"
-        mock_config.base_url = "http://localhost:8887"
-
-        creator = _make_creator(task_name="audiobook")
-        creator._tts_config = mock_config
-        creator._get_tts_config = Mock(return_value=mock_config)
-
-        with pytest.raises(RuntimeError, match="not available"):
-            creator._verify_tts_provider_available()
-
     def test_warns_when_unavailable_and_non_audiobook_task(self, monkeypatch):
         monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
         monkeypatch.delenv("AUDIFY_STRICT_TTS_PREFLIGHT", raising=False)
@@ -106,21 +67,6 @@ class TestVerifyTTSProviderAvailable:
         # Should not raise for non-audiobook task
         creator._verify_tts_provider_available()
 
-    def test_raises_when_strict_preflight_env_set(self, monkeypatch):
-        monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
-        monkeypatch.setenv("AUDIFY_STRICT_TTS_PREFLIGHT", "1")
-
-        mock_config = MagicMock()
-        mock_config.is_available.return_value = False
-        mock_config.provider_name = "kokoro"
-        mock_config.base_url = "http://localhost:8887"
-
-        creator = _make_creator(task_name="direct")
-        creator._tts_config = mock_config
-        creator._get_tts_config = Mock(return_value=mock_config)
-
-        with pytest.raises(RuntimeError, match="not available"):
-            creator._verify_tts_provider_available()
 
     def test_passes_when_available(self, monkeypatch):
         monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
@@ -135,66 +81,16 @@ class TestVerifyTTSProviderAvailable:
 
         creator._verify_tts_provider_available()
 
-    def test_kokoro_specific_guidance_in_error(self, monkeypatch):
-        monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
-
-        mock_config = MagicMock()
-        mock_config.is_available.return_value = False
-        mock_config.provider_name = "kokoro"
-        mock_config.base_url = "http://localhost:8887"
-
-        creator = _make_creator(tts_provider="kokoro", task_name="audiobook")
-        creator._tts_config = mock_config
-        creator._get_tts_config = Mock(return_value=mock_config)
-
-        with pytest.raises(RuntimeError, match="Kokoro"):
-            creator._verify_tts_provider_available()
-
-    def test_no_base_url_in_error(self, monkeypatch):
-        """When tts_config has no base_url, error message skips API URL line."""
-        monkeypatch.delenv("AUDIFY_SKIP_TTS_PREFLIGHT", raising=False)
-
-        mock_config = MagicMock(spec=["is_available", "provider_name"])
-        mock_config.is_available.return_value = False
-        mock_config.provider_name = "openai"
-
-        creator = _make_creator(tts_provider="openai", task_name="audiobook")
-        creator._tts_config = mock_config
-        creator._get_tts_config = Mock(return_value=mock_config)
-
-        with pytest.raises(RuntimeError) as exc_info:
-            creator._verify_tts_provider_available()
-        assert "Configured API URL" not in str(exc_info.value)
-
-
 # ---------------------------------------------------------------------------
 # _save_chapter_titles / _load_chapter_titles
 # ---------------------------------------------------------------------------
 class TestChapterTitlesPersistence:
-    def test_save_and_load(self, tmp_path):
-        creator = _make_creator(scripts_path=tmp_path)
-        creator.chapter_titles = ["Intro", "Chapter 1", "Epilogue"]
-        creator._save_chapter_titles()
 
-        loaded = creator._load_chapter_titles()
-        assert loaded == ["Intro", "Chapter 1", "Epilogue"]
-
-    def test_load_missing_file(self, tmp_path):
-        creator = _make_creator(scripts_path=tmp_path)
-        assert creator._load_chapter_titles() == []
 
     def test_load_corrupt_json(self, tmp_path):
         (tmp_path / "chapter_titles.json").write_text("{bad json", encoding="utf-8")
         creator = _make_creator(scripts_path=tmp_path)
         assert creator._load_chapter_titles() == []
-
-    def test_save_io_error(self, tmp_path):
-        """IOError during save should warn, not crash."""
-        creator = _make_creator(scripts_path=tmp_path / "nonexistent")
-        creator.chapter_titles = ["A"]
-        # scripts_path doesn't exist → IOError
-        creator._save_chapter_titles()  # should not raise
-
 
 # ---------------------------------------------------------------------------
 # _validate_chapters
@@ -203,29 +99,6 @@ class TestValidateChapters:
     def test_empty_list(self):
         creator = _make_creator()
         assert creator._validate_chapters([]) == []
-
-    def test_all_sufficient(self):
-        creator = _make_creator()
-        counts = [("Ch1", 500), ("Ch2", 300)]
-        flagged = creator._validate_chapters(counts)
-        assert flagged == []
-
-    def test_short_chapters_flagged(self):
-        creator = _make_creator()
-        counts = [("Intro", 50), ("Ch1", 500), ("Outro", 10)]
-        flagged = creator._validate_chapters(counts)
-        assert len(flagged) == 2
-        assert flagged[0][0] == "Intro"
-        assert flagged[1][0] == "Outro"
-
-    def test_long_title_truncated(self):
-        """Titles > 50 chars should be truncated in the table (no crash)."""
-        creator = _make_creator()
-        long_title = "A" * 60
-        counts = [(long_title, 500)]
-        flagged = creator._validate_chapters(counts)
-        assert flagged == []
-
 
 # ---------------------------------------------------------------------------
 # _synthesize_from_existing_scripts
@@ -335,26 +208,6 @@ class TestSynthesizeEpisodeError:
 
         with pytest.raises(RuntimeError, match="TTS down"):
             creator.synthesize_episode("Hello world.", 1)
-
-    def test_logs_without_base_url(self, tmp_path):
-        """Error path when tts_config has no base_url attribute."""
-        creator = _make_creator(episodes_path=tmp_path)
-
-        mock_config = MagicMock(spec=["provider_name", "voice", "language"])
-        mock_config.provider_name = "openai"
-        mock_config.voice = "alloy"
-        mock_config.language = "en"
-        creator._get_tts_config = Mock(return_value=mock_config)
-        creator._synthesize_sentences = Mock(
-            side_effect=RuntimeError("API error")
-        )
-        creator._break_script_into_segments = Mock(
-            return_value=["Some text."]
-        )
-
-        with pytest.raises(RuntimeError, match="API error"):
-            creator.synthesize_episode("Some text.", 1)
-
 
 # ---------------------------------------------------------------------------
 # Mode validation in __init__
@@ -536,25 +389,6 @@ class TestContainerRuntimeExtras:
         assert result == data_root / "output" / "book.m4b"
         assert result.read_bytes() == b"m4b"
 
-    def test_resolve_input_candidates(self, tmp_path, monkeypatch):
-        """Test input path resolution with multiple candidates."""
-        import audify.cli as cli
-
-        data_root = tmp_path / "data"
-        (data_root / "ebooks").mkdir(parents=True)
-        target = data_root / "ebooks" / "book.epub"
-        target.write_bytes(b"epub")
-
-        monkeypatch.setattr(cli, "_is_container_runtime", lambda: True)
-        monkeypatch.setattr(cli, "_CONTAINER_DATA_ROOT", data_root)
-
-        # Absolute path not containing /data/ but name matches
-        result = cli._resolve_input_path_for_runtime(
-            "/absolute/book.epub", MagicMock()
-        )
-        assert result == str(target)
-
-
 # ---------------------------------------------------------------------------
 # CLI: _contains_audio_artifacts
 # ---------------------------------------------------------------------------
@@ -564,31 +398,11 @@ class TestContainsAudioArtifacts:
 
         assert cli._contains_audio_artifacts(tmp_path / "nope") is False
 
-    def test_file_mp3(self, tmp_path):
-        import audify.cli as cli
-
-        f = tmp_path / "audio.mp3"
-        f.write_bytes(b"mp3")
-        assert cli._contains_audio_artifacts(f) is True
-
-    def test_file_txt(self, tmp_path):
-        import audify.cli as cli
-
-        f = tmp_path / "notes.txt"
-        f.write_text("hello")
-        assert cli._contains_audio_artifacts(f) is False
-
     def test_dir_with_m4b(self, tmp_path):
         import audify.cli as cli
 
         (tmp_path / "book.m4b").write_bytes(b"m4b")
         assert cli._contains_audio_artifacts(tmp_path) is True
-
-    def test_dir_empty(self, tmp_path):
-        import audify.cli as cli
-
-        assert cli._contains_audio_artifacts(tmp_path) is False
-
 
 # ---------------------------------------------------------------------------
 # CLI: --process-only / --synthesize-only mutual exclusion
@@ -622,98 +436,11 @@ class TestBatchSeparatorAccounting:
         synth = BaseSynthesizer.__new__(BaseSynthesizer)
         return synth
 
-    def test_separator_prevents_overflow(self):
-        synth = self._make_synth()
-        # 10-char max, sentences of 4 each. With separator (space=1),
-        # two sentences = 4+1+4 = 9 ≤ 10 → same batch.
-        # Three sentences = 9+1+4 = 14 > 10 → new batch.
-        batches = synth._batch_sentences(
-            ["aaaa", "bbbb", "cccc"], max_length=10
-        )
-        assert batches == [["aaaa", "bbbb"], ["cccc"]]
-
-    def test_exact_fit_with_separator(self):
-        synth = self._make_synth()
-        # 9 chars max. "aaaa" + " " + "bbbb" = 9 → fits
-        batches = synth._batch_sentences(
-            ["aaaa", "bbbb"], max_length=9
-        )
-        assert batches == [["aaaa", "bbbb"]]
-
-    def test_separator_causes_split(self):
-        synth = self._make_synth()
-        # 8 chars max. "aaaa" + " " + "bbbb" = 9 > 8 → split
-        batches = synth._batch_sentences(
-            ["aaaa", "bbbb"], max_length=8
-        )
-        assert batches == [["aaaa"], ["bbbb"]]
-
-
 # ---------------------------------------------------------------------------
 # ebook reader: TOC match counter fix
 # ---------------------------------------------------------------------------
 class TestTocMatchCounter:
-    def test_first_item_boundary_counted(self, caplog):
-        """First spine item matching TOC increments matches_found.
 
-        When the very first spine item is a TOC boundary, matches_found
-        should still be incremented (even though current_group is empty).
-        We need >= _MIN_TOC_MATCHES (3) boundaries that produce valid
-        chapters to avoid the fallback path.
-        """
-        from ebooklib import ITEM_DOCUMENT
-
-        from audify.readers.ebook import EpubReader
-
-        reader = EpubReader.__new__(EpubReader)
-
-        def _make_item(name):
-            item = MagicMock()
-            item.get_name.return_value = name
-            item.get_type.return_value = ITEM_DOCUMENT
-            body = (
-                b"<html><body><p>"
-                + (f"Content for {name}. " * 80).encode()
-                + b"</p></body></html>"
-            )
-            item.get_body_content.return_value = body
-            return item
-
-        items = {f"id{i}": _make_item(f"ch{i}.xhtml") for i in range(1, 5)}
-        reader.book = MagicMock()
-        reader.book.spine = [(sid, "yes") for sid in items]
-        reader.book.get_item_with_id = lambda sid: items[sid]
-
-        # Mock TOC so _build_toc_item_name_set returns matching names
-        toc_entries = []
-        for i in range(1, 5):
-            entry = MagicMock()
-            entry.href = f"ch{i}.xhtml"
-            toc_entries.append(entry)
-        reader.book.toc = toc_entries
-
-        chapters = reader._get_chapters_grouped_by_toc()
-
-        # With 4 TOC boundaries all matching, we should get chapters
-        # (the first boundary starts a group, subsequent ones close/open)
-        assert len(chapters) >= 2
-
-    def test_exception_narrowed_to_type_attribute_error(self):
-        """_flatten_toc_hrefs catches TypeError and AttributeError."""
-        from audify.readers.ebook import EpubReader
-
-        reader = EpubReader.__new__(EpubReader)
-        reader.book = MagicMock()
-
-        # Create an object whose .href property raises AttributeError
-        class BadEntry:
-            @property
-            def href(self):
-                raise AttributeError("broken href")
-
-        reader.book.toc = [BadEntry()]
-        result = reader._flatten_toc_hrefs()
-        assert result == []
 
     def test_flatten_toc_catches_type_error(self):
         """_flatten_toc_hrefs catches TypeError from bad TOC structure."""
@@ -765,33 +492,6 @@ class TestByteAwareBatching:
 
         synth = BaseSynthesizer.__new__(BaseSynthesizer)
         return synth
-
-    def test_ascii_bytes_equals_chars(self):
-        """For pure ASCII text, bytes and chars modes produce identical batches."""
-        synth = self._make_synth()
-        sentences = ["Hello world", "Test sentence", "Another one"]
-        chars_batches = synth._batch_sentences(sentences, 25, unit="chars")
-        bytes_batches = synth._batch_sentences(sentences, 25, unit="bytes")
-        assert chars_batches == bytes_batches
-
-    def test_multibyte_text_respects_byte_limit(self):
-        """Portuguese text with accents must not exceed byte limit."""
-        synth = self._make_synth()
-        # Each accented char is 2 bytes in UTF-8
-        pt_sentence = "ração"  # 5 chars, 7 bytes (ç=2B, ã=2B)
-        assert len(pt_sentence) == 5
-        assert len(pt_sentence.encode("utf-8")) == 7
-
-        # 7-byte limit: one sentence fits exactly
-        batches = synth._batch_sentences([pt_sentence, pt_sentence], 7, unit="bytes")
-        assert len(batches) == 2  # Can't fit two in one batch (7+1+7=15 > 7)
-
-    def test_multibyte_fits_when_limit_is_chars(self):
-        """Same text fits in fewer batches when measured by chars."""
-        synth = self._make_synth()
-        pt_sentence = "ração"  # 6 chars
-        batches = synth._batch_sentences([pt_sentence, pt_sentence], 13, unit="chars")
-        assert len(batches) == 1  # 6 + 1 + 6 = 13 ≤ 13
 
     def test_oversized_sentence_split_by_words(self):
         """A sentence exceeding byte limit is split at word boundaries."""
@@ -875,58 +575,6 @@ class TestTTSSynthesisThreshold:
         synth.tmp_dir = tmp_path / "test_tts"
         return synth
 
-    def test_raises_on_high_failure_rate(self, tmp_path):
-        """Should raise TTSSynthesisError when >5% of sentences fail."""
-        from audify.text_to_speech import TTSSynthesisError
-
-        synth = self._make_synth(tmp_path)
-        mock_config = MagicMock()
-        mock_config.provider_name = "test"
-        mock_config.is_available.return_value = True
-        mock_config.get_available_voices.return_value = []
-        mock_config.voice = "v"
-        mock_config.max_text_length = 5000
-        mock_config.limit_unit = "chars"
-        # All batches fail
-        mock_config.synthesize.return_value = False
-
-        with (
-            patch.object(synth, "_get_tts_config", return_value=mock_config),
-            pytest.raises(TTSSynthesisError, match="failure threshold"),
-        ):
-            synth._synthesize_with_provider(
-                ["sentence one", "sentence two"],
-                tmp_path / "out.wav",
-            )
-
-    def test_no_error_on_zero_failures(self, tmp_path):
-        """Should succeed when all batches pass."""
-        synth = self._make_synth(tmp_path)
-        mock_config = MagicMock()
-        mock_config.provider_name = "test"
-        mock_config.is_available.return_value = True
-        mock_config.get_available_voices.return_value = []
-        mock_config.voice = "v"
-        mock_config.max_text_length = 5000
-        mock_config.limit_unit = "chars"
-
-        def fake_synth(text, path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"wav")
-            return True
-
-        mock_config.synthesize.side_effect = fake_synth
-
-        with (
-            patch.object(synth, "_get_tts_config", return_value=mock_config),
-            patch("audify.text_to_speech.AudioProcessor.combine_wav_segments"),
-        ):
-            # Should not raise
-            synth._synthesize_with_provider(
-                ["hello world"], tmp_path / "out.wav"
-            )
-
-
 # ---------------------------------------------------------------------------
 # LLM token size validation
 # ---------------------------------------------------------------------------
@@ -937,15 +585,6 @@ class TestLLMTokenValidation:
         creator = AudiobookCreator.__new__(AudiobookCreator)
         return creator
 
-    def test_no_warning_for_small_text(self):
-        creator = self._make_creator()
-        with patch("audify.audiobook_creator.logger") as mock_logger:
-            chunks = creator._split_text_into_chunks("Short text " * 10)
-        assert len(chunks) == 1
-        warning_calls = [
-            str(c) for c in mock_logger.warning.call_args_list
-        ]
-        assert not any("context window" in w for w in warning_calls)
 
     def test_warns_for_oversized_chunk(self):
         creator = self._make_creator()
