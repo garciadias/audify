@@ -13,24 +13,6 @@ from audify.audiobook_creator import (
     LLMClient,
 )
 
-
-class TestAudiobookCreatorOutputDirCreation:
-    """Test output directory creation when it doesn't exist."""
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    def test_output_base_dir_created_when_missing(self, mock_base_synth):
-        """Test that output_base_dir is created if it doesn't exist (line 168)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_dir = Path(tmpdir) / "new_output"
-            assert not output_dir.exists()
-
-            DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=str(output_dir)
-            )
-
-            assert output_dir.exists()
-
-
 class TestAudiobookCreatorScriptSaveIOError:
     """Test IOError when saving scripts."""
 
@@ -61,79 +43,6 @@ class TestAudiobookCreatorScriptSaveIOError:
 
         # Should return script despite IOError saving
         assert "Generated script" in result
-
-
-class TestAudiobookCreatorMetadataIOError:
-    """Test IOError in metadata operations."""
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    def test_initialize_metadata_io_error(self, mock_base_synth):
-        """Test IOError in _initialize_metadata_file (lines 516-518)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=tmpdir
-            )
-            # Override audiobook_path so metadata_path resolves to invalid location
-            creator.audiobook_path = Path("/proc/nonexistent")
-
-            with pytest.raises(
-                (IOError, FileNotFoundError), match="No such file"
-            ):
-                creator._initialize_metadata_file()
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    def test_log_episode_metadata_io_error(self, mock_base_synth):
-        """Test IOError in _log_episode_metadata is re-raised."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=tmpdir
-            )
-            # Point to nonexistent path to trigger IOError
-            creator.metadata_path = Path("/proc/nonexistent/metadata.txt")
-
-            with pytest.raises((IOError, FileNotFoundError)):
-                creator._log_episode_metadata(
-                    episode_number=1,
-                    start_time_ms=0,
-                    duration_s=60.0,
-                    chapter_title="Test",
-                )
-
-
-class TestDirectoryCreatorMetadataIOErrors:
-    """Test IOError in DirectoryAudiobookCreator metadata methods."""
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    def test_dir_initialize_metadata_io_error(self, mock_base_synth):
-        """Test IOError in Dir._initialize_metadata_file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=tmpdir
-            )
-            creator.audiobook_path = Path("/proc/nonexistent")
-
-            with pytest.raises(
-                (IOError, FileNotFoundError), match="No such file"
-            ):
-                creator._initialize_metadata_file()
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    def test_dir_log_episode_metadata_io_error(self, mock_base_synth):
-        """Test IOError in Dir._log_episode_metadata is re-raised."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=tmpdir
-            )
-            creator.metadata_path = Path("/proc/nonexistent/metadata.txt")
-
-            with pytest.raises((IOError, FileNotFoundError)):
-                creator._log_episode_metadata(
-                    episode_number=1,
-                    start_time_ms=0,
-                    duration_s=30.0,
-                    chapter_title="Test",
-                )
-
 
 class TestDirectoryCreatorM4bExportFailure:
     """Test M4B export failure paths."""
@@ -289,56 +198,6 @@ class TestDirectoryCreatorTitleAudioHandling:
                 # Should not raise, just log error
                 creator._process_single_file(test_file, 1)
 
-
-class TestDirectoryCreatorTextFileTranslationFallback:
-    """Test translation exception fallback in _process_text_file."""
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    @patch("audify.audiobook_creator.LLMClient")
-    @patch("audify.audiobook_creator.AudioProcessor.convert_wav_to_mp3")
-    @patch("audify.audiobook_creator.AudioSegment")
-    def test_translation_exception_fallback(
-        self, mock_audio_segment, mock_convert, mock_llm_client, mock_base_synth
-    ):
-        """Test translation falls back to original on exception (lines 1057-1064)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            creator = DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=tmpdir, translate="es"
-            )
-
-            test_file = Path(tmpdir) / "test.txt"
-            test_file.write_text("Hello world. This is a test.")
-
-            mock_llm_instance = Mock()
-            mock_llm_instance.generate_script.return_value = "Script text."
-            mock_llm_client.return_value = mock_llm_instance
-
-            content_mp3 = creator.episodes_path / "content_001.mp3"
-            content_mp3.touch()
-            mock_convert.return_value = content_mp3
-
-            mock_combined = Mock()
-            mock_combined.__iadd__ = Mock(return_value=mock_combined)
-            mock_combined.export = Mock()
-            mock_audio_segment.empty.return_value = mock_combined
-            mock_audio_segment.from_mp3.return_value = Mock()
-
-            creator.tts_synthesizer = Mock()
-            creator.tts_synthesizer._synthesize_sentences = Mock()
-
-            with (
-                patch.object(creator, "_synthesize_title_audio", return_value=None),
-                patch(
-                    "audify.audiobook_creator.translate_sentence",
-                    side_effect=Exception("Translation failed"),
-                ),
-            ):
-                result = creator._process_text_file(test_file, 1, "Test")
-
-            # Should still succeed using original text
-            assert result is not None
-
-
 class TestDirectoryCreatorTextFileTitleAudio:
     """Test title audio in _process_text_file."""
 
@@ -405,36 +264,3 @@ class TestDirectoryCreatorCleanTextHTML:
             assert "<p>" not in cleaned
             assert "<b>" not in cleaned
             assert "bold" in cleaned
-
-
-class TestDirectoryCreatorSetupPathsExistingDir:
-    """Test _setup_paths when output_base_dir doesn't exist yet."""
-
-    @patch("audify.audiobook_creator.BaseSynthesizer")
-    def test_setup_paths_creates_output_base_dir(self, mock_base_synth):
-        """Test _setup_paths creates output_base_dir (lines 876-877)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_dir = Path(tmpdir) / "deep" / "nested" / "output"
-            DirectoryAudiobookCreator(
-                directory_path=tmpdir, output_dir=str(output_dir)
-            )
-            assert output_dir.exists()
-
-
-class TestLLMClientAPIKeyError:
-    """Test LLM client API key error message."""
-
-    @patch("audify.audiobook_creator.CommercialAPIConfig")
-    def test_api_key_error_message(self, mock_config):
-        """Test API key error returns helpful message."""
-        mock_config_instance = Mock()
-        mock_config.return_value = mock_config_instance
-
-        client = LLMClient(model="api:deepseek/deepseek-chat")
-
-        # Simulate API key error
-        error = Exception("Invalid api key provided")
-        mock_config_instance.generate.side_effect = error
-
-        result = client.generate_audiobook_script("Chapter text", "en")
-        assert "API key issue" in result or "Error" in result

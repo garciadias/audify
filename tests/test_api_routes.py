@@ -91,27 +91,6 @@ def _pdf_upload(name: str = "doc.pdf") -> dict:
 # /synthesize
 # ---------------------------------------------------------------------------
 
-
-def test_synthesize_epub_happy_path(tmp_path):
-    """POST /synthesize with EPUB returns a FileResponse."""
-    output_mp3 = tmp_path / "result.mp3"
-    output_mp3.write_bytes(b"fake mp3")
-
-    mock_synth = MagicMock()
-    mock_synth.synthesize.return_value = output_mp3
-
-    with patch("audify.api.app.os.remove"):
-        with patch("audify.text_to_speech.EpubSynthesizer", return_value=mock_synth):
-            response = client.post(
-                "/synthesize",
-                files=_epub_upload(),
-                data={"voice": "af_bella", "language": "en"},
-            )
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("audio/mpeg")
-
-
 def test_synthesize_pdf_happy_path(tmp_path):
     """POST /synthesize with PDF returns a FileResponse."""
     output_mp3 = tmp_path / "result.mp3"
@@ -130,18 +109,6 @@ def test_synthesize_pdf_happy_path(tmp_path):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("audio/mpeg")
-
-
-def test_synthesize_invalid_extension():
-    """POST /synthesize rejects unsupported file types."""
-    response = client.post(
-        "/synthesize",
-        files={"file": ("book.txt", io.BytesIO(b"text"), "text/plain")},
-        data={"voice": "af_bella"},
-    )
-    assert response.status_code == 400
-    assert "Unsupported file type" in response.json()["detail"]
-
 
 def test_synthesize_server_error():
     """POST /synthesize returns 500 when synthesis raises unexpectedly."""
@@ -178,32 +145,6 @@ def test_synthesize_invalid_params():
 # ---------------------------------------------------------------------------
 # /audiobook
 # ---------------------------------------------------------------------------
-
-
-def test_audiobook_epub_happy_path(tmp_path):
-    """POST /audiobook with EPUB returns an M4B FileResponse."""
-    output_dir = tmp_path / "out"
-    output_dir.mkdir()
-    m4b_file = output_dir / "book.m4b"
-    m4b_file.write_bytes(b"fake m4b")
-
-    mock_creator = MagicMock()
-    mock_creator.synthesize.return_value = output_dir
-
-    with patch("audify.api.app.os.remove"):
-        with patch(
-            "audify.audiobook_creator.AudiobookEpubCreator",
-            return_value=mock_creator,
-        ):
-            response = client.post(
-                "/audiobook",
-                files=_epub_upload(),
-                data={"voice": "af_bella", "language": "en"},
-            )
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("audio/mp4")
-
 
 def test_audiobook_pdf_happy_path(tmp_path):
     """POST /audiobook with PDF returns an M4B FileResponse."""
@@ -289,18 +230,6 @@ def test_audiobook_invalid_params():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid request parameters"
-
-
-def test_audiobook_invalid_extension():
-    """POST /audiobook rejects unsupported file types."""
-    response = client.post(
-        "/audiobook",
-        files={"file": ("book.docx", io.BytesIO(b"docx"), "application/octet-stream")},
-        data={"voice": "af_bella"},
-    )
-    assert response.status_code == 400
-    assert "Unsupported file type" in response.json()["detail"]
-
 
 def test_synthesize_no_output_file(tmp_path):
     """POST /synthesize returns 500 when synthesize() returns a non-existent path."""

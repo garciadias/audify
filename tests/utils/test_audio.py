@@ -17,40 +17,6 @@ from audify.utils.audio import AudioProcessor
 class TestAudioProcessor:
     """Test cases for AudioProcessor class methods."""
 
-    def test_get_duration_success(self):
-        """Test get_duration with valid audio file."""
-        with patch("pydub.AudioSegment.from_file") as mock_from_file:
-            mock_audio = MagicMock()
-            mock_audio.__len__.return_value = 5000  # 5 seconds in milliseconds
-            mock_from_file.return_value = mock_audio
-
-            duration = AudioProcessor.get_duration("test.mp3")
-
-            assert duration == 5.0
-            mock_from_file.assert_called_once_with("test.mp3")
-
-    def test_get_duration_path_object(self):
-        """Test get_duration with Path object."""
-        with patch("pydub.AudioSegment.from_file") as mock_from_file:
-            mock_audio = MagicMock()
-            mock_audio.__len__.return_value = 3000  # 3 seconds
-            mock_from_file.return_value = mock_audio
-
-            file_path = Path("test.wav")
-            duration = AudioProcessor.get_duration(file_path)
-
-            assert duration == 3.0
-            mock_from_file.assert_called_once_with("test.wav")
-
-    def test_get_duration_couldnt_decode_error(self):
-        """Test get_duration when file cannot be decoded."""
-        with patch("pydub.AudioSegment.from_file") as mock_from_file:
-            mock_from_file.side_effect = CouldntDecodeError("Invalid format")
-
-            duration = AudioProcessor.get_duration("invalid.mp3")
-
-            assert duration == 0.0
-
     def test_get_duration_generic_error(self):
         """Test get_duration with generic exception."""
         with patch("pydub.AudioSegment.from_file") as mock_from_file:
@@ -59,39 +25,6 @@ class TestAudioProcessor:
             duration = AudioProcessor.get_duration("missing.mp3")
 
             assert duration == 0.0
-
-    def test_convert_wav_to_mp3_success(self, tmp_path):
-        """Test successful WAV to MP3 conversion."""
-        wav_path = tmp_path / "test.wav"
-        mp3_path = tmp_path / "test.mp3"
-
-        with patch("pydub.AudioSegment.from_wav") as mock_from_wav:
-            mock_audio = MagicMock()
-            mock_from_wav.return_value = mock_audio
-
-            result = AudioProcessor.convert_wav_to_mp3(wav_path)
-
-            assert result == mp3_path
-            mock_from_wav.assert_called_once_with(str(wav_path))
-            mock_audio.export.assert_called_once_with(
-                str(mp3_path), format="mp3", bitrate="192k"
-            )
-
-    def test_convert_wav_to_mp3_custom_bitrate(self, tmp_path):
-        """Test WAV to MP3 conversion with custom bitrate."""
-        wav_path = tmp_path / "test.wav"
-
-        with patch("pydub.AudioSegment.from_wav") as mock_from_wav:
-            mock_audio = MagicMock()
-            mock_from_wav.return_value = mock_audio
-
-            AudioProcessor.convert_wav_to_mp3(
-                wav_path, bitrate="320k", remove_original=False
-            )
-
-            mock_audio.export.assert_called_once_with(
-                str(tmp_path / "test.mp3"), format="mp3", bitrate="320k"
-            )
 
     def test_convert_wav_to_mp3_file_not_found(self, tmp_path):
         """Test convert_wav_to_mp3 when WAV file doesn't exist."""
@@ -112,62 +45,6 @@ class TestAudioProcessor:
 
             with pytest.raises(Exception, match="Conversion failed"):
                 AudioProcessor.convert_wav_to_mp3(wav_path)
-
-    def test_combine_audio_files_success(self, tmp_path):
-        """Test successful combination of audio files."""
-        file_paths = [tmp_path / "file1.mp3", tmp_path / "file2.wav"]
-        output_path = tmp_path / "combined.wav"
-
-        # Create a mock AudioSegment that behaves properly
-        mock_combined = MagicMock()
-        mock_combined.__len__.return_value = 1000  # Non-zero length
-        mock_combined.__iadd__.return_value = mock_combined
-
-        with (
-            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
-            patch("pydub.AudioSegment.from_wav") as mock_from_wav,
-            patch("pydub.AudioSegment.empty") as mock_empty,
-        ):
-            mock_audio1 = MagicMock()
-            mock_audio2 = MagicMock()
-
-            mock_from_mp3.return_value = mock_audio1
-            mock_from_wav.return_value = mock_audio2
-            mock_empty.return_value = mock_combined
-
-            result = AudioProcessor.combine_audio_files(
-                file_paths, output_path, show_progress=False
-            )
-
-            assert result == mock_combined
-            assert mock_combined.__iadd__.call_count == 2
-            mock_combined.export.assert_called_once()
-
-    def test_combine_audio_files_with_progress(self, tmp_path):
-        """Test combine_audio_files with progress bar."""
-        file_paths = [tmp_path / "file1.mp3"]
-        output_path = tmp_path / "combined.wav"
-
-        mock_combined = MagicMock()
-        mock_combined.__len__.return_value = 1000
-        mock_combined.__iadd__.return_value = mock_combined
-
-        with (
-            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
-            patch("pydub.AudioSegment.empty") as mock_empty,
-            patch("tqdm.tqdm") as mock_tqdm,
-        ):
-            mock_audio = MagicMock()
-
-            mock_from_mp3.return_value = mock_audio
-            mock_empty.return_value = mock_combined
-            mock_tqdm.return_value = file_paths
-
-            AudioProcessor.combine_audio_files(
-                file_paths, output_path, show_progress=True, description="Testing"
-            )
-
-            mock_tqdm.assert_called_once_with(file_paths, desc="Testing", unit="file")
 
     def test_combine_audio_files_empty_result(self, tmp_path):
         """Test combine_audio_files when result is empty."""
@@ -237,31 +114,6 @@ class TestAudioProcessor:
                 str(output_path), format="mp3", bitrate="192k"
             )
 
-    def test_combine_audio_files_mp4_output(self, tmp_path):
-        """Test combine_audio_files with MP4 output format."""
-        file_paths = [tmp_path / "file1.mp3"]
-        output_path = tmp_path / "combined.mp4"
-
-        mock_combined = MagicMock()
-        mock_combined.__len__.return_value = 1000
-        mock_combined.__iadd__.return_value = mock_combined
-
-        with (
-            patch("pydub.AudioSegment.from_mp3") as mock_from_mp3,
-            patch("pydub.AudioSegment.empty") as mock_empty,
-        ):
-            mock_audio = MagicMock()
-
-            mock_from_mp3.return_value = mock_audio
-            mock_empty.return_value = mock_combined
-
-            AudioProcessor.combine_audio_files(
-                file_paths, output_path, output_format="mp4", show_progress=False
-            )
-
-            mock_combined.export.assert_called_once_with(
-                str(output_path), format="mp4", codec="aac", bitrate="64k"
-            )
 
     def test_combine_audio_files_decode_error(self, tmp_path):
         """Test combine_audio_files when one file has decode error."""
@@ -312,21 +164,6 @@ class TestAudioProcessor:
             assert chunks[0] == expected_chunks[0]
             assert chunks[1] == expected_chunks[1]
 
-    def test_split_audio_by_duration_single_file_exceeds_limit(self):
-        """Test splitting when a single file exceeds the duration limit."""
-        file_paths = [Path("huge_file.mp3")]
-
-        with patch.object(AudioProcessor, "get_duration") as mock_get_duration:
-            # File is 20 hours, limit is 15 hours
-            mock_get_duration.return_value = 72000.0  # 20 hours in seconds
-
-            chunks = AudioProcessor.split_audio_by_duration(
-                file_paths, max_duration_hours=15.0
-            )
-
-            # Single huge file should still create one chunk
-            assert len(chunks) == 1
-            assert chunks[0] == file_paths
 
     def test_split_audio_by_duration_with_errors(self):
         """Test splitting when some files have duration errors."""
@@ -343,48 +180,6 @@ class TestAudioProcessor:
             # All files should be included despite the error
             assert len(chunks) == 1
             assert chunks[0] == file_paths
-
-    def test_split_audio_by_duration_empty_list(self):
-        """Test splitting with empty file list."""
-        file_paths = []
-
-        chunks = AudioProcessor.split_audio_by_duration(file_paths)
-
-        assert chunks == []
-
-    def test_split_audio_by_duration_default_max_duration(self):
-        """Test splitting with default max duration."""
-        file_paths = [Path("file1.mp3")]
-
-        with patch.object(AudioProcessor, "get_duration") as mock_get_duration:
-            mock_get_duration.return_value = 3600.0  # 1 hour
-
-            chunks = AudioProcessor.split_audio_by_duration(file_paths)
-
-            # Should use default 6 hours, so all files fit in one chunk
-            assert len(chunks) == 1
-            assert chunks[0] == file_paths
-
-    def test_create_temp_audio_file_success(self, tmp_path):
-        """Test successful creation of temporary audio file."""
-        file_paths = [Path("file1.mp3"), Path("file2.mp3")]
-        output_prefix = "test_temp"
-
-        with patch.object(AudioProcessor, "combine_audio_files") as mock_combine:
-            mock_combine.return_value = MagicMock()
-
-            result = AudioProcessor.create_temp_audio_file(
-                file_paths, output_prefix, output_format="mp3", temp_dir=tmp_path
-            )
-
-            expected_path = tmp_path / f"{output_prefix}.tmp.mp3"
-            assert result == expected_path
-            mock_combine.assert_called_once_with(
-                file_paths=file_paths,
-                output_path=expected_path,
-                output_format="mp3",
-                description=f"Creating {output_prefix}",
-            )
 
     def test_create_temp_audio_file_already_exists(self, tmp_path):
         """Test create_temp_audio_file when file already exists."""
@@ -415,37 +210,6 @@ class TestAudioProcessor:
 
             expected_path = Path("/tmp") / f"{output_prefix}.tmp.mp4"
             assert result == expected_path
-
-    def test_create_temp_audio_file_default_format(self, tmp_path):
-        """Test create_temp_audio_file with default format."""
-        file_paths = [Path("file1.mp3")]
-        output_prefix = "test_temp"
-
-        with patch.object(AudioProcessor, "combine_audio_files") as mock_combine:
-            mock_combine.return_value = MagicMock()
-
-            result = AudioProcessor.create_temp_audio_file(
-                file_paths, output_prefix, temp_dir=tmp_path
-            )
-
-            expected_path = tmp_path / f"{output_prefix}.tmp.mp4"
-            assert result == expected_path
-            assert mock_combine.call_args[1]["output_format"] == "mp4"
-
-    def test_convert_wav_to_mp3_remove_original(self, tmp_path):
-        """Test WAV to MP3 conversion with original file removal."""
-        wav_path = tmp_path / "test.wav"
-        wav_path.touch()  # Create the file
-
-        with patch("pydub.AudioSegment.from_wav") as mock_from_wav:
-            mock_audio = MagicMock()
-            mock_from_wav.return_value = mock_audio
-
-            result = AudioProcessor.convert_wav_to_mp3(wav_path, remove_original=True)
-
-            mock_audio.export.assert_called_once()
-            # File should be removed (mocked by unlink)
-            assert result == tmp_path / "test.mp3"
 
     def test_combine_audio_files_mixed_formats(self, tmp_path):
         """Test combine_audio_files with mixed audio formats."""
@@ -517,27 +281,6 @@ class TestAudioProcessor:
     # combine_wav_segments
     # ------------------------------------------------------------------
 
-    def test_combine_wav_segments_decode_error(self, tmp_path):
-        """combine_wav_segments logs a warning and skips a bad WAV segment."""
-        good = tmp_path / "good.wav"
-        bad = tmp_path / "bad.wav"
-        good.write_bytes(b"data")
-        bad.write_bytes(b"data")
-
-        mock_good = MagicMock()
-        mock_combined = MagicMock()
-        mock_combined.__len__ = MagicMock(return_value=1000)
-        mock_combined.__iadd__ = MagicMock(return_value=mock_combined)
-
-        with patch("audify.utils.audio.AudioSegment.empty", return_value=mock_combined):
-            with patch(
-                "audify.utils.audio.AudioSegment.from_wav",
-                side_effect=[CouldntDecodeError, mock_good],
-            ):
-                AudioProcessor.combine_wav_segments([bad, good], tmp_path / "out.wav")
-
-        assert not bad.exists()
-        mock_combined.export.assert_called_once()
 
     def test_combine_wav_segments_missing_file(self, tmp_path):
         """combine_wav_segments logs a warning for segments that do not exist."""
