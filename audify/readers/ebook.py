@@ -256,7 +256,63 @@ class EpubReader(Reader):
 
     @staticmethod
     def _looks_like_toc(soup: bs4.BeautifulSoup, text: str) -> bool:
-        """Heuristic: return True when *soup* looks like a table of contents."""
+        """Return True when *soup* looks like a table of contents.
+
+        First checks for ``epub:type`` attributes (EPUB3 standard) which
+        reliably identify document roles:
+
+        - ``toc``, ``table-of-contents`` → definitely a TOC
+        - ``chapter``, ``bodymatter``, ``introduction``, ``preface``,
+          ``epilogue``, ``conclusion``, ``appendix`` → definitely NOT a TOC
+
+        Falls back to a heuristic based on link count + keyword indicators
+        when ``epub:type`` is absent (works with EPUB2 and minimal EPUBs).
+        """
+        # ------------------------------------------------------------------
+        # Reliable check: epub:type attributes (EPUB3 standard)
+        # ------------------------------------------------------------------
+        _TOC_TYPES = {"toc", "table-of-contents"}
+        _CONTENT_TYPES = {
+            "chapter", "bodymatter", "introduction", "preface",
+            "epilogue", "conclusion", "appendix", "dedication",
+            "foreword", "afterword", "prologue", "glossary",
+            "bibliography", "index", "notes", "epigraph",
+        }
+
+        def _check_epub_type(element) -> bool | None:
+            """Check a single element's epub:type.
+
+            Returns:
+                True if it's a TOC type,
+                False if it's a content type,
+                None if unknown/absent.
+            """
+            ep_type = element.get("epub:type", "") or ""
+            for t in ep_type.lower().split():
+                if t in _TOC_TYPES:
+                    return True
+                if t in _CONTENT_TYPES:
+                    return False
+            return None
+
+        # Check <body epub:type> first, then <section epub:type>,
+        # then <nav epub:type>
+        body = soup.find("body")
+        if body is not None:
+            result = _check_epub_type(body)
+            if result is not None:
+                return result
+
+        # Check the first <section> if it has a meaningful epub:type
+        section = soup.find("section")
+        if section is not None:
+            result = _check_epub_type(section)
+            if result is not None:
+                return result
+
+        # ------------------------------------------------------------------
+        # Fallback heuristic (EPUB2 / no epub:type metadata)
+        # ------------------------------------------------------------------
         toc_indicators = [
             "table of contents",
             "contents",

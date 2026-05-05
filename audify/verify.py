@@ -155,10 +155,21 @@ class VerifyReport:
             self._audio_processor = AudioProcessor()
         return self._audio_processor
 
-    def analyze_duration(self) -> DurationHint:
-        """Analyze duration hints."""
+    def analyze_duration(self, actual_duration: float | None = None) -> DurationHint:
+        """Analyze duration hints.
+
+        Args:
+            actual_duration: Override for the actual audio duration in
+                seconds. Used for multi-part audiobooks where the caller
+                has summed durations across all parts.  When *None*, the
+                duration is read from ``self.audiobook_path``.
+        """
         ap = self._get_audio_processor()
-        actual = ap.get_duration(self.audiobook_path)
+        actual = (
+            actual_duration
+            if actual_duration is not None
+            else ap.get_duration(self.audiobook_path)
+        )
 
         # Rough estimate: ~75 words per minute for audiobook narration
         words_per_minute = 75
@@ -388,7 +399,12 @@ def _count_epub_words(epub_path: str | Path) -> int:
 
 
 class AudiobookVerifier:
-    """Compare an EPUB/MD source file against a generated M4B/MP3 audiobook."""
+    """Compare an EPUB/MD source file against a generated M4B/MP3 audiobook.
+
+    Supports multi-part audiobooks (split across ``*_partN.m4b`` files).
+    Pass the primary (first) audio file as ``audiobook_path``; all parts are
+    auto-detected and merged during chapter extraction.
+    """
 
     def __init__(
         self,
@@ -411,20 +427,87 @@ class AudiobookVerifier:
         elif self.source_type == "pdf":
             self._raw_chapters = extract_pdf_chapters(self.source_path)
 
-        # Extract audiobook chapters
-        suffix = self.audiobook_path.suffix.lower()
-        if suffix in (".m4b", ".m4a"):
-            self._audiobook_chapters = extract_chapters_from_m4b(self.audiobook_path)
-        elif suffix == ".mp3":
-            self._audiobook_chapters = extract_chapters_from_mp3(self.audiobook_path)
-        else:
-            self._audiobook_chapters = []
+        # Extract audiobook chapters — supports multi-part auto-detection
+        self._audiobook_chapters, self._audio_paths = self._extract_audiobook_chapters()
 
         # Word count for duration estimation
         if self.source_type == "epub":
             self._word_count = _count_epub_words(self.source_path)
         else:
             self._word_count = _count_pdf_words(self.source_path)
+
+    # ------------------------------------------------------------------
+    # Multi-part support
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_multipart_files(audiobook_path: Path) -> list[Path]:
+        """Detect multi-part M4B files (``*_partN.m4b``) in the same directory.
+
+        Returns a sorted list of all part files, or a single-element list
+        containing only the given path if no multi-part pattern is detected.
+        """
+        stem = audiobook_path.stem
+
+        # Check if this file itself follows the ``_partN`` pattern
+        m = re.search(r'_part(\d+)$', stem, re.IGNORECASE)
+        if not m:
+            return [audiobook_path]
+
+        base = stem[:m.start()]
+        ext = audiobook_path.suffix
+        parent = audiobook_path.parent
+
+        # Gather all matching part files sorted by part number
+        pattern = re.compile(
+            re.escape(base) + r'_part(\d+)' + re.escape(ext) + '$',
+            re.IGNORECASE,
+        )
+        candidates = [
+            p for p in parent.iterdir()
+            if p.is_file() and pattern.match(p.name)
+        ]
+        candidates.sort(key=lambda p: int(
+            re.search(r'_part(\d+)', p.stem, re.IGNORECASE).group(1)
+        ))
+
+        return candidates if candidates else [audiobook_path]
+
+    def _extract_audiobook_chapters(self) -> tuple[list[Chapter], list[Path]]:
+        """Extract chapters from all audio file parts.
+
+        Chapters from each part are merged into a single sequential list,
+        with indices adjusted to span the whole audiobook.
+
+        Returns:
+            (merged_chapters, all_audio_paths)
+        """
+        parts = self._find_multipart_files(self.audiobook_path)
+
+        all_chapters: list[Chapter] = []
+        suffix = self.audiobook_path.suffix.lower()
+
+        for path in parts:
+            if suffix in (".m4b", ".m4a"):
+                chs = extract_chapters_from_m4b(path)
+            elif suffix == ".mp3":
+                chs = extract_chapters_from_mp3(path)
+            else:
+                chs = []
+
+            # Adjust chapter indices to be sequential across all parts
+            offset = len(all_chapters)
+            for c in chs:
+                c.index += offset
+            all_chapters.extend(chs)
+
+        return all_chapters, parts
+
+    def _get_total_duration(self) -> float:
+        """Return combined duration of all audio parts (seconds)."""
+        from audify.utils.audio import AudioProcessor
+        ap = AudioProcessor()
+        return sum(ap.get_duration(p) for p in self._audio_paths)
 
     def _detect_source_type(self) -> str:
         suffix = self.source_path.suffix.lower()
@@ -527,8 +610,9 @@ class AudiobookVerifier:
             (c.number, c.title) for c in self._audiobook_chapters if c.title.lower() in extra_titles
         ]
 
-        # Duration analysis
-        report.duration_hint = report.analyze_duration()
+        # Duration analysis (uses combined duration for multi-part audiobooks)
+        total_duration = self._get_total_duration()
+        report.duration_hint = report.analyze_duration(actual_duration=total_duration)
 
         return report
 
