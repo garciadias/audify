@@ -37,6 +37,30 @@ from audify.utils.constants import (
 from audify.utils.logging_utils import configure_cli_logging
 from audify.utils.text import get_file_extension
 
+
+class SubcommandAwareGroup(click.Group):
+    """Custom Group that handles subcommand names consumed as the PATH argument.
+
+    With invoke_without_command=True and an optional PATH argument, Click
+    parses e.g. "list-tasks" as the PATH value instead of recognising it
+    as a subcommand.  This override detects the situation and re-routes.
+    """
+
+    def invoke(self, ctx: click.Context) -> None:
+        path_value = ctx.params.get("path")
+        if path_value and path_value in self.commands:
+            cmd = self.commands[path_value]
+            cmd_ctx = cmd.make_context(
+                path_value, list(ctx.protected_args + ctx.args), parent=ctx
+            )
+            ctx.params["path"] = None
+            ctx.invoked_subcommand = path_value
+            with cmd_ctx:
+                cmd.invoke(cmd_ctx)
+            return
+        super().invoke(ctx)
+
+
 # Suppress verbose output from external libraries
 warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("litellm").setLevel(logging.WARNING)
@@ -110,13 +134,20 @@ def _stage_input_to_host_data(path_obj: Path, logger: logging.Logger) -> Path:
     if resolved.is_relative_to(_CONTAINER_DATA_ROOT):
         return resolved
 
-    _CONTAINER_INPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    staged_path = _CONTAINER_INPUT_ROOT / resolved.name
+    try:
+        _CONTAINER_INPUT_ROOT.mkdir(parents=True, exist_ok=True)
+        staged_path = _CONTAINER_INPUT_ROOT / resolved.name
 
-    if resolved.is_dir():
-        shutil.copytree(resolved, staged_path, dirs_exist_ok=True)
-    else:
-        shutil.copy2(resolved, staged_path)
+        if resolved.is_dir():
+            shutil.copytree(resolved, staged_path, dirs_exist_ok=True)
+        else:
+            shutil.copy2(resolved, staged_path)
+    except OSError as e:
+        logger.warning(
+            f"Failed to stage input to {_CONTAINER_INPUT_ROOT}: {e}. "
+            "Falling back to original path."
+        )
+        return path_obj
 
     logger.info(f"Staged input for host visibility: {resolved} -> {staged_path}")
     return staged_path
@@ -165,13 +196,20 @@ def _ensure_output_synced_to_host_data(
     if resolved.is_relative_to(_CONTAINER_DATA_ROOT):
         return resolved
 
-    _CONTAINER_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-    target = _CONTAINER_OUTPUT_ROOT / resolved.name
+    try:
+        _CONTAINER_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+        target = _CONTAINER_OUTPUT_ROOT / resolved.name
 
-    if resolved.is_dir():
-        shutil.copytree(resolved, target, dirs_exist_ok=True)
-    else:
-        shutil.copy2(resolved, target)
+        if resolved.is_dir():
+            shutil.copytree(resolved, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(resolved, target)
+    except OSError as e:
+        logger.warning(
+            f"Failed to sync output to {_CONTAINER_OUTPUT_ROOT}: {e}. "
+            "Returning original path."
+        )
+        return output_path
 
     logger.info(f"Copied output artifact to host-visible path: {target}")
     return target
@@ -193,6 +231,7 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
 
 
 @click.group(
+    cls=SubcommandAwareGroup,
     invoke_without_command=True,
     context_settings={
         "allow_extra_args": True,
@@ -278,7 +317,7 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
     default=DEFAULT_TTS_PROVIDER,
     help=f"TTS provider to use (default: {DEFAULT_TTS_PROVIDER}). "
-    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS), qwen (local).",
+    "Options: kokoro (local), openai, aws (Polly), google (Cloud TTS).",
 )
 @click.option(
     "--task",
@@ -420,13 +459,6 @@ def cli(
                 "name": "Google Cloud TTS",
                 "config": "GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_TTS_VOICE",
             },
-            "qwen": {
-                "name": "QWEN (Local)",
-                "config": (
-                    "QWEN_API_URL (default: http://localhost:8890), QWEN_TTS_VOICE"
-                ),
-            },
-
         }
 
         for provider in AVAILABLE_TTS_PROVIDERS:
@@ -610,15 +642,19 @@ def cli(
                 logger,
             )
 
-            if output_path.exists() and not _contains_audio_artifacts(output_path):
-                message = (
-                    "No audio artifacts were generated in the output directory. "
-                    "Check TTS/LLM logs for errors and verify provider settings."
-                )
-                logger.error(message)
-                click.echo(f"Error: {message}", err=True)
-                click.echo(f"Output directory: {output_path}", err=True)
-                raise SystemExit(1)
+            if mode != "process":
+                if output_path.exists() and not _contains_audio_artifacts(
+                    output_path
+                ):
+                    message = (
+                        "No audio artifacts were generated in the output "
+                        "directory. Check TTS/LLM logs for errors and verify "
+                        "provider settings."
+                    )
+                    logger.error(message)
+                    click.echo(f"Error: {message}", err=True)
+                    click.echo(f"Output directory: {output_path}", err=True)
+                    raise SystemExit(1)
 
             # Find the M4B file in the output directory
             m4b_files = list(output_path.glob("*.m4b"))
@@ -706,15 +742,19 @@ def cli(
                 logger,
             )
 
-            if output_path.exists() and not _contains_audio_artifacts(output_path):
-                message = (
-                    "No audio artifacts were generated in the output directory. "
-                    "Check TTS/LLM logs for errors and verify provider settings."
-                )
-                logger.error(message)
-                click.echo(f"Error: {message}", err=True)
-                click.echo(f"Output directory: {output_path}", err=True)
-                raise SystemExit(1)
+            if mode != "process":
+                if output_path.exists() and not _contains_audio_artifacts(
+                    output_path
+                ):
+                    message = (
+                        "No audio artifacts were generated in the output "
+                        "directory. Check TTS/LLM logs for errors and verify "
+                        "provider settings."
+                    )
+                    logger.error(message)
+                    click.echo(f"Error: {message}", err=True)
+                    click.echo(f"Output directory: {output_path}", err=True)
+                    raise SystemExit(1)
 
             # Find the M4B file in the output directory
             m4b_files = list(output_path.glob("*.m4b"))

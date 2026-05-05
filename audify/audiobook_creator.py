@@ -11,7 +11,7 @@ from rich.progress import track
 
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
-from audify.text_to_speech import BaseSynthesizer
+from audify.text_to_speech import BaseSynthesizer, TTSSynthesisError
 from audify.translate import translate_sentence
 from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
@@ -305,7 +305,11 @@ class AudiobookCreator(BaseSynthesizer):
         self._resolve_task_prompt()
 
         # For audiobook task, always save scripts to enable resumability
-        if self.task_name == "audiobook":
+        if self.task_name == "audiobook" and not save_text:
+            logger.info(
+                "Overriding save_text to True for audiobook task "
+                "to enable resumability"
+            )
             save_text = True
 
         super().__init__(
@@ -418,25 +422,15 @@ class AudiobookCreator(BaseSynthesizer):
             error_msg += (
                 "Please verify:\n"
                 "  1. TTS service is running and accessible\n"
-                "  2. Environment variables are correctly set (QWEN_API_URL, etc.)\n"
-                "  3. Network connectivity to the TTS API endpoint\n"
+                "  2. Environment variables are correctly set"
+                " (TTS provider URL, etc.)\n"
+                "  3. Network connectivity to the TTS API"
+                " endpoint\n"
                 "  4. API credentials if required\n"
             )
 
             # Add provider-specific guidance
-            if self.tts_provider == "qwen":
-                error_msg += (
-                    "\nFor Qwen TTS:\n"
-                    "  • Ensure qwen-tts Docker container is running: "
-                    "`docker-compose -f docker-compose.yml up -d "
-                    "qwen-tts --profile qwen`\n"
-                    "  • Check container health: "
-                    "`curl http://localhost:8890/health`\n"
-                    "  • Verify QWEN_API_URL is set to: http://localhost:8890\n"
-                    "  • Check container logs: "
-                    "`docker-compose logs qwen-tts`\n"
-                )
-            elif self.tts_provider == "kokoro":
+            if self.tts_provider == "kokoro":
                 error_msg += (
                     "\nFor Kokoro TTS:\n"
                     "  • Ensure Kokoro service is running\n"
@@ -445,9 +439,8 @@ class AudiobookCreator(BaseSynthesizer):
 
             # For audiobook task, fail fast by default; for other tasks,
             # respect env flag
-            strict_preflight = (
-                self.task_name == "audiobook"
-                or _env_flag("AUDIFY_STRICT_TTS_PREFLIGHT", default=False)
+            strict_preflight = self.task_name == "audiobook" or _env_flag(
+                "AUDIFY_STRICT_TTS_PREFLIGHT", default=False
             )
             if strict_preflight:
                 logger.error(error_msg)
@@ -472,9 +465,21 @@ class AudiobookCreator(BaseSynthesizer):
 
         logger.info(f"Generating audiobook script for Chapter {chapter_number}...")
 
-        # Early exit for empty text
+        # Early exit for empty text (before reader access for safety).
+        # Append a title to keep self.chapter_titles aligned with episode
+        # indices used by M4B metadata creation.
         if not chapter_text.strip():
             logger.warning(f"No text found in Chapter {chapter_number}")
+            title = ""
+            reader = getattr(self, "reader", None)
+            if reader is not None:
+                if isinstance(reader, EpubReader):
+                    title = str(reader.get_chapter_title(chapter_text) or "")
+                if not title:
+                    title = reader.path.stem
+            if not title:
+                title = f"Chapter {chapter_number}"
+            self.chapter_titles.append(title)
             return "This chapter contains no readable text content."
 
         # Extract chapter title for metadata (needed whether we skip or not)
@@ -692,7 +697,24 @@ class AudiobookCreator(BaseSynthesizer):
         if current_words:
             chunks.append(" ".join(current_words))
 
-        return chunks if chunks else [text]
+        result = chunks if chunks else [text]
+
+        # Lightweight token-size safety net: warn if any chunk is likely to
+        # exceed the LLM context window.  Uses the ~4 chars/token heuristic.
+        num_ctx = _DEFAULT_LLM_PARAMS["num_ctx"]
+        num_predict = _DEFAULT_LLM_PARAMS["num_predict"]
+        max_input_tokens = num_ctx - num_predict
+        for idx, chunk in enumerate(result):
+            estimated_tokens = len(chunk) / 4
+            if estimated_tokens > max_input_tokens * 0.9:
+                logger.warning(
+                    f"LLM chunk {idx + 1}/{len(result)} may exceed context "
+                    f"window: ~{estimated_tokens:.0f} estimated tokens vs "
+                    f"{max_input_tokens} available input tokens. Consider "
+                    "reducing --max-chapters or the source text size."
+                )
+
+        return result
 
     def _break_script_into_segments(self, script: str) -> List[str]:
         """Break script into ≤200-char segments for better TTS chunking."""
@@ -727,7 +749,16 @@ class AudiobookCreator(BaseSynthesizer):
             return []
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            if not isinstance(data, list) or not all(
+                isinstance(t, str) for t in data
+            ):
+                logger.warning(
+                    "chapter_titles.json has unexpected format "
+                    "(expected list of strings), ignoring"
+                )
+                return []
+            return data
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to load chapter titles: {e}")
             return []
@@ -781,6 +812,8 @@ class AudiobookCreator(BaseSynthesizer):
         ``scripts_path/episode_XXX_script.txt`` files, synthesises each,
         and produces the final M4B.
         """
+        self._verify_tts_provider_available()
+
         script_files = sorted(self.scripts_path.glob("episode_*_script.txt"))
         if not script_files:
             logger.error(
@@ -798,7 +831,7 @@ class AudiobookCreator(BaseSynthesizer):
                 episode_num = int(script_file.stem.split("_")[1])
             except (IndexError, ValueError):
                 logger.warning(
-                    "Could not parse episode number from %s", script_file.name
+                    f"Could not parse episode number from {script_file.name}"
                 )
                 continue
 
@@ -853,8 +886,10 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info("Starting audiobook series creation...")
 
         # Verify TTS provider before processing, but do not hard-fail unless
-        # strict preflight is explicitly enabled.
-        self._verify_tts_provider_available()
+        # strict preflight is explicitly enabled.  Skip in process-only mode
+        # since no synthesis will happen.
+        if self.mode != "process":
+            self._verify_tts_provider_available()
 
         if isinstance(self.reader, EpubReader):
             chapters = self.reader.get_chapters()
@@ -891,7 +926,7 @@ class AudiobookCreator(BaseSynthesizer):
             self.progress.start()
 
         # ------------------------------------------------------------------
-        # Phase 1 – generate scripts for every chapter
+        # Phase 1 - generate scripts for every chapter
         # ------------------------------------------------------------------
         script_word_counts: list[tuple[str, int]] = []
         chapter_scripts: list[tuple[int, str]] = []
@@ -917,18 +952,24 @@ class AudiobookCreator(BaseSynthesizer):
                 )
                 chapter_scripts.append((episode_number, audiobook_script))
 
-                word_count = len(audiobook_script.split())
-                script_word_counts.append((chapter_title, word_count))
+                # Resumed episodes return "" — exclude them from validation
+                # so they don't trigger spurious SHORT warnings.
+                if audiobook_script:
+                    word_count = len(audiobook_script.split())
+                    script_word_counts.append((chapter_title, word_count))
 
             except Exception as e:
                 logger.error(
                     f"Error generating script for Episode {episode_number}: {e}",
                     exc_info=True,
                 )
+                # Preserve positional alignment for episode-indexed metadata.
+                if len(self.chapter_titles) < episode_number:
+                    self.chapter_titles.append(chapter_title)
                 continue
 
         # ------------------------------------------------------------------
-        # Phase 2 – validate chapter lengths
+        # Phase 2 - validate chapter lengths
         # ------------------------------------------------------------------
         self.progress.set_phase("Validating")
         self._validate_chapters(script_word_counts)
@@ -943,7 +984,7 @@ class AudiobookCreator(BaseSynthesizer):
             return []
 
         # ------------------------------------------------------------------
-        # Phase 3 – synthesise TTS audio
+        # Phase 3 - synthesise TTS audio
         # ------------------------------------------------------------------
         episode_paths: list[Path] = []
 
@@ -967,6 +1008,8 @@ class AudiobookCreator(BaseSynthesizer):
                 else:
                     logger.warning(f"Failed to create Episode {episode_number}")
 
+            except TTSSynthesisError:
+                raise  # TTS failures must not be silently skipped
             except Exception as e:
                 logger.error(
                     f"Error creating Episode {episode_number}: {e}",
@@ -1273,8 +1316,10 @@ class AudiobookPdfCreator(AudiobookCreator):
             return self._synthesize_from_existing_scripts()
 
         # Verify TTS provider before processing, but do not hard-fail unless
-        # strict preflight is explicitly enabled.
-        self._verify_tts_provider_available()
+        # strict preflight is explicitly enabled.  Skip in process-only mode
+        # since no synthesis will happen.
+        if self.mode != "process":
+            self._verify_tts_provider_available()
 
         # Get the full PDF content
         if isinstance(self.reader, PdfReader):
@@ -1570,43 +1615,44 @@ class DirectoryAudiobookCreator:
     def _process_text_file(
         self, file_path: Path, episode_number: int, article_title: str
     ) -> Optional[Path]:
-        """Process a text file and create an episode."""
+        """Process a text file and create an episode.
+
+        Respects ``self.mode``:
+        * ``"process"``: generate and save the script, then return without TTS.
+        * ``"synthesize"``: load a previously saved script and synthesise audio.
+        * ``"full"`` (default): generate script *and* synthesise audio.
+        """
         try:
-            # Read the text file
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            # Clean and prepare the text
-            cleaned_content = self._clean_text_for_audiobook(content)
-
-            # Generate script using LLM
-            llm_client = LLMClient(self.llm_base_url, self.llm_model)
-
-            # Resolve task prompt and metadata
-            from audify.prompts.manager import PromptManager
-            from audify.prompts.tasks import TaskRegistry
-
-            manager = PromptManager()
-            prompt = manager.get_prompt(
-                task=self.task or "audiobook",
-                prompt_file=self.prompt_file,
-            )
-            task_config = TaskRegistry.get(self.task or "audiobook")
-            llm_params = task_config.llm_params if task_config else {}
-
-            audiobook_script = llm_client.generate_script(
-                text=cleaned_content,
-                prompt=prompt,
-                language=self.language,
-                **llm_params,
+            script_path = (
+                self.scripts_path / f"episode_{episode_number:03d}_script.txt"
             )
 
-            if self.save_text:
-                script_path = (
-                    self.scripts_path / f"episode_{episode_number:03d}_script.txt"
+            if self.mode == "synthesize":
+                # Load a previously saved script instead of running LLM.
+                if script_path.exists():
+                    with open(script_path, "r", encoding="utf-8") as f:
+                        audiobook_script = f.read()
+                    logger.info(
+                        f"Loaded existing script for episode {episode_number}"
+                    )
+                else:
+                    logger.error(
+                        f"No saved script for episode {episode_number}. "
+                        "Synthesize-only mode requires an existing script. "
+                        "Run generation first (full/process mode) or provide "
+                        "saved scripts."
+                    )
+                    return None
+            else:
+                audiobook_script = self._generate_text_script(
+                    file_path, episode_number, script_path
                 )
-                with open(script_path, "w", encoding="utf-8") as f:
-                    f.write(audiobook_script)
+
+            if self.mode == "process":
+                logger.info(
+                    f"Process-only mode: script for episode {episode_number} saved."
+                )
+                return None
 
             title_audio_path = self._synthesize_title_audio(
                 article_title, episode_number
@@ -1655,6 +1701,41 @@ class DirectoryAudiobookCreator:
                 f"Error processing text file {file_path.name}: {e}", exc_info=True
             )
             return None
+
+    def _generate_text_script(
+        self, file_path: Path, episode_number: int, script_path: Path
+    ) -> str:
+        """Run LLM script generation for a text file and optionally save it."""
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        cleaned_content = self._clean_text_for_audiobook(content)
+
+        llm_client = LLMClient(self.llm_base_url, self.llm_model)
+
+        from audify.prompts.manager import PromptManager
+        from audify.prompts.tasks import TaskRegistry
+
+        manager = PromptManager()
+        prompt = manager.get_prompt(
+            task=self.task or "audiobook",
+            prompt_file=self.prompt_file,
+        )
+        task_config = TaskRegistry.get(self.task or "audiobook")
+        llm_params = task_config.get_llm_params() if task_config else {}
+
+        audiobook_script = llm_client.generate_script(
+            text=cleaned_content,
+            prompt=prompt,
+            language=self.language,
+            **llm_params,
+        )
+
+        if self.save_text:
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(audiobook_script)
+
+        return audiobook_script
 
     def _clean_text_for_audiobook(self, text: str) -> str:
         return _clean_text_for_audiobook(text)
