@@ -255,9 +255,10 @@ class TestCheckChapterDuringSynthesis:
     @patch("audify.verification_integration.ChapterDurationChecker.check_chapter")
     @patch("audify.verification_integration.VerificationPrompts.prompt_short_chapter", return_value=True)
     def test_check_chapter_short_user_accepts(self, mock_prompt, mock_check):
-        """Test short chapter when user accepts."""
+        """Short chapter: default continues without prompt, warn_stop prompts."""
         mock_check.return_value = (False, "SHORT", 0.5)
         
+        # Default (warn_stop=False): logs warning, returns True, no prompt
         result = check_chapter_during_synthesis(
             chapter_number=1,
             chapter_title="Test",
@@ -265,7 +266,19 @@ class TestCheckChapterDuringSynthesis:
             script_word_count=1000,
             confirm=False,
         )
+        assert result is True
+        assert not mock_prompt.called, "Default: should NOT prompt"
         
+        # With warn_stop=True: prompts user
+        mock_prompt.reset_mock()
+        result = check_chapter_during_synthesis(
+            chapter_number=1,
+            chapter_title="Test",
+            audio_path=Path("/test/audio.mp3"),
+            script_word_count=1000,
+            confirm=False,
+            warn_stop=True,
+        )
         assert result is True
         assert mock_prompt.called
 

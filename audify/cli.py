@@ -391,6 +391,14 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     is_flag=True,
     help="Show detailed log messages in terminal.",
 )
+@click.option(
+    "--warn-stop",
+    "-ws",
+    is_flag=True,
+    default=False,
+    help="Prompt user when verification detects short chapters or issues."
+    " (Default: only log warnings, always continue.)",
+)
 @click.argument("path", required=False, type=click.Path())
 @click.version_option(__version__, "--version", "-V", message="audify %(version)s")
 @click.pass_context
@@ -418,6 +426,7 @@ def cli(
     process_only: bool,
     synthesize_only: bool,
     verbose: bool,
+    warn_stop: bool,
     path: str | None,
 ):
     """Audify: Convert ebooks and PDFs to audiobooks using AI text-to-speech."""
@@ -635,6 +644,7 @@ def cli(
                 task=task,
                 prompt_file=prompt_file,
                 mode=mode,
+                warn_stop=warn_stop,
             )
             output_path = dir_creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
@@ -735,6 +745,7 @@ def cli(
                 task=task,
                 prompt_file=prompt_file,
                 mode=mode,
+                warn_stop=warn_stop,
             )
             output_path = creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(

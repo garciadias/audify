@@ -255,6 +255,7 @@ class AudiobookCreator(BaseSynthesizer):
         task: Optional[str] = None,
         prompt_file: Optional[str | Path] = None,
         mode: str = "full",
+        warn_stop: bool = False,
     ):
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
@@ -300,6 +301,7 @@ class AudiobookCreator(BaseSynthesizer):
         self.llm_base_url = llm_base_url
         self.max_chapters = max_chapters
         self.confirm = confirm
+        self.warn_stop = warn_stop
         self.progress = ProgressIndicator()
 
         # Resolve task prompt and LLM parameters
@@ -1022,6 +1024,7 @@ class AudiobookCreator(BaseSynthesizer):
                         script_word_count=script_word_count,
                         confirm=self.confirm,
                         threshold=0.7,  # 70% of expected duration minimum
+                        warn_stop=self.warn_stop,
                     )
                     
                     if not duration_ok:
@@ -1064,6 +1067,7 @@ class AudiobookCreator(BaseSynthesizer):
                         audiobook_path=audiobook_m4b,
                         confirm=self.confirm,
                         duration_ratio_threshold=0.6,  # 60% of expected minimum
+                        warn_stop=self.warn_stop,
                     )
                     if not verification_ok:
                         logger.warning(
@@ -1455,6 +1459,7 @@ class DirectoryAudiobookCreator:
         task: Optional[str] = None,
         prompt_file: Optional[str | Path] = None,
         mode: str = "full",
+        warn_stop: bool = False,
     ):
         self.directory_path = Path(directory_path)
         if not self.directory_path.is_dir():
@@ -1474,6 +1479,7 @@ class DirectoryAudiobookCreator:
         self.llm_base_url = llm_base_url
         self.llm_model = llm_model
         self.confirm = confirm
+        self.warn_stop = warn_stop
         self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
         self.task = task
         self.prompt_file = prompt_file

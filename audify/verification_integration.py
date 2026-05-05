@@ -271,16 +271,21 @@ def check_chapter_during_synthesis(
     script_word_count: int,
     confirm: bool = False,
     threshold: float = 0.7,
+    warn_stop: bool = False,
 ) -> bool:
     """Check chapter during synthesis with optional user prompt.
+
+    By default, short chapters only log a warning.  Pass ``warn_stop=True``
+    to also prompt the user with ``(y/N)`` before continuing.
 
     Args:
         chapter_number: Episode number
         chapter_title: Chapter title
         audio_path: Path to audio file
         script_word_count: Word count of script
-        confirm: If True, skip user prompts
+        confirm: If True, skip user prompts (automation mode)
         threshold: Minimum acceptable ratio
+        warn_stop: If True, prompt user when chapter is short
 
     Returns:
         True to continue, False to abort
@@ -294,17 +299,24 @@ def check_chapter_during_synthesis(
     if is_ok:
         return True
 
-    # If not OK, prompt user unless in confirm mode
+    # Short chapter: log warning always
+    logger.warning(
+        f"Episode {chapter_number} ({chapter_title}) is shorter than expected "
+        f"(ratio: {ratio:.1%})"
+    )
+
+    # In automation mode (--confirm), always continue
     if confirm:
-        logger.warning(
-            f"Chapter {chapter_number} is short but continuing "
-            "(--confirm flag set)"
-        )
         return True
 
-    return VerificationPrompts.prompt_short_chapter(
-        chapter_number, chapter_title, ratio, threshold
-    )
+    # Only prompt user when --warn-stop is explicitly requested
+    if warn_stop:
+        return VerificationPrompts.prompt_short_chapter(
+            chapter_number, chapter_title, ratio, threshold
+        )
+
+    # Default: just warn and continue
+    return True
 
 
 def verify_complete_audiobook(
@@ -312,14 +324,19 @@ def verify_complete_audiobook(
     audiobook_path: Path,
     confirm: bool = False,
     duration_ratio_threshold: float = 0.6,
+    warn_stop: bool = False,
 ) -> bool:
     """Verify complete audiobook with optional user prompt.
+
+    By default, verification issues only log warnings.  Pass
+    ``warn_stop=True`` to also prompt the user before continuing.
 
     Args:
         source_path: Path to source EPUB/PDF (or None to skip)
         audiobook_path: Path to generated M4B
-        confirm: If True, skip user prompts
+        confirm: If True, skip user prompts (automation mode)
         duration_ratio_threshold: Minimum acceptable duration ratio
+        warn_stop: If True, prompt user when issues found
 
     Returns:
         True to accept, False if user rejects
@@ -338,13 +355,27 @@ def verify_complete_audiobook(
         logger.info("✅ Audiobook verification passed!")
         return True
 
+    # Log warnings regardless
+    issues = report.get("issues", [])
+    for issue in issues:
+        logger.warning(f"Audiobook verification: {issue}")
+
     if confirm:
-        logger.warning(
-            "Audiobook has verification issues but continuing "
+        logger.info(
+            f"Audiobook verification found {len(issues)} issue(s) but continuing "
             "(--confirm flag set)"
         )
         return True
 
-    return VerificationPrompts.prompt_audiobook_verification(
-        source_path, audiobook_path, report
+    # Only prompt user when --warn-stop is explicitly requested
+    if warn_stop:
+        return VerificationPrompts.prompt_audiobook_verification(
+            source_path, audiobook_path, report
+        )
+
+    # Default: just warn and continue
+    logger.info(
+        f"Audiobook verification found {len(issues)} issue(s). "
+        "Use --warn-stop to review interactively."
     )
+    return True
