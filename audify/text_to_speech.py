@@ -59,6 +59,11 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
+class TTSSynthesisError(Exception):
+    """Raised when TTS synthesis fails with a hard error that should not be silently skipped."""
+    pass
+
+
 @contextlib.contextmanager
 def suppress_stdout():
     """Temporarily suppress stdout."""
@@ -96,7 +101,7 @@ class BaseSynthesizer:
     model_name: str
         Model name for synthesis. To see available models, run: `audify --list-models`
     tts_provider: str
-        TTS provider to use. Options: "kokoro", "openai", "aws", "google".
+        TTS provider to use. Options: "kokoro", "openai", "aws", "google", "qwen".
         Defaults to DEFAULT_TTS_PROVIDER from environment or "kokoro".
 
     """
