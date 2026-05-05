@@ -44,6 +44,11 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
+class TTSSynthesisError(Exception):
+    """Raised when TTS synthesis fails with a hard error that should not be silently skipped."""
+    pass
+
+
 @contextlib.contextmanager
 def suppress_stdout():
     """Temporarily suppress stdout."""

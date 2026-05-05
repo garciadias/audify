@@ -842,5 +842,56 @@ def validate_prompt(prompt_file: str):
         raise click.ClickException(f"Prompt validation failed: {message}")
 
 
+@cli.command("compare")
+@click.argument(
+    "source_file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.argument(
+    "audiobook_file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--json",
+    is_flag=True,
+    default=False,
+    help="Output results as JSON instead of human-readable format.",
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Show detailed comparison output.",
+)
+def compare(source_file: str, audiobook_file: str, json: bool, verbose: bool):
+    """Compare an audiobook against its source EPUB/PDF file.
+
+    Verifies that all chapters from the source file are present in the
+    generated audiobook, checks ordering, and estimates content coverage.
+
+    Examples:
+        audify compare book.epub audiobook.m4b
+        audify compare book.epub audiobook.mp3 --json
+    """
+    from audify.verify import AudiobookVerifier
+
+    try:
+        verifier = AudiobookVerifier(source_file, audiobook_file)
+
+        if json:
+            import json as json_module
+            report = verifier.generate_report()
+            click.echo(json_module.dumps(report, indent=2))
+        else:
+            verifier.print_report()
+
+    except FileNotFoundError as e:
+        raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(f"Invalid file format: {e}")
+    except Exception as e:
+        raise click.ClickException(f"Comparison failed: {e}")
+
+
 if __name__ == "__main__":
     cli()
