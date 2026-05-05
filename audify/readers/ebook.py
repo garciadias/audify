@@ -246,6 +246,11 @@ class EpubReader(Reader):
                 body = soup.find("body")
                 if body is not None:
                     bodies.append(str(body))
+                else:
+                    # Some EPUB files omit the ``<body>`` tag entirely.
+                    # Use the whole soup (``<html>``) as the body so that
+                    # heading tags, paragraphs etc. are preserved.
+                    bodies.append(str(soup))
             except Exception as e:
                 logger.warning(f"Could not decode/parse item {item.get_name()}: {e}")
 
@@ -313,6 +318,34 @@ class EpubReader(Reader):
         # ------------------------------------------------------------------
         # Fallback heuristic (EPUB2 / no epub:type metadata)
         # ------------------------------------------------------------------
+        # A TOC page links to OTHER documents (cross-doc links like
+        # ``chapter01.xhtml``).  A real chapter links to the SAME document
+        # via fragment anchors (``#fig-1``, ``#fn1``, ``#section-2``).
+        # By distinguishing these patterns we avoid false positives
+        # on academic chapters that naturally contain many inline
+        # cross-references and footnotes.
+
+        links = soup.find_all("a")
+        list_items = soup.find_all(["li", "dt", "dd"])
+
+        if not links and not list_items:
+            return False
+
+        cross_doc_links = 0  # href points to a different document
+        self_ref_links = 0   # href is a bare ``#fragment`` (same doc)
+
+        for a in links:
+            href = a.get("href", "")
+            if not href:
+                continue
+            # If the link contains ``#`` it is a fragment reference within
+            # the same document (e.g. ``#fig-1``, ``c01.html#fn1``).
+            # Links without ``#`` point to a different document file.
+            if "#" in href:
+                self_ref_links += 1
+            else:
+                cross_doc_links += 1
+
         toc_indicators = [
             "table of contents",
             "contents",
@@ -323,8 +356,20 @@ class EpubReader(Reader):
             "章",
         ]
         indicator_count = sum(1 for ind in toc_indicators if ind in text)
-        links = soup.find_all("a")
-        list_items = soup.find_all(["li", "dt", "dd"])
+
+        # A TOC page has mostly cross-document links.
+        # A content chapter has mostly same-document fragment links.
+        if cross_doc_links > 5 and cross_doc_links > self_ref_links:
+            return indicator_count > 1
+
+        # If most links are self-references and the text is long, this
+        # is a real content chapter with footnotes/cross-references, not
+        # a TOC — even if it contains "chapter" or "part" in its prose.
+        if self_ref_links > cross_doc_links and len(text) > 5000:
+            return False
+
+        # Fallback to old heuristic for documents that don't fit either
+        # pattern cleanly
         return (len(links) > 5 or len(list_items) > 5) and indicator_count > 1
 
     @staticmethod
