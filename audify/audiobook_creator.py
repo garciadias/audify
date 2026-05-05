@@ -30,6 +30,10 @@ from audify.utils.m4b_builder import (
 from audify.utils.progress import ProgressIndicator
 from audify.utils.prompts import AUDIOBOOK_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
+from audify.verification_integration import (
+    check_chapter_during_synthesis,
+    verify_complete_audiobook,
+)
 
 _DEFAULT_LLM_PARAMS = {
     "num_ctx": 8 * 4096,
@@ -987,10 +991,14 @@ class AudiobookCreator(BaseSynthesizer):
         # Phase 3 - synthesise TTS audio
         # ------------------------------------------------------------------
         episode_paths: list[Path] = []
+        
+        # Track which episodes passed duration check (for validation)
+        short_episodes: list[int] = []
 
         for episode_number, audiobook_script in chapter_scripts:
             chapter_title = chapter_titles[episode_number - 1]
             text_snippet = " ".join(audiobook_script.split()[:100])
+            script_word_count = len(audiobook_script.split())
 
             try:
                 self.progress.print_chapter_start(
@@ -1005,6 +1013,26 @@ class AudiobookCreator(BaseSynthesizer):
                     logger.info(
                         f"Successfully created Episode {episode_number}: {episode_path}"
                     )
+                    
+                    # Check chapter duration against expected length
+                    duration_ok = check_chapter_during_synthesis(
+                        chapter_number=episode_number,
+                        chapter_title=chapter_title,
+                        audio_path=episode_path,
+                        script_word_count=script_word_count,
+                        confirm=self.confirm,
+                        threshold=0.7,  # 70% of expected duration minimum
+                    )
+                    
+                    if not duration_ok:
+                        short_episodes.append(episode_number)
+                        logger.warning(
+                            f"Episode {episode_number} failed duration check. "
+                            f"User chose to abort audiobook generation."
+                        )
+                        # Clear episode_paths to signal failure
+                        episode_paths = []
+                        return episode_paths
                 else:
                     logger.warning(f"Failed to create Episode {episode_number}")
 
@@ -1024,6 +1052,28 @@ class AudiobookCreator(BaseSynthesizer):
 
         if episode_paths:
             self.create_m4b()
+            
+            # Verify complete audiobook if source file is available
+            audiobook_m4b = self.audiobook_path / (
+                self.file_name.stem + ".m4b"
+            )
+            if audiobook_m4b.exists():
+                try:
+                    verification_ok = verify_complete_audiobook(
+                        source_path=self.path,
+                        audiobook_path=audiobook_m4b,
+                        confirm=self.confirm,
+                        duration_ratio_threshold=0.6,  # 60% of expected minimum
+                    )
+                    if not verification_ok:
+                        logger.warning(
+                            "Audiobook verification failed. User chose to abort."
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Could not verify audiobook: {e}. "
+                        f"Audiobook still generated successfully."
+                    )
 
         return episode_paths
 
