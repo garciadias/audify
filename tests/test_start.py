@@ -544,6 +544,36 @@ class TestGetAvailableModelsAndVoices:
         assert voices == ["af_alloy", "af_bella", "en_voice"]
         assert mock_get.call_count == 2
 
+    @patch("requests.get")
+    def test_get_available_models_and_voices_object_voice_shape(self, mock_get):
+        """Test v0.4.0+ Kokoro-FastAPI shape: voices as [{"id","name"}, ...]."""
+        mock_models_response = Mock()
+        mock_models_response.raise_for_status.return_value = None
+        mock_models_response.json.return_value = {"data": [{"id": "kokoro"}]}
+
+        mock_voices_response = Mock()
+        mock_voices_response.raise_for_status.return_value = None
+        mock_voices_response.json.return_value = {
+            "voices": [
+                {"id": "af_bella", "name": "af_bella"},
+                {"id": "af_alloy", "name": "af_alloy"},
+            ]
+        }
+
+        def side_effect(url, **kwargs):
+            if "models" in url:
+                return mock_models_response
+            elif "voices" in url:
+                return mock_voices_response
+            raise ValueError(f"Unexpected URL: {url}")
+
+        mock_get.side_effect = side_effect
+
+        models, voices = convert.get_available_models_and_voices()
+
+        assert models == ["kokoro"]
+        assert voices == ["af_alloy", "af_bella"]
+
     @patch("time.sleep")
     @patch("requests.get")
     def test_get_available_models_and_voices_api_error(self, mock_get, mock_sleep):

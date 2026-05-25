@@ -28,7 +28,9 @@ def get_available_models_and_voices():
         )
         voices_response.raise_for_status()
         voices_data = voices_response.json().get("voices", [])
-        voices = sorted(voices_data)
+        # Kokoro-FastAPI v0.4.0+ returns [{"id": "...", "name": "..."}];
+        # earlier versions returned plain strings.
+        voices = sorted(v["id"] if isinstance(v, dict) else v for v in voices_data)
         return models, voices
 
     try:
