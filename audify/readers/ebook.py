@@ -78,12 +78,7 @@ NON_CHAPTER_FILENAME_TOKENS = [
     "synopsis",
     "titulo",
     "título",
-    "info",
-    "copyright",
     "colophon",
-    "autor",
-    "author",
-    "biography",
     "bio",
     "notes",
     "notas",
@@ -388,21 +383,48 @@ class EpubReader(Reader):
         return sum(1 for ind in indicators if ind in text) > 2
 
     def _is_valid_chapter(self, merged_html: str) -> bool:
-        """Return True when *merged_html* has enough content to be a chapter."""
+        """Return True when *merged_html* has enough content to be a chapter.
+
+        More permissive than before: only filters clearly non-content pages
+        (bare TOC listings, full copyright pages) while keeping short content
+        chapters, prefaces, appendices, and other legitimate book sections.
+        """
         if len(merged_html.strip()) < 100:
             return False
         soup = bs4.BeautifulSoup(merged_html, "html.parser")
         visible_text = soup.get_text(separator=" ", strip=True)
-        if len(visible_text) < 80:
+        if len(visible_text) < 60:
             return False
         text = visible_text.lower()
+
+        # TOC detection: only skip if the page is DOMINATED by TOC structure
+        # (many links to other documents + TOC-like text).
         if self._looks_like_toc(soup, text):
-            return False
+            # Even a "TOC-like" page is kept if it has substantial
+            # non-list-content (>1000 chars after removing link text).
+            link_text_len = sum(
+                len(a.get_text(strip=True)) for a in soup.find_all("a")
+            )
+            if link_text_len < len(visible_text) * 0.6:
+                # Less than 60% of the text is link labels — likely
+                # a chapter that happens to have a few cross-references.
+                pass
+            else:
+                return False
+
+        # Chinese chapter-title markers: only treat as TOC if they
+        # dominate the text (more than 10 per 1000 chars)
         chinese_patterns = re.findall(r"第[一二三四五六七八九十\d]+章", text)
-        if len(chinese_patterns) > 2:
+        word_count = len(text.split())
+        if word_count > 0 and len(chinese_patterns) > max(3, word_count // 50):
             return False
+
         if self._looks_like_copyright(text):
-            return False
+            # Copyright pages with mostly boilerplate (<300 chars body)
+            # are skipped. Longer copyright pages with actual book info pass.
+            if len(visible_text) < 300:
+                return False
+
         return True
 
     # ------------------------------------------------------------------

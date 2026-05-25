@@ -63,25 +63,43 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def _clean_text_for_audiobook(text: str) -> str:
-    """Remove references, citations, and academic formatting from text."""
+    """Remove references, citations, and academic formatting from text.
+
+    Preserves real book content while removing elements that disrupt TTS
+    or are tedious to listen to (citation markers, URLs, footnotes).
+    """
     text = str(text)
     if re.search(r"<[^>]+>", text):
         text = BeautifulSoup(text, "html.parser").get_text()
-    text = re.sub(r"\[\d+\]", "", text)
-    text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
-    text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
+
+    # Remove standalone footnote/endnote markers like [1], [2,3], [4-6]
+    # but NOT brackets used as part of the text.
+    text = re.sub(r"\[\d+(?:[,\-\s]\d+)*\]", "", text)
+
+    # Remove specific citation patterns: (Author, YYYY) or (Author et al., YYYY)
+    # This is more targeted than removing ALL parenthetical with 4 digits.
+    text = re.sub(r"\([A-Z][a-z]+(?:\.?\s+(?:et\s+al\.?)?)?,?\s*\d{4}[^)]*\)", "", text)
+    # Remove collation: (pp. 12-34) or (p. 5)
+    text = re.sub(r"\(pp?\.\s*\d+(?:\-\d+)?\)", "", text)
+
     text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
     text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
     text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
+
+    # Only strip trailing section headers when they're clearly the START
+    # of a reference block (not mid-text). Use a conservative approach that
+    # requires the heading to be on its own line followed by list-like content.
     for pattern in [
-        r"(?i)references?\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        r"(?i)bibliography\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        r"(?i)works?\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        r"(?i)literature\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+        r"(?i)\nreferences?\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
+        r"(?i)\nbibliography\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
+        r"(?i)\n(?:works?\s+)?cited\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
     ]:
-        text = re.sub(pattern, "", text, flags=re.DOTALL)
-    text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
-    text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
+        text = re.sub(pattern, "\n[Reference section starts here]", text, flags=re.DOTALL)
+
+    # Remove "Figure 1:" or "Table 3" labels when they appear at line start
+    # (not in running text)
+    text = re.sub(r"(?mi)^(?:figure|fig|table|tab)\s*\.?\s*\d+[\s.:\-].*", "", text)
+
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
     return text.strip()

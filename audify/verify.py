@@ -246,8 +246,9 @@ def _is_metadata_atom(data: bytes, offset: int) -> bool:
 def extract_chapters_from_m4b(m4b_path: str | Path) -> list[Chapter]:
     """Extract chapter information from a .m4b audiobook file.
 
-    Chapter metadata is stored as FFMETADATA1 atoms within the 'moov' atom.
-    If not found in the file, checks for a sibling chapters.txt metadata file.
+    Uses ``ffprobe`` to read standard MP4 chapter atoms.  Falls back to
+    sibling ``chapters.txt`` metadata file when ffprobe is not available
+    or returns no chapters.
 
     Returns a list of Chapter objects in order they appear in the file.
     """
@@ -255,19 +256,61 @@ def extract_chapters_from_m4b(m4b_path: str | Path) -> list[Chapter]:
     if not path.exists():
         raise FileNotFoundError(f"Audio file not found: {m4b_path}")
 
-    # Try to read embedded metadata from M4B file first
-    data = path.read_bytes()
-    chapters = _parse_ffmetadata_from_bytes(data)
+    # Primary method: ffprobe reads MP4 chapter atoms natively.
+    chapters = _extract_chapters_via_ffprobe(path)
+    if chapters:
+        return chapters
 
-    # If no chapters found, check for sibling chapters.txt metadata file
-    if not chapters:
-        chapters_txt = path.parent / "chapters.txt"
-        if chapters_txt.exists():
-            logger.debug(f"Extracting chapters from metadata file: {chapters_txt}")
-            metadata_text = chapters_txt.read_text(encoding="utf-8")
-            chapters = _parse_ffmetadata_from_bytes(metadata_text.encode("utf-8"))
+    # Fallback: sibling chapters.txt metadata file (FFMETADATA1 text format).
+    chapters_txt = path.parent / "chapters.txt"
+    if chapters_txt.exists():
+        logger.debug(f"Extracting chapters from metadata file: {chapters_txt}")
+        chapters = _parse_ffmetadata_from_bytes(
+            chapters_txt.read_bytes()
+        )
 
     return chapters
+
+
+def _extract_chapters_via_ffprobe(path: Path) -> list[Chapter]:
+    """Use ffprobe to read MP4 chapter atoms."""
+    import json
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_chapters", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            logger.warning(f"ffprobe failed for {path}: {result.stderr[:200]}")
+            return []
+
+        data = json.loads(result.stdout)
+        raw_chapters = data.get("chapters", [])
+        if not raw_chapters:
+            return []
+
+        chapters: list[Chapter] = []
+        for idx, ch in enumerate(raw_chapters, start=1):
+            title = ch.get("tags", {}).get("title", "") or f"Chapter {idx}"
+            chapters.append(Chapter(number=idx, title=title, index=idx - 1))
+
+        return chapters
+
+    except FileNotFoundError:
+        logger.warning("ffprobe not found in PATH, cannot extract M4B chapters")
+        return []
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse ffprobe output: {e}")
+        return []
+    except subprocess.TimeoutExpired:
+        logger.warning(f"ffprobe timed out for {path}")
+        return []
+    except Exception as e:
+        logger.warning(f"Error extracting chapters via ffprobe: {e}")
+        return []
 
 
 def extract_chapters_from_mp3(mp3_path: str | Path) -> list[Chapter]:
