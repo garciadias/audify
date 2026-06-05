@@ -44,5 +44,6 @@ def synthesize_node(state: GraphState) -> dict:
                 f"Error creating Episode {episode_number}: {e}",
                 exc_info=True,
             )
+            raise
 
     return {"episode_paths": episode_paths}

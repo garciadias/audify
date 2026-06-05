@@ -749,9 +749,11 @@ def cli(
             if graph:
                 from audify.qa.graph import run_graph
 
-                creator.progress.start()
-                output_path = run_graph(creator)
-                creator.progress.stop()
+                try:
+                    creator.progress.start()
+                    output_path = run_graph(creator)
+                finally:
+                    creator.progress.stop()
             else:
                 output_path = creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(

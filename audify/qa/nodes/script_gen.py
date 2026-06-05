@@ -4,7 +4,7 @@ import logging
 
 from rich.progress import track
 
-from audify.audiobook_creator import _clean_text_for_audiobook
+from audify.audiobook_creator import clean_text_for_audiobook
 from audify.qa.state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ def script_gen_node(state: GraphState) -> dict:
         episode_number = i + 1
         chapter_title = chapter_titles[i]
 
-        cleaned_content = _clean_text_for_audiobook(chapter_content)
+        cleaned_content = clean_text_for_audiobook(chapter_content)
         text_snippet = " ".join(cleaned_content.split()[:100])
 
         try:

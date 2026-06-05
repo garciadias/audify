@@ -58,7 +58,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _clean_text_for_audiobook(text: str) -> str:
+def clean_text_for_audiobook(text: str) -> str:
     """Remove references, citations, and academic formatting from text."""
     text = str(text)
     if re.search(r"<[^>]+>", text):
@@ -456,7 +456,7 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"✓ TTS provider '{self.tts_provider}' is available and ready")
 
     def _clean_text_for_audiobook(self, text: str) -> str:
-        return _clean_text_for_audiobook(text)
+        return clean_text_for_audiobook(text)
 
     def generate_audiobook_script(
         self, chapter_text: str, chapter_number: int, language: Optional[str] = None
@@ -937,7 +937,7 @@ class AudiobookCreator(BaseSynthesizer):
             episode_number = i + 1
             chapter_title = chapter_titles[i]
 
-            cleaned_content = _clean_text_for_audiobook(chapter_content)
+            cleaned_content = clean_text_for_audiobook(chapter_content)
             text_snippet = " ".join(cleaned_content.split()[:100])
 
             try:
@@ -1738,7 +1738,7 @@ class DirectoryAudiobookCreator:
         return audiobook_script
 
     def _clean_text_for_audiobook(self, text: str) -> str:
-        return _clean_text_for_audiobook(text)
+        return clean_text_for_audiobook(text)
 
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
