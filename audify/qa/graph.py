@@ -67,6 +67,28 @@ def render_mermaid(output_path: Path = Path("docs/graph.md")) -> None:
     """Render the graph topology as a Mermaid diagram and write to *output_path*."""
     graph = build_graph()
     diagram = graph.get_graph().draw_mermaid()
+    diagram = _strip_mermaid_frontmatter(diagram)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(f"```mermaid\n{diagram}\n```\n")
+    output_path.write_text(
+        "# QA Pipeline Graph\n\n"
+        "Topology of the LangGraph QA pipeline "
+        "(`read → script_gen → synthesize → assemble → report`).\n\n"
+        f"```mermaid\n{diagram}\n```\n"
+    )
     print(f"Graph diagram written to {output_path}")
+
+
+def _strip_mermaid_frontmatter(diagram: str) -> str:
+    """Remove the leading ``---``-delimited YAML front-matter from Mermaid output.
+
+    ``draw_mermaid`` emits a ``---config:...---`` block that Sphinx's MyST
+    ``mermaid`` fence-to-directive conversion misparses as JSON directive
+    options, breaking the docs build. The block only carries cosmetic curve
+    styling, so it is safe to drop.
+    """
+    stripped = diagram.lstrip()
+    if stripped.startswith("---"):
+        parts = stripped.split("---", 2)
+        if len(parts) == 3:
+            return parts[2].lstrip("\n")
+    return diagram

@@ -1,9 +1,8 @@
+# QA Pipeline Graph
+
+Topology of the LangGraph QA pipeline (`read → script_gen → synthesize → assemble → report`).
+
 ```mermaid
----
-config:
-  flowchart:
-    curve: linear
----
 graph TD;
 	__start__([<p>__start__</p>]):::first
 	read(read)
