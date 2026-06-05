@@ -387,6 +387,15 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     "--process-only run).",
 )
 @click.option(
+    "--graph",
+    is_flag=True,
+    default=False,
+    help=(
+        "Run the LangGraph-based agentic pipeline instead of the legacy "
+        "orchestrator (experimental)."
+    ),
+)
+@click.option(
     "--verbose",
     is_flag=True,
     help="Show detailed log messages in terminal.",
@@ -417,6 +426,7 @@ def cli(
     max_samples: int,
     process_only: bool,
     synthesize_only: bool,
+    graph: bool,
     verbose: bool,
     path: str | None,
 ):
@@ -736,7 +746,14 @@ def cli(
                 prompt_file=prompt_file,
                 mode=mode,
             )
-            output_path = creator.synthesize()
+            if graph:
+                from audify.qa.graph import run_graph
+
+                creator.progress.start()
+                output_path = run_graph(creator)
+                creator.progress.stop()
+            else:
+                output_path = creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
                 Path(output_path),
                 logger,

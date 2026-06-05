@@ -36,6 +36,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "python-multipart>=0.0.20",
+    "langgraph>=1.2.4",
 ]
 
 [project.scripts]
@@ -121,3 +122,4 @@ audiobook = "uv run audify book.epub --task audiobook"
 api = "uv run uvicorn audify.api.app:app --reload --host 0.0.0.0 --port 8000"
 up = "docker compose up"
 docs = "uv run --group docs sphinx-build -W -b html docs docs/_build/html && echo 'Docs built: docs/_build/html/index.html'"
+viz-graph = "uv run python -c \"from audify.qa.graph import render_mermaid; render_mermaid()\""
