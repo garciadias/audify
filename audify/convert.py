@@ -54,6 +54,7 @@ def get_creator(
     task: str | None = None,
     prompt_file: str | None = None,
     mode: str = "full",
+    warn_stop: bool = False,
 ) -> AudiobookCreator:
     """Get the appropriate AudiobookCreator subclass based on file extension.
 
@@ -85,6 +86,7 @@ def get_creator(
             task=task,
             prompt_file=prompt_file,
             mode=mode,
+            warn_stop=warn_stop,
         )
     elif file_extension == ".pdf":
         # remove max_chapters for PDF
@@ -103,6 +105,7 @@ def get_creator(
             task=task,
             prompt_file=prompt_file,
             mode=mode,
+            warn_stop=warn_stop,
         )
     else:
         raise TypeError(f"Unsupported file format '{file_extension}'")

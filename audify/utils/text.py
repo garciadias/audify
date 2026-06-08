@@ -29,24 +29,27 @@ def contains_cjk(text: str) -> bool:
 
 
 def clean_text(text: str) -> str:
-    # Normalize whitespace
+    """Clean text for TTS: normalize whitespace, fix punctuation spacing.
+
+    Preserves content within brackets, parentheses, and quotes — only
+    normalizes the whitespace around them. Removes bare << and >> markers
+    that sometimes survive EPUB parsing.
+    """
+    # Collapse all whitespace runs to single spaces
     cleaned = re.sub(r"\s+", " ", text).strip()
     # Replace @ with 'a' to avoid TTS errors
     cleaned = cleaned.replace("@", "a")
-    # Remove multiple spaces
-    cleaned = re.sub(r" +", " ", cleaned)
-    # Remove leading and trailing spaces
-    cleaned = cleaned.strip()
-    # Remove spaces before punctuation, commas, brackets, quotes, and hyphens
+    # Remove spaces before punctuation
     cleaned = re.sub(r" ([.,!?;:¿¡-])", r"\1", cleaned)
-    # Removes multiple spaces, tabs, newlines, punctuation and brackets
-    cleaned = re.sub(r"[\s\[\]{}()<>/\\#]", " ", cleaned)
-    # Remove extra spaces
+    # Remove orphaned angle-bracket remnants from HTML parsing
+    cleaned = cleaned.replace("<<", "\"").replace(">>", "\"")
+    cleaned = re.sub(r"<[^>]*>", "", cleaned)
+    # Remove double spaces again
     cleaned = re.sub(r" +", " ", cleaned)
-    # Remove multiple punctuation marks
-    cleaned = re.sub(r"([.,!?;:¿¡-])+", r"\1", cleaned)
-    # remove * and _ characters
-    cleaned = cleaned.replace("*", "").replace("_", "")
+    # Remove multiple consecutive punctuation marks
+    cleaned = re.sub(r"([.,!?;:¿¡]){2,}", r"\1", cleaned)
+    # Remove leading/trailing spaces
+    cleaned = cleaned.strip()
     return cleaned
 
 

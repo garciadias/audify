@@ -1,110 +1,97 @@
 PODCAST_PROMPT = """
-Transform the following content into a comprehensive, detailed
-talk that thoroughly explores every aspect of the material.
-This will be converted directly to speech, so write in a natural, conversational tone
-suitable for audio consumption.
+<podcast_generator>
+  <role>
+    Expert lecturer crafting a deeply engaging spoken script.
+    You unpack every concept fully, turning dense material into a rich, accessible lecture.
+  </role>
 
-CRITICAL REQUIREMENTS:
-- Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
-- Aim for at least the same amount of text as the original content
-- Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
-- Use an engaging lecture style as if explaining to an intelligent but curious audience
+  <source_instructions>
+    The source text will be appended directly after this prompt.
+    Build the lecture from that text. You may use general knowledge to clarify ideas, but do not invent facts that contradict the source.
+  </source_instructions>
 
-STRUCTURE YOUR RESPONSE AS FOLLOWS:
+  <structure>
+    <opening share="5-10%">
+      - Hook that sparks curiosity.
+      - Background and necessary definitions (only if the source assumes prior knowledge).
+    </opening>
+    <body share="60-70%">
+      - Walk through every idea from the source, expanding each with concrete examples, analogies, and real-world connections.
+      - Unpack complex reasoning, methodology, and implications.
+      - Connect concepts naturally, showing how they build on each other.
+    </body>
+    <closing share="20-35%">
+      - Synthesise the big picture.
+      - Broader significance, future implications, open questions.
+      - Memorable closing that reinforces the core message.
+    </closing>
+  </structure>
 
-1. (5-10% of total content):
-   - Begin with an engaging hook that draws listeners in
-   - Provide extensive background context and historical perspective
-   - Explain ALL prerequisite knowledge needed to understand the material
-   - Define technical terms, concepts, and theories in detail
-   - Discuss the broader significance and relevance of the topic
-   - Set up the context for why this content matters today
+  <rules>
+    <rule>Write in the <b>same language</b> as the source.</rule>
+    <rule><b>Never summarise.</b> Expand and elaborate; the final script should typically be longer than the source.</rule>
+    <rule>Add analogies, examples, and explanations to make every opaque concept clear.</rule>
+    <rule>Match tone to the source: academic texts stay precise with clarified jargon; casual texts stay conversational.</rule>
+    <rule>Equations and code must be <b>explained as prose</b>, not spelled out character‑by‑character.</rule>
+    <rule>No citations, URLs, footnotes, or meta‑references to audio/format.</rule>
+  </rules>
 
-2. (60-70% of total content):
-   - Go through the material systematically and thoroughly
-   - Elaborate on EVERY important point, concept, and finding
-   - Provide multiple examples and analogies to clarify complex ideas
-   - Discuss the methodology, reasoning, or approach behind key points
-   - Analyze the implications and connections between different concepts
-   - Include relevant real-world applications and examples
-   - Discuss any controversies, debates, or alternative perspectives
-   - Use transition phrases to maintain flow between topics
+  <output_format>
+    Only the spoken script. No stage directions, no headers, no commentary—just the words that would be read aloud.
+  </output_format>
+</podcast_generator>
 
-3. (20-35% of total content):
-   - Synthesize all the key insights and takeaways
-   - Discuss the broader implications and future directions
-   - Highlight what makes this content particularly significant or innovative
-   - Suggest questions for further reflection
-   - Emphasize the main milestones covered
-
-IMPORTANT GUIDELINES:
-- Write in the same language as the source text
-- Write as if you're an expert lecturer who is passionate about the subject
-- Include phrases like "Now, let's dive deeper into..." or "This is particularly
-  fascinating because..."
-- Provide context for why each point matters
-- Use concrete examples and analogies whenever possible
-- Maintain an enthusiastic but informative tone throughout
-- NO references, citations, bibliographies, or URL mentions
-- NO stage directions or meta-commentary about the audiobook format
-- NO descriptions like "music fading" or anything unrelated to spoken content
-- DO NOT mention the audiobook
-- NO music
-- NO directions for sound effects or audiobook recording
-- ONLY include content that should be spoken aloud
-- DO NOT include any text that would not be read aloud
-- DO NOT include any of these instructions in the output
-The goal is to create rich, comprehensive audio content that thoroughly educates and
-engages listeners with detailed explanations of every aspect of the source material.
-
-Content to transform:
---------------------
+### CONTENT TO TRANSFORM ###
 """
+
 TRANSLATE_PROMPT = """
-Translate the following text from {src_lang_name} to {tgt_lang_name}.
-Only return the translated text, nothing else.
+<translation_task>
+  <source_language>{src_lang_name}</source_language>
+  <target_language>{tgt_lang_name}</target_language>
+  <instruction>
+    Translate the following sentence. Return only the translation, with no additional text or commentary.
+  </instruction>
+  <input>{sentence}</input>
+</translation_task>
+"""
 
-Text to translate: {sentence}
-
-Translation:"""
 AUDIOBOOK_PROMPT = """
-**Role:**
-   You are an expert Audiobook Script Editor. Your task is to transform technical or
-   academic text into a seamless, engaging "read-aloud" script.
+<audiobook_script_editor>
+  <role>
+    Audiobook Script Editor. Convert technical/academic text into a faithful, fully speakable script.
+    Do <b>not</b> add, condense, or reorganise ideas. The output must contain every fact from the source,
+    only rephrased enough to work as spoken narration.
+  </role>
 
-**Core Objective:**
-   Create a high-fidelity script that captures every nuance of the source material
-   without the "clutter" of a printed page (citations, tables, etc.). The final output
-   must be 100% narrated text—no meta-talk, no stage directions.
+  <source_instructions>
+    The source text will be appended directly after this prompt.
+    Treat it as the sole source of truth – do not inject any external knowledge, opinions, or illustrative examples unless they are explicitly stated in the source.
+  </source_instructions>
 
-**Strict Transformation Rules:**
+  <transformation_rules>
+    <rule type="no_condensation"><b>Never condense.</b> All information must survive. If a passage is dense, you may rephrase for clarity, but nothing may be removed.</rule>
+    <rule type="visuals_to_prose">
+      - Tables/figures → describe what they show narratively (e.g., “The data reveals that…”).
+      - Equations → speak the meaning (E = mc² becomes “Energy equals mass times the speed of light squared”).
+      - Code → explain the logic and outcome, not the syntax.
+    </rule>
+    <rule type="clean_citations">
+      Remove all parenthetical citations, URLs, footnotes, and reference markers. They must not appear in the audio.
+    </rule>
+    <rule type="preserve_structure">
+      Keep the original sequence of sections and paragraphs. Do not rearrange.
+    </rule>
+    <rule type="voice">
+      Professional, clear, and natural spoken English (or the source language). Avoid slang. If the source is academic, maintain its precision but speak fluidly.
+    </rule>
+  </transformation_rules>
 
-1. **No Summarization:** Do not condense. Every idea in the source must be present in
-   the output.
-2. **Conversational Expansion:** Replace visual aids (Tables, Figures, Equations) with
-   descriptive prose. Instead of saying "As seen in Table 1," say "When we look at the
-   data regarding..." and describe the findings narratively.
-3. **Handle Technical Content:** * **Equations:** Translate  into "Energy equals mass
-   times the speed of light squared."
-* **Code:** Explain the logic and flow of the code rather than reading syntax like
-   "bracket, semicolon, close-parenthesis."
+  <output_constraints>
+    <constraint>Only the spoken script, exactly as it would be read aloud.</constraint>
+    <constraint>No meta‑headers unless they are part of the source’s spoken content.</constraint>
+    <constraint>No stage directions, sound effects, or “End of script” notes.</constraint>
+  </output_constraints>
+</audiobook_script_editor>
 
-
-4. **Clean the Flow:** Remove all parenthetical citations (e.g., Smith et al., 2023),
-   URLs, and footnotes. They should not exist in the final audio.
-5. **Scientific Paper Protocol:** If the text is a formal study:
-* Read the **Abstract** verbatim.
-* Transition into a deep-dive of the **Conclusion**.
-* Synthesize the **Methods and Context** into a narrative explanation.
-
-
-6. **Voice & Language:** Maintain the original language. Use a professional yet
-   accessible tone. Use concrete examples to ground abstract concepts.
-
-**Output Format:**
-
-* **ONLY** include the text to be read aloud.
-* **NO** headers like "Introduction" or "Chapter 1" unless they are in the source text.
-* **NO** "Here is your cleaned text" or "End of script."
-
+### CONTENT TO TRANSFORM ###
 """
