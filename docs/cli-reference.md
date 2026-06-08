@@ -25,7 +25,7 @@ directory, processes all supported files inside it.
 |------------------|--------|---------------------------------------------------------------------|---------------------|
 | `--task`         | `-T`   | Task name: `direct`, `audiobook`, `podcast`, `summary`, `meditation`, `lecture` | `audiobook` |
 | `--prompt-file`  | `-pf`  | Path to a custom prompt file (overrides `--task`)                   |                     |
-| `--tts-provider` | `-tp`  | TTS provider: `kokoro`, `openai`, `aws`, `google`           | `kokoro`            |
+| `--tts-provider` | `-tp`  | TTS provider: `kokoro`, `openai`, `aws`, `google`, `qwen`           | `kokoro`            |
 | `--voice`        | `-v`   | Voice name or ID for the selected TTS provider                      | `af_bella`          |
 | `--voice-model`  | `-vm`  | TTS model name or path                                              | `kokoro`            |
 | `--language`     | `-l`   | Language code for synthesized audio                                 | `en`                |

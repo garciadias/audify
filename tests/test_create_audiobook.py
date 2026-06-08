@@ -402,9 +402,9 @@ class TestMain:
                 [
                     temp_file.name,
                     "--tts-provider",
-                    "openai",
+                    "qwen",
                     "--llm-model",
-                    "gpt-4",
+                    "qwen3.6:35b",
                     "--task",
                     "audiobook",
                 ],
@@ -412,8 +412,8 @@ class TestMain:
 
         assert result.exit_code == 0
         call_args = mock_get_creator.call_args
-        assert call_args.kwargs["tts_provider"] == "openai"
-        assert call_args.kwargs["llm_model"] == "gpt-4"
+        assert call_args.kwargs["tts_provider"] == "qwen"
+        assert call_args.kwargs["llm_model"] == "qwen3.6:35b"
         assert call_args.kwargs["task"] == "audiobook"
 
     @patch("audify.convert.get_creator")

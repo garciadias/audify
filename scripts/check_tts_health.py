@@ -87,7 +87,13 @@ def check_docker_services() -> None:
             print("✓ Docker is running")
             print(f"  Active containers: {len(containers)}")
 
+            qwen_running = any("qwen" in c.lower() for c in containers)
             kokoro_running = any("kokoro" in c.lower() for c in containers)
+
+            if qwen_running:
+                print("  ✓ qwen-tts container is running")
+            else:
+                print("  ✗ qwen-tts container is NOT running")
 
             if kokoro_running:
                 print("  ✓ kokoro container is running")
@@ -109,7 +115,9 @@ def check_api_endpoints() -> None:
     print("Checking API Endpoints")
     print(f"{'=' * 60}")
 
+    qwen_config = get_tts_config(provider="qwen")
     endpoints = {
+        "Qwen TTS": getattr(qwen_config, "health_url", "http://localhost:8890/health"),
         "Kokoro TTS": f"{KOKORO_API_BASE_URL}/health",
     }
 
@@ -136,6 +144,7 @@ def check_environment_variables() -> None:
 
     relevant_vars = [
         "TTS_PROVIDER",
+        "QWEN_API_URL",
         "KOKORO_API_URL",
         "OLLAMA_API_URL",
         "OPENAI_API_KEY",

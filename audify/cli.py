@@ -391,6 +391,14 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     is_flag=True,
     help="Show detailed log messages in terminal.",
 )
+@click.option(
+    "--warn-stop",
+    "-ws",
+    is_flag=True,
+    default=False,
+    help="Prompt user when verification detects short chapters or issues."
+    " (Default: only log warnings, always continue.)",
+)
 @click.argument("path", required=False, type=click.Path())
 @click.version_option(__version__, "--version", "-V", message="audify %(version)s")
 @click.pass_context
@@ -418,6 +426,7 @@ def cli(
     process_only: bool,
     synthesize_only: bool,
     verbose: bool,
+    warn_stop: bool,
     path: str | None,
 ):
     """Audify: Convert ebooks and PDFs to audiobooks using AI text-to-speech."""
@@ -635,6 +644,7 @@ def cli(
                 task=task,
                 prompt_file=prompt_file,
                 mode=mode,
+                warn_stop=warn_stop,
             )
             output_path = dir_creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
@@ -735,6 +745,7 @@ def cli(
                 task=task,
                 prompt_file=prompt_file,
                 mode=mode,
+                warn_stop=warn_stop,
             )
             output_path = creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
@@ -840,6 +851,57 @@ def validate_prompt(prompt_file: str):
         click.echo(f"  Preview: {prompt[:100]}...")
     else:
         raise click.ClickException(f"Prompt validation failed: {message}")
+
+
+@cli.command("compare")
+@click.argument(
+    "source_file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.argument(
+    "audiobook_file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "--json",
+    is_flag=True,
+    default=False,
+    help="Output results as JSON instead of human-readable format.",
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Show detailed comparison output.",
+)
+def compare(source_file: str, audiobook_file: str, json: bool, verbose: bool):
+    """Compare an audiobook against its source EPUB/PDF file.
+
+    Verifies that all chapters from the source file are present in the
+    generated audiobook, checks ordering, and estimates content coverage.
+
+    Examples:
+        audify compare book.epub audiobook.m4b
+        audify compare book.epub audiobook.mp3 --json
+    """
+    from audify.verify import AudiobookVerifier
+
+    try:
+        verifier = AudiobookVerifier(source_file, audiobook_file)
+
+        if json:
+            import json as json_module
+            report = verifier.generate_report()
+            click.echo(json_module.dumps(report, indent=2))
+        else:
+            verifier.print_report()
+
+    except FileNotFoundError as e:
+        raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(f"Invalid file format: {e}")
+    except Exception as e:
+        raise click.ClickException(f"Comparison failed: {e}")
 
 
 if __name__ == "__main__":

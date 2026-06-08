@@ -30,6 +30,10 @@ from audify.utils.m4b_builder import (
 from audify.utils.progress import ProgressIndicator
 from audify.utils.prompts import AUDIOBOOK_PROMPT
 from audify.utils.text import break_text_into_sentences, clean_text, get_file_name_title
+from audify.verification_integration import (
+    check_chapter_during_synthesis,
+    verify_complete_audiobook,
+)
 
 _DEFAULT_LLM_PARAMS = {
     "num_ctx": 8 * 4096,
@@ -59,25 +63,43 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 def _clean_text_for_audiobook(text: str) -> str:
-    """Remove references, citations, and academic formatting from text."""
+    """Remove references, citations, and academic formatting from text.
+
+    Preserves real book content while removing elements that disrupt TTS
+    or are tedious to listen to (citation markers, URLs, footnotes).
+    """
     text = str(text)
     if re.search(r"<[^>]+>", text):
         text = BeautifulSoup(text, "html.parser").get_text()
-    text = re.sub(r"\[\d+\]", "", text)
-    text = re.sub(r"\([^)]*\d{4}[^)]*\)", "", text)
-    text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
+
+    # Remove standalone footnote/endnote markers like [1], [2,3], [4-6]
+    # but NOT brackets used as part of the text.
+    text = re.sub(r"\[\d+(?:[,\-\s]\d+)*\]", "", text)
+
+    # Remove specific citation patterns: (Author, YYYY) or (Author et al., YYYY)
+    # This is more targeted than removing ALL parenthetical with 4 digits.
+    text = re.sub(r"\([A-Z][a-z]+(?:\.?\s+(?:et\s+al\.?)?)?,?\s*\d{4}[^)]*\)", "", text)
+    # Remove collation: (pp. 12-34) or (p. 5)
+    text = re.sub(r"\(pp?\.\s*\d+(?:\-\d+)?\)", "", text)
+
     text = re.sub(r"doi:\s*[\d\.\w/\-]+", "", text)
     text = re.sub(r"http[s]?://[\w\.\-/\?\=&%]+", "", text)
     text = re.sub(r"www\.[\w\.\-/\?\=&%]+", "", text)
+
+    # Only strip trailing section headers when they're clearly the START
+    # of a reference block (not mid-text). Use a conservative approach that
+    # requires the heading to be on its own line followed by list-like content.
     for pattern in [
-        r"(?i)references?\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        r"(?i)bibliography\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        r"(?i)works?\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
-        r"(?i)literature\s+cited\s*:?\s*\n.*?(?=\n\s*[A-Z]|\Z)",
+        r"(?i)\nreferences?\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
+        r"(?i)\nbibliography\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
+        r"(?i)\n(?:works?\s+)?cited\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
     ]:
-        text = re.sub(pattern, "", text, flags=re.DOTALL)
-    text = re.sub(r"(?i)\b(figure|fig|table|tab)\s*\.?\s*\d+", "", text)
-    text = re.sub(r"\bpp?\.\s*\d+(-\d+)?", "", text)
+        text = re.sub(pattern, "\n[Reference section starts here]", text, flags=re.DOTALL)
+
+    # Remove "Figure 1:" or "Table 3" labels when they appear at line start
+    # (not in running text)
+    text = re.sub(r"(?mi)^(?:figure|fig|table|tab)\s*\.?\s*\d+[\s.:\-].*", "", text)
+
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
     return text.strip()
@@ -251,6 +273,7 @@ class AudiobookCreator(BaseSynthesizer):
         task: Optional[str] = None,
         prompt_file: Optional[str | Path] = None,
         mode: str = "full",
+        warn_stop: bool = False,
     ):
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
@@ -296,6 +319,7 @@ class AudiobookCreator(BaseSynthesizer):
         self.llm_base_url = llm_base_url
         self.max_chapters = max_chapters
         self.confirm = confirm
+        self.warn_stop = warn_stop
         self.progress = ProgressIndicator()
 
         # Resolve task prompt and LLM parameters
@@ -987,10 +1011,14 @@ class AudiobookCreator(BaseSynthesizer):
         # Phase 3 - synthesise TTS audio
         # ------------------------------------------------------------------
         episode_paths: list[Path] = []
+        
+        # Track which episodes passed duration check (for validation)
+        short_episodes: list[int] = []
 
         for episode_number, audiobook_script in chapter_scripts:
             chapter_title = chapter_titles[episode_number - 1]
             text_snippet = " ".join(audiobook_script.split()[:100])
+            script_word_count = len(audiobook_script.split())
 
             try:
                 self.progress.print_chapter_start(
@@ -1005,6 +1033,27 @@ class AudiobookCreator(BaseSynthesizer):
                     logger.info(
                         f"Successfully created Episode {episode_number}: {episode_path}"
                     )
+                    
+                    # Check chapter duration against expected length
+                    duration_ok = check_chapter_during_synthesis(
+                        chapter_number=episode_number,
+                        chapter_title=chapter_title,
+                        audio_path=episode_path,
+                        script_word_count=script_word_count,
+                        confirm=self.confirm,
+                        threshold=0.7,  # 70% of expected duration minimum
+                        warn_stop=self.warn_stop,
+                    )
+                    
+                    if not duration_ok:
+                        short_episodes.append(episode_number)
+                        logger.warning(
+                            f"Episode {episode_number} failed duration check. "
+                            f"User chose to abort audiobook generation."
+                        )
+                        # Clear episode_paths to signal failure
+                        episode_paths = []
+                        return episode_paths
                 else:
                     logger.warning(f"Failed to create Episode {episode_number}")
 
@@ -1024,6 +1073,29 @@ class AudiobookCreator(BaseSynthesizer):
 
         if episode_paths:
             self.create_m4b()
+            
+            # Verify complete audiobook if source file is available
+            audiobook_m4b = self.audiobook_path / (
+                self.file_name.stem + ".m4b"
+            )
+            if audiobook_m4b.exists():
+                try:
+                    verification_ok = verify_complete_audiobook(
+                        source_path=self.path,
+                        audiobook_path=audiobook_m4b,
+                        confirm=self.confirm,
+                        duration_ratio_threshold=0.6,  # 60% of expected minimum
+                        warn_stop=self.warn_stop,
+                    )
+                    if not verification_ok:
+                        logger.warning(
+                            "Audiobook verification failed. User chose to abort."
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Could not verify audiobook: {e}. "
+                        f"Audiobook still generated successfully."
+                    )
 
         return episode_paths
 
@@ -1405,6 +1477,7 @@ class DirectoryAudiobookCreator:
         task: Optional[str] = None,
         prompt_file: Optional[str | Path] = None,
         mode: str = "full",
+        warn_stop: bool = False,
     ):
         self.directory_path = Path(directory_path)
         if not self.directory_path.is_dir():
@@ -1424,6 +1497,7 @@ class DirectoryAudiobookCreator:
         self.llm_base_url = llm_base_url
         self.llm_model = llm_model
         self.confirm = confirm
+        self.warn_stop = warn_stop
         self.tts_provider = tts_provider or DEFAULT_TTS_PROVIDER
         self.task = task
         self.prompt_file = prompt_file

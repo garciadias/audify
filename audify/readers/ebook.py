@@ -87,12 +87,7 @@ NON_CHAPTER_FILENAME_TOKENS = [
     "synopsis",
     "titulo",
     "título",
-    "info",
-    "copyright",
     "colophon",
-    "autor",
-    "author",
-    "biography",
     "bio",
     "notes",
     "notas",
@@ -273,9 +268,10 @@ class EpubReader(Reader):
                 body = soup.find("body")
                 if body is not None:
                     bodies.append(str(body))
-                elif hasattr(soup, "decode_contents"):
-                    bodies.append(soup.decode_contents())
                 else:
+                    # Some EPUB files omit the ``<body>`` tag entirely.
+                    # Use the whole soup (``<html>``) as the body so that
+                    # heading tags, paragraphs etc. are preserved.
                     bodies.append(str(soup))
             except Exception as e:
                 logger.warning(f"Could not decode/parse item {item.get_name()}: {e}")
@@ -285,24 +281,118 @@ class EpubReader(Reader):
 
         return "<html><body>" + "\n".join(bodies) + "</body></html>"
 
-    # TOC heading markers — words that explicitly indicate a table of contents
-    _TOC_HEADING_MARKERS = [
-        "table of contents", "contents", "table of content",
-        "index", "目录", "章", "目次",
-    ]
+    @staticmethod
+    def _looks_like_toc(soup: bs4.BeautifulSoup, text: str) -> bool:
+        """Return True when *soup* looks like a table of contents.
 
-    # CSS class/id tokens that suggest a TOC element
-    _TOC_ATTR_TOKENS = re.compile(
-        r"(?:^|[\s_\-\.])(?:toc|table-of-contents?|nav|navigation)"
-        r"(?:$|[\s_\-\.])",
-        re.IGNORECASE,
-    )
+        First checks for ``epub:type`` attributes (EPUB3 standard) which
+        reliably identify document roles:
 
-    @classmethod
-    def _looks_like_toc(cls, soup: bs4.BeautifulSoup, text: str) -> bool:
-        """Heuristic: return True when *soup* looks like a table of contents."""
+        - ``toc``, ``table-of-contents`` → definitely a TOC
+        - ``chapter``, ``bodymatter``, ``introduction``, ``preface``,
+          ``epilogue``, ``conclusion``, ``appendix`` → definitely NOT a TOC
+
+        Falls back to a heuristic based on link count + keyword indicators
+        when ``epub:type`` is absent (works with EPUB2 and minimal EPUBs).
+        """
+        # ------------------------------------------------------------------
+        # Reliable check: epub:type attributes (EPUB3 standard)
+        # ------------------------------------------------------------------
+        _TOC_TYPES = {"toc", "table-of-contents"}
+        _CONTENT_TYPES = {
+            "chapter", "bodymatter", "introduction", "preface",
+            "epilogue", "conclusion", "appendix", "dedication",
+            "foreword", "afterword", "prologue", "glossary",
+            "bibliography", "index", "notes", "epigraph",
+        }
+
+        def _check_epub_type(element) -> bool | None:
+            """Check a single element's epub:type.
+
+            Returns:
+                True if it's a TOC type,
+                False if it's a content type,
+                None if unknown/absent.
+            """
+            ep_type = element.get("epub:type", "") or ""
+            for t in ep_type.lower().split():
+                if t in _TOC_TYPES:
+                    return True
+                if t in _CONTENT_TYPES:
+                    return False
+            return None
+
+        # Check <body epub:type> first, then <section epub:type>,
+        # then <nav epub:type>
+        body = soup.find("body")
+        if body is not None:
+            result = _check_epub_type(body)
+            if result is not None:
+                return result
+
+        # Check the first <section> if it has a meaningful epub:type
+        section = soup.find("section")
+        if section is not None:
+            result = _check_epub_type(section)
+            if result is not None:
+                return result
+
+        # ------------------------------------------------------------------
+        # Fallback heuristic (EPUB2 / no epub:type metadata)
+        # ------------------------------------------------------------------
+        # A TOC page links to OTHER documents (cross-doc links like
+        # ``chapter01.xhtml``).  A real chapter links to the SAME document
+        # via fragment anchors (``#fig-1``, ``#fn1``, ``#section-2``).
+        # By distinguishing these patterns we avoid false positives
+        # on academic chapters that naturally contain many inline
+        # cross-references and footnotes.
+
         links = soup.find_all("a")
         list_items = soup.find_all(["li", "dt", "dd"])
+
+        if not links and not list_items:
+            return False
+
+        cross_doc_links = 0  # href points to a different document
+        self_ref_links = 0   # href is a bare ``#fragment`` (same doc)
+
+        for a in links:
+            href = a.get("href", "")
+            if not href:
+                continue
+            # If the link contains ``#`` it is a fragment reference within
+            # the same document (e.g. ``#fig-1``, ``c01.html#fn1``).
+            # Links without ``#`` point to a different document file.
+            if "#" in href:
+                self_ref_links += 1
+            else:
+                cross_doc_links += 1
+
+        toc_indicators = [
+            "table of contents",
+            "contents",
+            "目录",
+            "chapter",
+            "part",
+            "section",
+            "章",
+        ]
+        indicator_count = sum(1 for ind in toc_indicators if ind in text)
+
+        # A TOC page has mostly cross-document links.
+        # A content chapter has mostly same-document fragment links.
+        if cross_doc_links > 5 and cross_doc_links > self_ref_links:
+            return indicator_count > 1
+
+        # If most links are self-references and the text is long, this
+        # is a real content chapter with footnotes/cross-references, not
+        # a TOC — even if it contains "chapter" or "part" in its prose.
+        if self_ref_links > cross_doc_links and len(text) > 5000:
+            return False
+
+        # Fallback to old heuristic for documents that don't fit either
+        # pattern cleanly
+        return (len(links) > 5 or len(list_items) > 5) and indicator_count > 1
 
         # Check headings (h1-h6) for explicit TOC markers
         headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
@@ -359,21 +449,48 @@ class EpubReader(Reader):
         return sum(1 for ind in indicators if ind in text) > 2
 
     def _is_valid_chapter(self, merged_html: str) -> bool:
-        """Return True when *merged_html* has enough content to be a chapter."""
+        """Return True when *merged_html* has enough content to be a chapter.
+
+        More permissive than before: only filters clearly non-content pages
+        (bare TOC listings, full copyright pages) while keeping short content
+        chapters, prefaces, appendices, and other legitimate book sections.
+        """
         if len(merged_html.strip()) < 100:
             return False
         soup = bs4.BeautifulSoup(merged_html, "html.parser")
         visible_text = soup.get_text(separator=" ", strip=True)
-        if len(visible_text) < 80:
+        if len(visible_text) < 60:
             return False
         text = visible_text.lower()
+
+        # TOC detection: only skip if the page is DOMINATED by TOC structure
+        # (many links to other documents + TOC-like text).
         if self._looks_like_toc(soup, text):
-            return False
+            # Even a "TOC-like" page is kept if it has substantial
+            # non-list-content (>1000 chars after removing link text).
+            link_text_len = sum(
+                len(a.get_text(strip=True)) for a in soup.find_all("a")
+            )
+            if link_text_len < len(visible_text) * 0.6:
+                # Less than 60% of the text is link labels — likely
+                # a chapter that happens to have a few cross-references.
+                pass
+            else:
+                return False
+
+        # Chinese chapter-title markers: only treat as TOC if they
+        # dominate the text (more than 10 per 1000 chars)
         chinese_patterns = re.findall(r"第[一二三四五六七八九十\d]+章", text)
-        if len(chinese_patterns) > 2:
+        word_count = len(text.split())
+        if word_count > 0 and len(chinese_patterns) > max(3, word_count // 50):
             return False
+
         if self._looks_like_copyright(text):
-            return False
+            # Copyright pages with mostly boilerplate (<300 chars body)
+            # are skipped. Longer copyright pages with actual book info pass.
+            if len(visible_text) < 300:
+                return False
+
         return True
 
     # ------------------------------------------------------------------
