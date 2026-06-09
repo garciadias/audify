@@ -223,9 +223,11 @@ def main():
     # Lock file to prevent duplicate runs
     if LOCK_FILE.exists():
         print(f"Lock file {LOCK_FILE} exists — another batch may be running.")
-        print(f"Delete it manually if you're sure no other process is active.")
+        print("Delete it manually if you're sure no other process is active.")
         return
     LOCK_FILE.write_text(str(os.getpid()))
+    # Mark that this process owns the lock so cleanup can stay scoped.
+    main.lock_owned = True  # type: ignore[attr-defined]
     
     langs = ["en", "es", "pt"] if args.lang == "all" else [args.lang]
     pairs = build_pairs(langs)
@@ -333,17 +335,32 @@ def main():
         json.dump(results, f, indent=2, ensure_ascii=False)
     print(f"\n💾 Results saved to {RESULTS_FILE}")
     
-    # Clean lock file
-    LOCK_FILE.unlink(missing_ok=True)
-    
+    # Clean lock file (only if we own it)
+    _release_lock()
+
     return 0 if total_fail == 0 else 1
+
+
+def _release_lock() -> None:
+    """Remove the lock file only if this process owns it.
+
+    Guards against a second invocation (which returned early without acquiring
+    the lock) deleting the lock held by the original running process.
+    """
+    if not getattr(main, "lock_owned", False):
+        return
+    try:
+        if LOCK_FILE.exists() and LOCK_FILE.read_text().strip() == str(os.getpid()):
+            LOCK_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":
     try:
         ret = main()
     except Exception:
-        LOCK_FILE.unlink(missing_ok=True)
+        _release_lock()
         raise
-    LOCK_FILE.unlink(missing_ok=True)
+    _release_lock()
     sys.exit(ret)
