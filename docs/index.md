@@ -47,6 +47,13 @@ contributing
 changelog
 ```
 
+```{toctree}
+:maxdepth: 2
+:caption: Troubleshooting
+
+troubleshooting-no-audio
+```
+
 ## What is Audify?
 
 Audify is a pipeline and CLI tool that transforms written content (EPUB, PDF, TXT, MD) into high-quality audiobooks using:

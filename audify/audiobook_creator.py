@@ -90,7 +90,9 @@ def clean_text_for_audiobook(text: str) -> str:
         r"(?i)\nbibliography\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
         r"(?i)\n(?:works?\s+)?cited\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
     ]:
-        text = re.sub(pattern, "\n[Reference section starts here]", text, flags=re.DOTALL)
+        text = re.sub(
+            pattern, "\n[Reference section starts here]", text, flags=re.DOTALL
+        )
 
     # Remove "Figure 1:" or "Table 3" labels when they appear at line start
     # (not in running text)
@@ -1007,7 +1009,7 @@ class AudiobookCreator(BaseSynthesizer):
         # Phase 3 - synthesise TTS audio
         # ------------------------------------------------------------------
         episode_paths: list[Path] = []
-        
+
         # Track which episodes passed duration check (for validation)
         short_episodes: list[int] = []
 
@@ -1029,7 +1031,7 @@ class AudiobookCreator(BaseSynthesizer):
                     logger.info(
                         f"Successfully created Episode {episode_number}: {episode_path}"
                     )
-                    
+
                     # Check chapter duration against expected length
                     duration_ok = check_chapter_during_synthesis(
                         chapter_number=episode_number,
@@ -1040,7 +1042,7 @@ class AudiobookCreator(BaseSynthesizer):
                         threshold=0.7,  # 70% of expected duration minimum
                         warn_stop=self.warn_stop,
                     )
-                    
+
                     if not duration_ok:
                         short_episodes.append(episode_number)
                         logger.warning(
@@ -1069,7 +1071,7 @@ class AudiobookCreator(BaseSynthesizer):
 
         if episode_paths:
             self.create_m4b()
-            
+
             # Verify complete audiobook if source file is available
             audiobook_m4b = self.audiobook_path / (
                 self.file_name.stem + ".m4b"

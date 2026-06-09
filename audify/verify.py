@@ -389,17 +389,14 @@ def _parse_ffmetadata_from_bytes(data: bytes) -> list[Chapter]:
     for i, block in enumerate(chapter_blocks):
         block_text = block.group(1)
         title = ""
-        start_ms = 0
 
         for line in block_text.split("\n"):
             line = line.strip()
             if line.upper().startswith("TIMEBASE="):
                 continue  # skip TIMEBASE
             if line.upper().startswith("START="):
-                try:
-                    start_ms = int(line.split("=")[1])
-                except ValueError:
-                    pass
+                # Start offset isn't needed for chapter extraction
+                continue
             if line.upper().startswith("END="):
                 # We don't need it for chapter extraction
                 continue
@@ -627,7 +624,10 @@ class AudiobookVerifier:
                     other_chap = source_lookup[other_title]
                     # If source_chap should come after other_chap in source
                     # but appears before in audio, it's an issue
-                    if source_chap.number > other_chap.number and other_audio_pos > audio_pos:
+                    if (
+                        source_chap.number > other_chap.number
+                        and other_audio_pos > audio_pos
+                    ):
                         is_in_order = False
                         break
 
@@ -647,10 +647,14 @@ class AudiobookVerifier:
 
         # Report unmatched chapters
         report.unmatched_source = [
-            (c.number, c.title) for c in self._raw_chapters if c.title.lower() in missing_titles
+            (c.number, c.title)
+            for c in self._raw_chapters
+            if c.title.lower() in missing_titles
         ]
         report.unmatched_audio = [
-            (c.number, c.title) for c in self._audiobook_chapters if c.title.lower() in extra_titles
+            (c.number, c.title)
+            for c in self._audiobook_chapters
+            if c.title.lower() in extra_titles
         ]
 
         # Duration analysis (uses combined duration for multi-part audiobooks)
@@ -679,8 +683,12 @@ class AudiobookVerifier:
                 "has_order_issues": report.has_order_issues(),
                 "has_extra": report.has_extra_chapters(),
             },
-            "source_chapters": _chapters_to_list(report.missing) if report.missing else [],
-            "extra_chapters": _chapters_to_list(report.extra) if report.extra else [],
+            "source_chapters": (
+                _chapters_to_list(report.missing) if report.missing else []
+            ),
+            "extra_chapters": (
+                _chapters_to_list(report.extra) if report.extra else []
+            ),
             "order_violations": [
                 {
                     "number": v.number,
@@ -708,15 +716,25 @@ class AudiobookVerifier:
         r"""Interpret the duration ratio."""
         r = hint.ratio
         if r < 0.5:
-            return "AUDIO MUCH SHORTER than expected based on source text. Check for missing chapters."
+            return (
+                "AUDIO MUCH SHORTER than expected based on source text. "
+                "Check for missing chapters."
+            )
         elif r < 0.9:
-            return "AUDIO SHORTER than expected. Some chapters may be abbreviated."
+            return (
+                "AUDIO SHORTER than expected. Some chapters may be abbreviated."
+            )
         elif r > 1.5:
-            return "AUDIO MUCH LONGER than expected. Check for extra content or slow narration."
+            return (
+                "AUDIO MUCH LONGER than expected. "
+                "Check for extra content or slow narration."
+            )
         elif r > 1.1:
             return "AUDIO slightly longer than expected."
         else:
-            return "AUDIO duration matches expectations based on source text length."
+            return (
+                "AUDIO duration matches expectations based on source text length."
+            )
 
     def print_report(self) -> None:
         """Print a human-readable report to stdout."""
@@ -728,21 +746,29 @@ class AudiobookVerifier:
         print(f"  Source:       {report.source_path.name}")
         print(f"  Source Type:  {report.source_type.upper()}")
         print(f"  Audiobook:    {report.audiobook_path.name}")
-        print(f"  Duration:     {report.duration_hint.actual_duration_s:.1f}s" if report.duration_hint else "  Duration:     (unknown)")
+        if report.duration_hint:
+            print(
+                f"  Duration:     "
+                f"{report.duration_hint.actual_duration_s:.1f}s"
+            )
+        else:
+            print("  Duration:     (unknown)")
         print()
         print("-" * 70)
         print("  Source Chapters:")
         print("-" * 70)
+        audio_titles_lower = {a.title.lower() for a in report.audiobook_chapters}
         for c in report.source_chapters:
-            marker = "✓" if c.title.lower() in {a.title.lower() for a in report.audiobook_chapters} else "✗"
+            marker = "✓" if c.title.lower() in audio_titles_lower else "✗"
             print(f"    {c.number:3d}. [{marker}] {c.title}")
 
         print()
         print("-" * 70)
         print("  Audiobook Chapters:")
         print("-" * 70)
+        source_titles_lower = {s.title.lower() for s in report.source_chapters}
         for c in report.audiobook_chapters:
-            marker = "✓" if c.title.lower() in {s.title.lower() for s in report.source_chapters} else "?"
+            marker = "✓" if c.title.lower() in source_titles_lower else "?"
             print(f"    {c.number:3d}. [{marker}] {c.title}")
 
         print()
@@ -762,7 +788,10 @@ class AudiobookVerifier:
             print("  ⚠️  Missing Chapters:")
             for m in report.missing:
                 exp_pos = m.expected_position + 1
-                print(f"       - {m.number}. {m.title} (expected at position {exp_pos})")
+                print(
+                    f"       - {m.number}. {m.title} "
+                    f"(expected at position {exp_pos})"
+                )
 
         if report.extra:
             print()

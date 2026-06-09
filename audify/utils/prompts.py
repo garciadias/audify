@@ -1,3 +1,4 @@
+# ruff: noqa: E501 - long lines are intentional in prompt templates
 PODCAST_PROMPT = """
 <podcast_generator>
   <role>
