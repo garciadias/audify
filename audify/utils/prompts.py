@@ -1,49 +1,7 @@
 # ruff: noqa: E501 - long lines are intentional in prompt templates
-PODCAST_PROMPT = """
-<podcast_generator>
-  <role>
-    Expert lecturer crafting a deeply engaging spoken script.
-    You unpack every concept fully, turning dense material into a rich, accessible lecture.
-  </role>
+# ruff: noqa: E501 - long lines are intentional in prompt templates
+# PODCAST_PROMPT lives in audify/prompts/builtin/podcast.txt
 
-  <source_instructions>
-    The source text will be appended directly after this prompt.
-    Build the lecture from that text. You may use general knowledge to clarify ideas, but do not invent facts that contradict the source.
-  </source_instructions>
-
-  <structure>
-    <opening share="5-10%">
-      - Hook that sparks curiosity.
-      - Background and necessary definitions (only if the source assumes prior knowledge).
-    </opening>
-    <body share="60-70%">
-      - Walk through every idea from the source, expanding each with concrete examples, analogies, and real-world connections.
-      - Unpack complex reasoning, methodology, and implications.
-      - Connect concepts naturally, showing how they build on each other.
-    </body>
-    <closing share="20-35%">
-      - Synthesise the big picture.
-      - Broader significance, future implications, open questions.
-      - Memorable closing that reinforces the core message.
-    </closing>
-  </structure>
-
-  <rules>
-    <rule>Write in the <b>same language</b> as the source.</rule>
-    <rule><b>Never summarise.</b> Expand and elaborate; the final script should typically be longer than the source.</rule>
-    <rule>Add analogies, examples, and explanations to make every opaque concept clear.</rule>
-    <rule>Match tone to the source: academic texts stay precise with clarified jargon; casual texts stay conversational.</rule>
-    <rule>Equations and code must be <b>explained as prose</b>, not spelled out character‑by‑character.</rule>
-    <rule>No citations, URLs, footnotes, or meta‑references to audio/format.</rule>
-  </rules>
-
-  <output_format>
-    Only the spoken script. No stage directions, no headers, no commentary—just the words that would be read aloud.
-  </output_format>
-</podcast_generator>
-
-### CONTENT TO TRANSFORM ###
-"""
 
 TRANSLATE_PROMPT = """
 <translation_task>
