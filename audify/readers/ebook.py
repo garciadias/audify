@@ -274,7 +274,7 @@ class EpubReader(Reader):
                     # Some EPUB files omit the ``<body>`` tag entirely.
                     # Use the whole soup (``<html>``) as the body so that
                     # heading tags, paragraphs etc. are preserved.
-                    bodies.append(str(soup))                    bodies.append(str(soup))
+                    bodies.append(str(soup))
             except Exception as e:
                 logger.warning(f"Could not decode/parse item {item.get_name()}: {e}")
 
@@ -396,46 +396,7 @@ class EpubReader(Reader):
         # pattern cleanly
         return (len(links) > 5 or len(list_items) > 5) and indicator_count > 1
 
-        # Check headings (h1-h6) for explicit TOC markers
-        headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
-        has_toc_heading = False
-        for h in headings:
-            h_text = h.get_text(separator=" ", strip=True).lower()
-            if any(marker in h_text for marker in cls._TOC_HEADING_MARKERS):
-                has_toc_heading = True
-                break
-
-        # Check for TOC-indicating CSS classes or ids
-        has_toc_attr = False
-        if not has_toc_heading:
-            for tag in soup.find_all(True):
-                if not isinstance(tag, Tag):
-                    continue
-                classes = " ".join(tag.get("class", []))  # type: ignore[arg-type]
-                tag_id = tag.get("id", "")  # type: ignore[arg-type]
-                combined = f"{classes} {tag_id}"
-                if cls._TOC_ATTR_TOKENS.search(combined):
-                    has_toc_attr = True
-                    break
-
-        toc_context = has_toc_heading or has_toc_attr
-
-        # A TOC has many links/list-items AND heading/attr context
-        if toc_context and (len(links) > 4 or len(list_items) > 4):
-            return True
-
-        # Without heading context, only flag when link density is extreme
-        # relative to visible text — avoids false positives on link-heavy
-        # academic chapters (footnotes, citations, cross-references).
-        visible_len = len(text)
-        if visible_len > 0 and len(links) > 20:
-            link_ratio = (len(links) * 100) / max(visible_len, 1)
-            if link_ratio > 2.0:
-                return True
-
-        return False
-
-
+    @staticmethod
     def _looks_like_copyright(text: str) -> bool:
         """Heuristic: return True when *text* resembles a copyright page."""
         indicators = [
