@@ -828,6 +828,9 @@ class TestAudiobookCreatorCreateSeries:
         creator.translate = None
         creator.resolved_language = "en"
         creator.scripts_path = Path("/fake/scripts")
+        creator.warn_stop = False
+        creator.audiobook_path = Path("/fake/audiobook")
+        creator.file_name = Path("test_epub")
 
         # Mock EPUB reader
         mock_reader = Mock(spec=EpubReader)
@@ -871,6 +874,9 @@ class TestAudiobookCreatorCreateSeries:
         creator.translate = None
         creator.resolved_language = "en"
         creator.scripts_path = Path("/fake/scripts")
+        creator.warn_stop = False
+        creator.audiobook_path = Path("/fake/audiobook")
+        creator.file_name = Path("test_pdf")
 
         # Mock PDF reader
         mock_reader = Mock()
@@ -924,6 +930,9 @@ class TestAudiobookCreatorCreateSeries:
         creator.chapter_titles = []
         creator.scripts_path = Path("/fake/scripts")
         creator.episodes_path = Path("/fake/episodes")
+        creator.warn_stop = False
+        creator.audiobook_path = Path("/fake/audiobook")
+        creator.file_name = Path("test_max_chapters")
 
         mock_reader = Mock(spec=EpubReader)
         mock_reader.get_chapters.return_value = ["Ch1", "Ch2", "Ch3", "Ch4"]
@@ -961,6 +970,9 @@ class TestAudiobookCreatorCreateSeries:
         creator.chapter_titles = []
         creator.scripts_path = Path("/fake/scripts")
         creator.episodes_path = Path("/fake/episodes")
+        creator.warn_stop = False
+        creator.audiobook_path = Path("/fake/audiobook")
+        creator.file_name = Path("test_error")
 
         mock_reader = Mock(spec=EpubReader)
         mock_reader.get_chapters.return_value = ["Chapter 1", "Chapter 2"]
@@ -1001,6 +1013,9 @@ class TestAudiobookCreatorCreateSeries:
         creator.chapter_titles = []
         creator.scripts_path = Path("/fake/scripts")
         creator.episodes_path = Path("/fake/episodes")
+        creator.warn_stop = False
+        creator.audiobook_path = Path("/fake/audiobook")
+        creator.file_name = Path("test_no_episodes")
 
         mock_reader = Mock(spec=EpubReader)
         mock_reader.get_chapters.return_value = ["Chapter 1"]

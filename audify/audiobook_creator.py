@@ -75,6 +75,8 @@ def clean_text_for_audiobook(text: str) -> str:
     # Remove specific citation patterns: (Author, YYYY) or (Author et al., YYYY)
     # This is more targeted than removing ALL parenthetical with 4 digits.
     text = re.sub(r"\([A-Z][a-z]+(?:\.?\s+(?:et\s+al\.?)?)?,?\s*\d{4}[^)]*\)", "", text)
+    # Remove inline "Author et al. (YYYY)" citations (year in parens)
+    text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
     # Remove collation: (pp. 12-34) or (p. 5)
     text = re.sub(r"\(pp?\.\s*\d+(?:\-\d+)?\)", "", text)
 
@@ -96,7 +98,8 @@ def clean_text_for_audiobook(text: str) -> str:
 
     # Remove "Figure 1:" or "Table 3" labels when they appear at line start
     # (not in running text)
-    text = re.sub(r"(?mi)^(?:figure|fig|table|tab)\s*\.?\s*\d+[\s.:\-].*", "", text)
+    # Remove figure/table labels at start of lines (with optional indent)
+    text = re.sub(r"(?mi)^\s*(?:figure|fig|table|tab)\s*\.?\s*\d+[\s.:\-].*", "", text)
 
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)

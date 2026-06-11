@@ -46,7 +46,7 @@ class Chapter:
     def __hash__(self) -> int:
         return hash((self.number, self.title))
 
-    def __eq__(self, other: object) -> object:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Chapter):
             return NotImplemented
         return self.number == other.number and self.title == other.title
@@ -507,9 +507,11 @@ class AudiobookVerifier:
             p for p in parent.iterdir()
             if p.is_file() and pattern.match(p.name)
         ]
-        candidates.sort(key=lambda p: int(
-            re.search(r'_part(\d+)', p.stem, re.IGNORECASE).group(1)
-        ))
+
+        def _part_sort_key(p: Path) -> int:
+            m = re.search(r'_part(\d+)', p.stem, re.IGNORECASE)
+            return int(m.group(1)) if m else 0
+        candidates.sort(key=_part_sort_key)
 
         return candidates if candidates else [audiobook_path]
 
@@ -558,7 +560,7 @@ class AudiobookVerifier:
         else:
             raise ValueError(f"Unsupported source format: {suffix}")
 
-    def _build_source_lookup(self) -> dict[str, int]:
+    def _build_source_lookup(self) -> dict[str, Chapter]:
         """Build title -> chapter mapping for quick lookup."""
         return {c.title.lower(): c for c in self._raw_chapters}
 
