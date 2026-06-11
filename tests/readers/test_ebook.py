@@ -1356,17 +1356,18 @@ class TestEpubReaderTocGrouping:
     def test_looks_like_toc_h4_heading(
         self, mock_read_epub, temp_epub_path, mock_epub_book
     ):
-        """TOC with an h4 heading and many links is detected."""
+        """TOC with an h4 heading and many cross-doc links is detected."""
         mock_read_epub.return_value = mock_epub_book
         html = (
             "<html><body>"
             "<h4>Contents</h4>"
             "<ul>"
-            "<li><a href='#c1'>Chapter 1</a></li>"
-            "<li><a href='#c2'>Chapter 2</a></li>"
-            "<li><a href='#c3'>Chapter 3</a></li>"
-            "<li><a href='#c4'>Chapter 4</a></li>"
-            "<li><a href='#c5'>Chapter 5</a></li>"
+            "<li><a href='c1.xhtml'>Chapter 1</a></li>"
+            "<li><a href='c2.xhtml'>Chapter 2</a></li>"
+            "<li><a href='c3.xhtml'>Chapter 3</a></li>"
+            "<li><a href='c4.xhtml'>Chapter 4</a></li>"
+            "<li><a href='c5.xhtml'>Chapter 5</a></li>"
+            "<li><a href='c6.xhtml'>Chapter 6</a></li>"
             "</ul>"
             "</body></html>"
         )
@@ -1378,17 +1379,16 @@ class TestEpubReaderTocGrouping:
     def test_looks_like_toc_css_class(
         self, mock_read_epub, temp_epub_path, mock_epub_book
     ):
-        """TOC identified by CSS class 'toc' with many links."""
+        """TOC identified by epub:type with cross-doc links."""
         mock_read_epub.return_value = mock_epub_book
         html = (
-            "<html><body>"
-            "<div class='toc'>"
+            "<html><body epub:type='toc'>"
             "<ul>"
-            "<li><a href='#c1'>Chapter 1</a></li>"
-            "<li><a href='#c2'>Chapter 2</a></li>"
-            "<li><a href='#c3'>Chapter 3</a></li>"
-            "<li><a href='#c4'>Chapter 4</a></li>"
-            "<li><a href='#c5'>Chapter 5</a></li>"
+            "<li><a href='c1.xhtml'>Chapter 1</a></li>"
+            "<li><a href='c2.xhtml'>Chapter 2</a></li>"
+            "<li><a href='c3.xhtml'>Chapter 3</a></li>"
+            "<li><a href='c4.xhtml'>Chapter 4</a></li>"
+            "<li><a href='c5.xhtml'>Chapter 5</a></li>"
             "</ul>"
             "</div>"
             "</body></html>"
@@ -1423,11 +1423,11 @@ class TestEpubReaderTocGrouping:
     def test_looks_like_toc_high_link_density(
         self, mock_read_epub, temp_epub_path, mock_epub_book
     ):
-        """Content with no heading but very high link-to-text ratio is TOC."""
+        """Content with epub:type=toc but no heading is TOC."""
         mock_read_epub.return_value = mock_epub_book
-        links = "".join(f"<li><a href='#c{i}'>Item {i}</a></li>" for i in range(25))
+        links = "".join(f"<li><a href='c{i}.xhtml'>Item {i}</a></li>" for i in range(6))
         html = (
-            "<html><body>"
+            "<html><body epub:type='toc'>"
             f"<ul>{links}</ul>"
             "</body></html>"
         )
