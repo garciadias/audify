@@ -6,7 +6,17 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from audify.qa.graph import build_graph, render_mermaid, run_graph
+import pytest
+
+from audify.qa.graph import (
+    _strip_mermaid_frontmatter,
+    build_graph,
+    render_mermaid,
+    run_graph,
+)
+from audify.qa.nodes.assemble import assemble_node
+from audify.qa.nodes.script_gen import script_gen_node
+from audify.qa.nodes.synthesize import synthesize_node
 
 
 def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMock:
@@ -130,3 +140,125 @@ class TestRenderMermaid:
         out = tmp_path / "a" / "b" / "c" / "graph.md"
         render_mermaid(out)
         assert out.exists()
+
+    def test_strip_mermaid_frontmatter_no_frontmatter(self):
+        """Pass through plain Mermaid without --- blocks."""
+        diagram = "graph TD;\nA-->B;\n"
+        assert _strip_mermaid_frontmatter(diagram) == diagram
+
+    def test_strip_mermaid_frontmatter_strips_config(self):
+        """Remove leading ---config:...--- block."""
+        diagram = (
+            "---\nconfig:\n  flowchart:\n    curve: linear\n"
+            "---\ngraph TD;\nA-->B;\n"
+        )
+        result = _strip_mermaid_frontmatter(diagram)
+        assert "config" not in result
+        assert "graph TD" in result
+
+    def test_strip_mermaid_frontmatter_missing_closing(self):
+        """_strip_mermaid_frontmatter handles incomplete --- blocks gracefully."""
+        diagram = "---\nconfig: true\ngraph TD;\n"
+        assert _strip_mermaid_frontmatter(diagram) == diagram
+
+
+class TestAssembleNode:
+    def test_assemble_node_with_paths(self):
+        """assemble_node calls create_m4b when episode_paths is non-empty."""
+        creator = MagicMock()
+        state = {"creator": creator, "episode_paths": ["ep1.mp3", "ep2.mp3"]}
+        result = assemble_node(state)
+        creator.create_m4b.assert_called_once()
+        assert result == {}
+
+    def test_assemble_node_empty_paths(self):
+        """assemble_node skips create_m4b when episode_paths is empty."""
+        creator = MagicMock()
+        state = {"creator": creator, "episode_paths": []}
+        result = assemble_node(state)
+        creator.create_m4b.assert_not_called()
+        assert result == {}
+
+
+class TestScriptGenNode:
+    def test_script_gen_node_error_handling(self):
+        """script_gen_node handles exceptions during script generation."""
+        creator = MagicMock()
+        creator.generate_audiobook_script.side_effect = Exception("LLM error")
+        creator.progress = MagicMock()
+        creator.chapter_titles = []
+
+        state = {
+            "creator": creator,
+            "chapters": ["Chapter content"],
+            "chapter_titles": ["Chapter 1"],
+        }
+        result = script_gen_node(state)
+        assert "chapter_scripts" in result
+        # Script generation failed, so chapter_scripts should be empty
+        assert result["chapter_scripts"] == []
+
+
+class TestSynthesizeNode:
+    def test_synthesize_node_success(self, tmp_path):
+        """synthesize_node returns episode_paths for successful episodes."""
+        creator = MagicMock()
+        creator.progress = MagicMock()
+        ep_path = tmp_path / "episode_001.mp3"
+        ep_path.write_bytes(b"fake")
+        creator.synthesize_episode.return_value = ep_path
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text.")],
+            "chapter_titles": ["Chapter 1"],
+        }
+        result = synthesize_node(state)
+        assert len(result["episode_paths"]) == 1
+        assert result["episode_paths"][0] == ep_path
+
+    def test_synthesize_node_tts_error_re_raised(self):
+        """synthesize_node re-raises TTSSynthesisError."""
+        from audify.text_to_speech import TTSSynthesisError
+
+        creator = MagicMock()
+        creator.progress = MagicMock()
+        creator.synthesize_episode.side_effect = TTSSynthesisError(
+            "TTS failed", failed_batches=1, total_batches=1
+        )
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text.")],
+            "chapter_titles": ["Chapter 1"],
+        }
+        with pytest.raises(TTSSynthesisError):
+            synthesize_node(state)
+
+    def test_synthesize_node_generic_error_re_raised(self):
+        """synthesize_node re-raises generic exceptions."""
+        creator = MagicMock()
+        creator.progress = MagicMock()
+        creator.synthesize_episode.side_effect = RuntimeError("Unexpected error")
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text.")],
+            "chapter_titles": ["Chapter 1"],
+        }
+        with pytest.raises(RuntimeError):
+            synthesize_node(state)
+
+    def test_synthesize_node_episode_not_found(self, tmp_path):
+        """synthesize_node logs warning when episode file does not exist."""
+        creator = MagicMock()
+        creator.progress = MagicMock()
+        creator.synthesize_episode.return_value = tmp_path / "episode_001.mp3"
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script.")],
+            "chapter_titles": ["Chapter 1"],
+        }
+        result = synthesize_node(state)
+        assert result["episode_paths"] == []

@@ -1307,6 +1307,21 @@ class TestEpubReaderTocGrouping:
         assert result is not None
         assert "Good" in result
 
+    @patch("audify.readers.ebook.epub.read_epub")
+    def test_merge_items_no_body_tag(
+        self, mock_read_epub, temp_epub_path, mock_epub_book
+    ):
+        """Item without <body> tag falls back to decode_contents on soup."""
+        mock_read_epub.return_value = mock_epub_book
+        reader = EpubReader(temp_epub_path)
+        item = Mock()
+        # Content has no <body> tag -> soup.find("body") is None
+        item.get_body_content.return_value = b"<div>No body here</div>"
+        item.get_name.return_value = "nobody.xhtml"
+        result = reader._merge_items([item])
+        assert result is not None
+        assert "No body here" in result
+
     # ------------------------------------------------------------------
     # _looks_like_toc (classmethod)
     # ------------------------------------------------------------------
