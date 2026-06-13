@@ -96,5 +96,43 @@ services:
     restart: unless-stopped
     profiles: [ "qwen" ]
 
+  stt:
+    build:
+      context: .
+      dockerfile: Dockerfile.stt
+    gpus: all
+    ports:
+      - "8888:8888"
+    environment:
+      - STT_HOST=0.0.0.0
+      - STT_PORT=8888
+      - STT_MODEL=large-v3
+      - STT_DEVICE=cuda:0
+      - STT_COMPUTE_TYPE=float16
+      - STT_DOWNLOAD_ROOT=/models
+    volumes:
+      - whisper_models:/models
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:8888/health | grep -q
+            '\"model_loaded\":true'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 600s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: unless-stopped
+    profiles: [ "stt" ]
+
 volumes:
   qwen_hf_cache:
+  whisper_models:

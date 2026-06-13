@@ -1,0 +1,55 @@
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libsndfile1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY scripts/stt_api.py /app/scripts/stt_api.py
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cu128 \
+    torch \
+    torchaudio \
+    && pip install --no-cache-dir \
+    "faster-whisper>=1.0.0" \
+    fastapi \
+    "uvicorn[standard]" \
+    python-multipart \
+    soundfile \
+    numpy
+
+# Pre-download the model into the image so first-request latency is bounded.
+# The download is skipped when STT_MOCK=true is set at build time (tests / CI
+# images that do not need the real model).
+ARG STT_MODEL=large-v3
+ARG STT_MOCK=false
+ENV STT_MODEL=${STT_MODEL}
+RUN mkdir -p /models && chmod 0775 /models \
+    && if [ "${STT_MOCK}" != "true" ]; then \
+        python -c "from faster_whisper import WhisperModel; \
+WhisperModel('${STT_MODEL}', device='cpu', download_root='/models')"; \
+    else \
+        echo "STT_MOCK=true; skipping model preload."; \
+    fi
+
+RUN groupadd --gid 1001 appuser \
+    && useradd --uid 1001 --gid appuser --create-home appuser \
+    && chown -R appuser:appuser /app /models
+
+USER appuser
+
+EXPOSE 8888
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=20 \
+    CMD curl -fsS http://localhost:8888/health | grep -q '"model_loaded":true' || exit 1
+
+CMD ["python", "/app/scripts/stt_api.py"]
