@@ -135,7 +135,19 @@ class WhisperSTTClient:
                 f"STT service rejected request ({response.status_code}): "
                 f"{response.text[:200]}"
             )
-        return response.json()
+        try:
+            payload = response.json()
+        except ValueError as e:
+            raise STTServiceError(
+                f"STT service returned a non-JSON body "
+                f"({response.status_code}): {response.text[:200]}"
+            ) from e
+        if not isinstance(payload, dict):
+            raise STTServiceError(
+                f"STT service returned an unexpected payload type "
+                f"({type(payload).__name__}): {response.text[:200]}"
+            )
+        return payload
 
 
 # Accepts either a static list (consumed in order) or a callable that

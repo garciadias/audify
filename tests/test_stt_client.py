@@ -32,7 +32,7 @@ def wav_file(tmp_path: Path) -> Path:
 
 
 def _make_handler(
-    response_sequence: list[tuple[int, dict]],
+    response_sequence: list[tuple[int, object]],
     captured: list[dict],
 ) -> type[BaseHTTPRequestHandler]:
     """Build a request handler that returns ``response_sequence[i]`` for the
@@ -62,7 +62,12 @@ def _make_handler(
             else:
                 status, payload = response_sequence[idx]
 
-            body = json.dumps(payload).encode()
+            # A bytes payload is written verbatim (e.g. to exercise a
+            # non-JSON 200 body); anything else is JSON-encoded.
+            if isinstance(payload, bytes):
+                body = payload
+            else:
+                body = json.dumps(payload).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -74,7 +79,7 @@ def _make_handler(
 
 @pytest.fixture
 def stt_server() -> Iterator[
-    "tuple[str, list[tuple[int, dict]], list[dict]]"
+    "tuple[str, list[tuple[int, object]], list[dict]]"
 ]:
     """Start an HTTP server on a free localhost port.
 
@@ -82,7 +87,7 @@ def stt_server() -> Iterator[
     the response programme. ``captured`` collects parsed POST bodies for
     assertion.
     """
-    response_sequence: list[tuple[int, dict]] = []
+    response_sequence: list[tuple[int, object]] = []
     captured: list[dict] = []
     handler_cls = _make_handler(response_sequence, captured)
     httpd = HTTPServer(("127.0.0.1", 0), handler_cls)
@@ -93,6 +98,8 @@ def stt_server() -> Iterator[
         yield (f"http://127.0.0.1:{port}", response_sequence, captured)
     finally:
         httpd.shutdown()
+        thread.join()
+        httpd.server_close()
 
 
 def test_protocol_membership() -> None:
@@ -158,6 +165,31 @@ def test_does_not_retry_on_4xx(stt_server, wav_file: Path) -> None:
         client.transcribe(wav_file, start_s=10.0, end_s=5.0)
 
     assert len(captured) == 1, "client must not retry 4xx"
+
+
+def test_non_json_200_body_raises_service_error(
+    stt_server, wav_file: Path
+) -> None:
+    base_url, responses, _ = stt_server
+    # A 200 with a body that is not valid JSON must surface as
+    # STTServiceError rather than a raw decode error.
+    responses.append((200, b"<html>not json</html>"))
+
+    client = WhisperSTTClient(base_url=base_url, timeout_s=5.0, max_retries=2)
+    with pytest.raises(STTServiceError, match="non-JSON"):
+        client.transcribe(wav_file)
+
+
+def test_non_dict_200_body_raises_service_error(
+    stt_server, wav_file: Path
+) -> None:
+    base_url, responses, _ = stt_server
+    # A 200 whose JSON body is not an object (e.g. a list) is also invalid.
+    responses.append((200, ["unexpected", "list"]))
+
+    client = WhisperSTTClient(base_url=base_url, timeout_s=5.0, max_retries=2)
+    with pytest.raises(STTServiceError, match="unexpected payload type"):
+        client.transcribe(wav_file)
 
 
 def test_raises_service_error_after_exhausted_retries(

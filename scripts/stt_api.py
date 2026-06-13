@@ -41,6 +41,12 @@ MOCK_TRANSCRIPT = os.getenv(
     "the quick brown fox jumps over the lazy dog",
 )
 DOWNLOAD_ROOT = os.getenv("STT_DOWNLOAD_ROOT", "/models")
+# Bound the upload so a large body cannot exhaust memory/disk. Default 200 MB.
+MAX_UPLOAD_BYTES = int(os.getenv("STT_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+# Bound the ffmpeg slice so a hung/runaway process cannot block a request
+# indefinitely. Default 120 s.
+FFMPEG_TIMEOUT_S = float(os.getenv("STT_FFMPEG_TIMEOUT_S", "120"))
 
 # State shared between lifespan + handlers.
 _state: dict = {"model": None, "model_loaded": False, "load_error": None}
@@ -137,6 +143,16 @@ async def transcribe(
             detail="model not loaded",
         )
 
+    if start_s is not None and start_s < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_s must be non-negative",
+        )
+    if end_s is not None and end_s < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="end_s must be non-negative",
+        )
     if start_s is not None and end_s is not None and end_s <= start_s:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -147,13 +163,29 @@ async def transcribe(
         tmp = Path(tmpdir)
         suffix = Path(audio.filename or "audio.wav").suffix or ".wav"
         upload_path = tmp / f"upload{suffix}"
-        upload_bytes = await audio.read()
-        if not upload_bytes:
+        # Stream the body to disk in bounded chunks so a large upload never
+        # buffers fully in memory. Enforce a max size (413 when exceeded).
+        total = 0
+        with upload_path.open("wb") as out:
+            while True:
+                chunk = await audio.read(_UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=(
+                            f"audio exceeds max upload size "
+                            f"({MAX_UPLOAD_BYTES} bytes)"
+                        ),
+                    )
+                out.write(chunk)
+        if total == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="audio is empty",
             )
-        upload_path.write_bytes(upload_bytes)
 
         if MOCK_MODE:
             return JSONResponse(
@@ -224,7 +256,15 @@ def _slice_with_ffmpeg(
         cmd += ["-to", f"{end_s:.3f}"]
     cmd += ["-i", str(source), "-ar", "16000", "-ac", "1", str(sliced)]
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(
+            cmd, check=True, capture_output=True, timeout=FFMPEG_TIMEOUT_S
+        )
+    except subprocess.TimeoutExpired as e:
+        logger.error("ffmpeg slice timed out after %ss", FFMPEG_TIMEOUT_S)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"ffmpeg slice timed out after {FFMPEG_TIMEOUT_S}s",
+        ) from e
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode("utf-8", errors="replace") if e.stderr else ""
         raise HTTPException(

@@ -91,6 +91,13 @@ def test_transcribe_rejects_inverted_offsets(client: TestClient) -> None:
     assert response.status_code == 400
 
 
+def test_transcribe_rejects_negative_offsets(client: TestClient) -> None:
+    files = {"audio": ("clip.wav", b"RIFF\x00\x00\x00\x00WAVEpayload", "audio/wav")}
+    for data in ({"start_s": "-1.0"}, {"end_s": "-1.0"}):
+        response = client.post("/transcribe", files=files, data=data)
+        assert response.status_code == 400
+
+
 def test_transcribe_rejects_empty_audio(client: TestClient) -> None:
     files = {"audio": ("clip.wav", b"", "audio/wav")}
     response = client.post("/transcribe", files=files)
