@@ -84,14 +84,15 @@ cd audify
 ### 2. Start API Services
 
 ```bash
-# Start Kokoro TTS and Ollama services
-docker compose --profile kokoro --profile ollama up -d
+# Start Kokoro TTS, Ollama, and (optionally) the STT service
+docker compose --profile kokoro --profile ollama --profile stt up -d
 
-# Wait for services to be ready (~2-3 minutes)
+# Wait for services to be ready (~2-3 minutes; the STT service can take
+# longer on first start while it downloads the faster-whisper model)
 # Check status: docker compose ps
 
 # Optionally start the REST API service as well
-docker compose --profile kokoro --profile ollama --profile api up -d
+docker compose --profile kokoro --profile ollama --profile stt --profile api up -d
 ```
 
 ### 3. Install Python Dependencies
@@ -406,19 +407,27 @@ export OLLAMA_MODEL="magistral:24b"
 
 The `docker-compose.yml` configures local services using Docker Compose profiles:
 
-| Service      | Profile   | Port  | Description                                |
-|--------------|-----------|-------|--------------------------------------------|
-| Kokoro TTS   | `kokoro`  | 8887  | GPU-accelerated speech synthesis (local)   |
-| Ollama       | `ollama`  | 11434 | LLM for translation and audiobook gen.     |
-| Audify API   | `api`     | 8000  | REST API (depends on Kokoro and Ollama)    |
+| Service      | Profile   | Port  | Description                                            |
+|--------------|-----------|-------|--------------------------------------------------------|
+| Kokoro TTS   | `kokoro`  | 8887  | GPU-accelerated speech synthesis (local)               |
+| Ollama       | `ollama`  | 11434 | LLM for translation and audiobook gen.                 |
+| STT          | `stt`     | 8888  | faster-whisper-large for the QA fidelity check (local) |
+| Audify API   | `api`     | 8000  | REST API (depends on Kokoro and Ollama)                |
 
 ```bash
 # Start specific services by profile
-docker compose --profile kokoro --profile ollama up -d
+docker compose --profile kokoro --profile ollama --profile stt up -d
 
 # Start all local services including the API
-docker compose --profile kokoro --profile ollama --profile api up -d
+docker compose --profile kokoro --profile ollama --profile stt --profile api up -d
 ```
+
+The STT service is consumed by the agentic QA pipeline's
+boundary-sampling fidelity check (see `CONTEXT.md`). It exposes
+`POST /transcribe` (multipart audio + optional `start_s`/`end_s`/`language`
+form fields) and `GET /health`. Setting `STT_MOCK=true` on the container
+short-circuits the model load and returns canned transcripts — useful
+when running the stack on a machine without a GPU.
 
 Commercial TTS providers (OpenAI, AWS, Google) and LLM APIs (DeepSeek, Claude, GPT-4, Gemini) work without Docker.
 
@@ -615,6 +624,7 @@ docker compose restart
 # Check logs
 docker compose logs kokoro
 docker compose logs ollama
+docker compose logs stt
 ```
 
 **Commercial API errors:**
@@ -660,8 +670,10 @@ docker compose exec ollama ollama pull qwen3:30b
 ```bash
 # Check GPU availability
 docker compose exec kokoro nvidia-smi
+docker compose exec stt nvidia-smi
 
-# If no GPU, services will run on CPU (slower)
+# If no GPU, services will run on CPU (slower). For the STT service,
+# set `STT_MOCK=true` to skip the model load entirely.
 ```
 
 ### Performance Tips

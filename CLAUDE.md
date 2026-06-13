@@ -43,6 +43,7 @@ mypy ./audify ./tests --ignore-missing-imports
 
 - Kokoro TTS API on port 8887 (GPU)
 - Ollama LLM on port 11434 (GPU)
+- faster-whisper STT API on port 8888 (GPU) — backs the QA pipeline's boundary-sampling fidelity check (`audify/qa/stt.py`). Set `STT_MOCK=true` to bypass the model load.
 
 **Commercial API support**: Keys loaded from `.keys` file by `audify/utils/api_keys.py`, configured through `CommercialAPIConfig` in `audify/utils/api_config.py`, routed via LiteLLM.
 
