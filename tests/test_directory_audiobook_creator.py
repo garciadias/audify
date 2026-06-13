@@ -478,7 +478,7 @@ class TestDirectoryAudiobookCreatorCreateM4b:
     @patch("audify.audiobook_creator.BaseSynthesizer")
     @patch("pathlib.Path.glob")
     def test_create_m4b_with_splitting(self, mock_glob, mock_base_synth):
-        """Test create_m4b with duration >6 hours triggers splitting."""
+        """Test create_m4b with duration >14 hours triggers splitting."""
         with tempfile.TemporaryDirectory() as tmpdir:
             creator = DirectoryAudiobookCreator(
                 directory_path=tmpdir, output_dir=tmpdir
@@ -519,12 +519,12 @@ class TestDirectoryAudiobookCreatorCreateM4b:
                     "pathlib.Path.exists", return_value=True
                 ),  # Make temp paths exist
             ):
-                # Mock calculate_total_duration to return 7 hours for total,
-                # 3.5 hours per chunk
+                # Mock calculate_total_duration to return 16 hours for total
+                # (above the 14h threshold), 8 hours per chunk.
                 mock_calc_duration.side_effect = [
-                    7 * 3600,  # total duration
-                    3.5 * 3600,  # chunk1 duration
-                    3.5 * 3600,  # chunk2 duration
+                    16 * 3600,  # total duration
+                    8 * 3600,  # chunk1 duration
+                    8 * 3600,  # chunk2 duration
                 ]
 
                 # Mock temporary M4B paths
@@ -542,7 +542,7 @@ class TestDirectoryAudiobookCreatorCreateM4b:
                 # Verify splitting was triggered - first call with all episodes
                 mock_calc_duration.assert_any_call(episode_files)
                 creator._split_episodes_by_duration.assert_called_once_with(
-                    episode_files, max_hours=6.0
+                    episode_files, max_hours=14.0
                 )
 
                 # Verify chunk processing
@@ -743,6 +743,65 @@ class TestDirectoryAudiobookCreatorCreateM4b:
 
                 mock_logger.assert_called()
                 mock_warning.assert_not_called()
+
+    @patch("audify.audiobook_creator.BaseSynthesizer")
+    def test_create_metadata_for_chunk_second_chunk_starts_at_zero(
+        self, mock_base_synth
+    ):
+        """Each chunk's metadata file must be self-contained: timestamps must
+        restart at 0 so the resulting per-part M4B has an accurate table of
+        contents instead of one continuing the full-book timeline.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creator = DirectoryAudiobookCreator(
+                directory_path=tmpdir, output_dir=tmpdir
+            )
+            creator.chapter_titles = [
+                "Chapter 1",
+                "Chapter 2",
+                "Chapter 3",
+                "Chapter 4",
+            ]
+
+            # Chunk 2 covers episodes 3 and 4 (indices 2, 3 in chapter_titles).
+            chunk_files = [
+                creator.episodes_path / "episode_003.mp3",
+                creator.episodes_path / "episode_004.mp3",
+            ]
+
+            with (
+                patch(
+                    "audify.audiobook_creator.write_metadata_header"
+                ) as mock_write_header,
+                patch(
+                    "audify.audiobook_creator.AudioProcessor.get_duration"
+                ) as mock_get_duration,
+                patch(
+                    "audify.audiobook_creator.append_chapter_metadata"
+                ) as mock_append,
+            ):
+                mock_get_duration.side_effect = [50.0, 75.0]
+                mock_append.side_effect = [50000, 125000]
+
+                result = creator._create_metadata_for_chunk(chunk_files, 1)
+
+                # Metadata file is part-2 specific.
+                expected_path = creator.audiobook_path / "chapters_part2.txt"
+                assert result == expected_path
+                mock_write_header.assert_called_once_with(expected_path)
+
+                # Each per-part TOC must restart from 0, NOT pick up where the
+                # previous part left off. This is the bug we're guarding
+                # against: chunks must not share a global timeline.
+                first_call_args = mock_append.call_args_list[0].args
+                assert first_call_args[0] == expected_path
+                assert first_call_args[1] == "Chapter 3"
+                assert first_call_args[2] == 0  # start_ms must be 0
+
+                # Titles come from chapter_titles by episode index, so chunk 2
+                # uses entries for episodes 3 and 4.
+                mock_append.assert_any_call(expected_path, "Chapter 3", 0, 50.0)
+                mock_append.assert_any_call(expected_path, "Chapter 4", 50000, 75.0)
 
 
 class TestDirectoryAudiobookCreatorCreateSingleM4b:

@@ -160,14 +160,17 @@ class AudioProcessor:
 
     @staticmethod
     def split_audio_by_duration(
-        file_paths: List[Path], max_duration_hours: float = 6.0
+        file_paths: List[Path], max_duration_hours: float = 14.0
     ) -> List[List[Path]]:
         """
         Split a list of audio files into chunks based on total duration.
 
         Args:
             file_paths: List of audio file paths
-            max_duration_hours: Maximum duration per chunk in hours
+            max_duration_hours: Maximum duration per chunk in hours.
+                Defaults to 14h — the practical limit for M4B/MP4 playback
+                across common audiobook players (the format itself can hold
+                more, but ~15h is the conventional ceiling).
 
         Returns:
             List of chunks, where each chunk is a list of file paths

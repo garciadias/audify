@@ -1352,7 +1352,7 @@ class TestAudiobookCreatorM4BCreation:
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     @patch("pathlib.Path.glob")
     def test_create_m4b_with_splitting(self, mock_glob, mock_init):
-        """Test create_m4b with duration >6 hours triggers splitting."""
+        """Test create_m4b with duration >14 hours triggers splitting."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
         creator.episodes_path = Path("/fake/episodes")
         creator.audiobook_path = Path("/fake/audiobook")
@@ -1383,12 +1383,12 @@ class TestAudiobookCreatorM4BCreation:
             patch("audify.audiobook_creator.assemble_m4b") as mock_assemble,
             patch("pathlib.Path.exists", return_value=True),  # Make temp paths exist
         ):
-            # Mock calculate_total_duration to return 7 hours for total,
-            # 3.5 hours per chunk
+            # Mock calculate_total_duration to return 16 hours for total
+            # (above the 14h threshold), 8 hours per chunk.
             mock_calc_duration.side_effect = [
-                7 * 3600,  # total duration
-                3.5 * 3600,  # chunk1 duration
-                3.5 * 3600,  # chunk2 duration
+                16 * 3600,  # total duration
+                8 * 3600,  # chunk1 duration
+                8 * 3600,  # chunk2 duration
             ]
 
             # Mock temporary M4B paths
@@ -1406,7 +1406,7 @@ class TestAudiobookCreatorM4BCreation:
             # Verify splitting was triggered - first call with all episodes
             mock_calc_duration.assert_any_call(episode_files)
             creator._split_episodes_by_duration.assert_called_once_with(
-                episode_files, max_hours=6.0
+                episode_files, max_hours=14.0
             )
 
             # Verify chunk processing
