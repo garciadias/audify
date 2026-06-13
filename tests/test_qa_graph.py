@@ -33,6 +33,10 @@ def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMoc
     # Default to non-interactive (matches `-y/--confirm` flag): skip the
     # confirm_node prompt so the test doesn't hang on stdin.
     creator.confirm = False
+    # Default `warn_stop` to False so the report node's warn-stop prompt
+    # never fires in tests that don't set it explicitly. A MagicMock would
+    # otherwise read as truthy here.
+    creator.warn_stop = False
 
     # reader is a non-EpubReader so we get the simple path. Using
     # ``MagicMock(spec=PdfReader)`` gives a durable ``isinstance`` answer
@@ -131,9 +135,10 @@ class TestRunGraph:
         assert report["episodes_synthesised"] == report["chapters_expected"]
         chapters = report["chapters"]
         assert "chapter_1" in chapters
-        # Until the cyclic detectors run, "skeleton" is the honest verdict —
-        # no cycle node has yet populated ``best_wer``/``retry_budget``.
-        assert chapters["chapter_1"]["verdict"] == "skeleton"
+        # No cycle has fired against the stub-data path, so every chapter
+        # is ``clean``. The detectors (#3/#4/#5) will populate ``flags`` as
+        # they ship; the aggregator already speaks their schema.
+        assert chapters["chapter_1"]["verdict"] == "clean"
         assert chapters["chapter_1"]["flags"] == []
 
     def test_run_graph_returns_audiobook_path(self, tmp_path):
@@ -431,3 +436,351 @@ class TestSynthesizeNode:
         }
         result = synthesize_node(state)
         assert result["episode_paths"] == []
+
+
+class TestReportNode:
+    """Verdict derivation and artifact generation for the report aggregator.
+
+    Covers issue #37's required flag types: clean, cycle-1 escalation
+    exhausted, cycle-2 reroute exhausted, cycle-3 retry exhausted. Uses
+    ``report_node`` directly with a synthesised state so each verdict path
+    is exercised in isolation — independent of the upstream detectors,
+    which have not shipped yet.
+    """
+
+    def _stub_creator(self, tmp_path: Path, warn_stop: bool = False) -> MagicMock:
+        creator = MagicMock()
+        creator.audiobook_path = tmp_path
+        creator.warn_stop = warn_stop
+        return creator
+
+    def _state(
+        self,
+        creator: MagicMock,
+        *,
+        chapter_titles: list[str],
+        flags: dict | None = None,
+        retry_budget: dict | None = None,
+        best_wer: dict | None = None,
+        episode_paths: list | None = None,
+    ) -> dict:
+        return {
+            "creator": creator,
+            "chapters": [],
+            "chapter_titles": chapter_titles,
+            "chapter_scripts": [],
+            # Default: one dummy episode path per chapter, so the default
+            # ``pipeline_status`` is ``"complete"`` and tests focus on
+            # verdict logic. Tests can override by passing ``episode_paths``.
+            "episode_paths": (
+                episode_paths
+                if episode_paths is not None
+                else [Path(f"ep_{i}.mp3") for i in range(len(chapter_titles))]
+            ),
+            "retry_budget": retry_budget or {},
+            "best_wer": best_wer or {},
+            "flags": flags or {},
+        }
+
+    def _load_report(self, tmp_path: Path) -> dict:
+        return json.loads((tmp_path / "quality_report.json").read_text())
+
+    def test_clean_when_no_flags(self, tmp_path):
+        """No flags → every chapter is `clean`."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(creator, chapter_titles=["Ch 1", "Ch 2"])
+        report_node(state)
+
+        report = self._load_report(tmp_path)
+        assert report["chapters"]["chapter_1"]["verdict"] == "clean"
+        assert report["chapters"]["chapter_2"]["verdict"] == "clean"
+        assert report["chapters"]["chapter_1"]["flags"] == []
+        assert report["verdict_counts"] == {
+            "clean": 2, "flagged": 0, "unrecoverable": 0,
+        }
+
+    def test_flagged_when_cycle_resolved(self, tmp_path):
+        """A FlagEntry with `exhausted=False` yields `flagged`, not unrecoverable."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_3_retry",
+                        "reason": "WER 0.32 exceeded threshold once",
+                        "exhausted": False,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_3_retry": 2}},
+            best_wer={"chapter_1": 0.18},
+        )
+        report_node(state)
+
+        report = self._load_report(tmp_path)
+        assert report["chapters"]["chapter_1"]["verdict"] == "flagged"
+        assert report["chapters"]["chapter_1"]["attempts_used"] == {
+            "cycle_3_retry": 1,
+        }
+        assert report["chapters"]["chapter_1"]["best_wer"] == 0.18
+        assert report["verdict_counts"]["flagged"] == 1
+
+    def test_unrecoverable_cycle_3_retry_exhausted(self, tmp_path):
+        """Cycle-3 retry exhaustion: unrecoverable, 3/3 attempts, best WER surfaced."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_3_retry",
+                        "reason": "WER 0.42 exceeds 0.3 threshold",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_3_retry": 0}},
+            best_wer={"chapter_1": 0.42},
+        )
+        report_node(state)
+
+        report = self._load_report(tmp_path)
+        entry = report["chapters"]["chapter_1"]
+        assert entry["verdict"] == "unrecoverable"
+        assert entry["attempts_used"] == {"cycle_3_retry": 3}
+        assert entry["best_wer"] == 0.42
+        assert entry["flags"][0]["exhausted"] is True
+        assert report["verdict_counts"]["unrecoverable"] == 1
+
+    def test_unrecoverable_cycle_2_reroute_exhausted(self, tmp_path):
+        """Cycle-2 reroute exhaustion: verdict `unrecoverable`, no best_wer."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_2_reroute",
+                        "reason": "LLM produced a summary, not a narration",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_2_reroute": 0}},
+        )
+        report_node(state)
+
+        report = self._load_report(tmp_path)
+        entry = report["chapters"]["chapter_1"]
+        assert entry["verdict"] == "unrecoverable"
+        assert entry["attempts_used"] == {"cycle_2_reroute": 3}
+        assert entry["best_wer"] is None
+
+    def test_unrecoverable_cycle_1_escalation_exhausted(self, tmp_path):
+        """Cycle-1 escalation exhaustion: verdict `unrecoverable`."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_1_escalation",
+                        "reason": "text-extraction: mojibake after OCR fallback",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_1_escalation": 0}},
+        )
+        report_node(state)
+
+        report = self._load_report(tmp_path)
+        entry = report["chapters"]["chapter_1"]
+        assert entry["verdict"] == "unrecoverable"
+        assert entry["attempts_used"] == {"cycle_1_escalation": 3}
+
+    def test_human_readable_report_written(self, tmp_path):
+        """`quality_report.txt` is written alongside the JSON report."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(creator, chapter_titles=["Ch 1"])
+        report_node(state)
+
+        text_path = tmp_path / "quality_report.txt"
+        assert text_path.exists(), "Human-readable report must be written"
+        content = text_path.read_text()
+        # Rich table header + the verdict glyph for ``clean`` must be present.
+        assert "Quality Report" in content
+        assert "clean" in content
+        assert "Summary:" in content
+
+    def test_warn_stop_prompts_on_unrecoverable(self, tmp_path, monkeypatch):
+        """`warn_stop=True` with an unrecoverable verdict invokes the input prompt."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path, warn_stop=True)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_3_retry",
+                        "reason": "boundary STT mismatch",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_3_retry": 0}},
+        )
+
+        prompts: list[str] = []
+
+        def _fake_input(prompt: str) -> str:
+            prompts.append(prompt)
+            return "y"
+
+        monkeypatch.setattr("builtins.input", _fake_input)
+        report_node(state)
+        assert len(prompts) == 1
+        assert "unrecoverable" in prompts[0]
+
+    def test_warn_stop_user_rejects(self, tmp_path, monkeypatch, caplog):
+        """Rejecting at the prompt logs a warning; the run still completes."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path, warn_stop=True)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_3_retry",
+                        "reason": "boundary STT mismatch",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_3_retry": 0}},
+        )
+
+        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+        with caplog.at_level("WARNING", logger="audify.qa.nodes.report"):
+            report_node(state)
+        # JSON is still written even when the user rejects.
+        assert (tmp_path / "quality_report.json").exists()
+        assert any(
+            "User did not accept audiobook" in r.message for r in caplog.records
+        )
+
+    def test_warn_stop_off_does_not_prompt(self, tmp_path, monkeypatch):
+        """`warn_stop=False` (default) never prompts, even with unrecoverables."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path, warn_stop=False)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_3_retry",
+                        "reason": "boundary STT mismatch",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_3_retry": 0}},
+        )
+
+        def _should_not_be_called(prompt: str) -> str:
+            raise AssertionError(f"input() called unexpectedly with: {prompt!r}")
+
+        monkeypatch.setattr("builtins.input", _should_not_be_called)
+        report_node(state)  # Must not raise
+
+    def test_warn_stop_skipped_when_only_flagged(self, tmp_path, monkeypatch):
+        """`warn_stop` only triggers on unrecoverable, not on soft flags."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path, warn_stop=True)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_3_retry",
+                        "reason": "single retry resolved",
+                        "exhausted": False,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_3_retry": 2}},
+        )
+
+        def _should_not_be_called(prompt: str) -> str:
+            raise AssertionError(f"input() called unexpectedly with: {prompt!r}")
+
+        monkeypatch.setattr("builtins.input", _should_not_be_called)
+        report_node(state)
+
+    def test_warn_stop_non_tty_does_not_hang(self, tmp_path, monkeypatch):
+        """EOFError on stdin (CI/non-tty) is swallowed; the run completes."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path, warn_stop=True)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1"],
+            flags={
+                "chapter_1": [
+                    {
+                        "cycle": "cycle_1_escalation",
+                        "reason": "mojibake",
+                        "exhausted": True,
+                    },
+                ],
+            },
+            retry_budget={"chapter_1": {"cycle_1_escalation": 0}},
+        )
+
+        def _no_stdin(_prompt: str) -> str:
+            raise EOFError("no stdin")
+
+        monkeypatch.setattr("builtins.input", _no_stdin)
+        report_node(state)  # Must not raise
+
+    def test_pipeline_status_partial_when_some_episodes_missing(self, tmp_path):
+        """`pipeline_status=partial` when episodes < expected and > 0."""
+        from audify.qa.nodes.report import report_node
+
+        creator = self._stub_creator(tmp_path)
+        state = self._state(
+            creator,
+            chapter_titles=["Ch 1", "Ch 2"],
+            episode_paths=[tmp_path / "ep_1.mp3"],
+        )
+        report_node(state)
+
+        report = self._load_report(tmp_path)
+        assert report["pipeline_status"] == "partial"
+        assert report["episodes_synthesised"] == 1
+        assert report["chapters_expected"] == 2
