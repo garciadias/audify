@@ -83,7 +83,7 @@ class TestTaskRegistry:
         task = TaskRegistry.get("podcast")
         assert task is not None
         assert task.requires_llm is True
-        assert "comprehensive" in task.prompt.lower()
+        assert "podcast_generator" in task.prompt.lower()
 
     def test_get_summary_task(self):
         task = TaskRegistry.get("summary")
@@ -159,7 +159,7 @@ class TestPromptManager:
     def test_get_builtin_prompt_podcast(self):
         manager = PromptManager()
         prompt = manager.get_builtin_prompt("podcast")
-        assert "comprehensive" in prompt.lower()
+        assert "podcast_generator" in prompt.lower()
 
     def test_get_builtin_prompt_not_found(self):
         manager = PromptManager()

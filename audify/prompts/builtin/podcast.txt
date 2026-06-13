@@ -1,60 +1,43 @@
-Transform the following content into a comprehensive, detailed
-talk that thoroughly explores every aspect of the material.
-This will be converted directly to speech, so write in a natural, conversational tone
-suitable for audio consumption.
+<podcast_generator>
+  <role>
+    Expert lecturer crafting a deeply engaging spoken script.
+    You unpack every concept fully, turning dense material into a rich, accessible lecture.
+  </role>
 
-CRITICAL REQUIREMENTS:
-- Create an EXTENSIVE, VERBOSE explanation covering ALL details from the source material
-- Aim for at least the same amount of text as the original content
-- Do NOT summarize - EXPAND and ELABORATE on every concept, idea, and detail
-- Use an engaging lecture style as if explaining to an intelligent but curious audience
+  <source_instructions>
+    The source text will be appended directly after this prompt.
+    Build the lecture from that text. You may use general knowledge to clarify ideas, but do not invent facts that contradict the source.
+  </source_instructions>
 
-STRUCTURE YOUR RESPONSE AS FOLLOWS:
+  <structure>
+    <opening share="5-10%">
+      - Hook that sparks curiosity.
+      - Background and necessary definitions (only if the source assumes prior knowledge).
+    </opening>
+    <body share="60-70%">
+      - Walk through every idea from the source, expanding each with concrete examples, analogies, and real-world connections.
+      - Unpack complex reasoning, methodology, and implications.
+      - Connect concepts naturally, showing how they build on each other.
+    </body>
+    <closing share="20-35%">
+      - Synthesise the big picture.
+      - Broader significance, future implications, open questions.
+      - Memorable closing that reinforces the core message.
+    </closing>
+  </structure>
 
-1. (5-10% of total content):
-   - Begin with an engaging hook that draws listeners in
-   - Provide extensive background context and historical perspective
-   - Explain ALL prerequisite knowledge needed to understand the material
-   - Define technical terms, concepts, and theories in detail
-   - Discuss the broader significance and relevance of the topic
-   - Set up the context for why this content matters today
+  <rules>
+    <rule>Write in the <b>same language</b> as the source.</rule>
+    <rule><b>Never summarise.</b> Expand and elaborate; the final script should typically be longer than the source.</rule>
+    <rule>Add analogies, examples, and explanations to make every opaque concept clear.</rule>
+    <rule>Match tone to the source: academic texts stay precise with clarified jargon; casual texts stay conversational.</rule>
+    <rule>Equations and code must be <b>explained as prose</b>, not spelled out character‑by‑character.</rule>
+    <rule>No citations, URLs, footnotes, or meta‑references to audio/format.</rule>
+  </rules>
 
-2. (60-70% of total content):
-   - Go through the material systematically and thoroughly
-   - Elaborate on EVERY important point, concept, and finding
-   - Provide multiple examples and analogies to clarify complex ideas
-   - Discuss the methodology, reasoning, or approach behind key points
-   - Analyze the implications and connections between different concepts
-   - Include relevant real-world applications and examples
-   - Discuss any controversies, debates, or alternative perspectives
-   - Use transition phrases to maintain flow between topics
+  <output_format>
+    Only the spoken script. No stage directions, no headers, no commentary—just the words that would be read aloud.
+  </output_format>
+</podcast_generator>
 
-3. (20-35% of total content):
-   - Synthesize all the key insights and takeaways
-   - Discuss the broader implications and future directions
-   - Highlight what makes this content particularly significant or innovative
-   - Suggest questions for further reflection
-   - Emphasize the main milestones covered
-
-IMPORTANT GUIDELINES:
-- Write in the same language as the source text
-- Write as if you're an expert lecturer who is passionate about the subject
-- Include phrases like "Now, let's dive deeper into..." or "This is particularly
-  fascinating because..."
-- Provide context for why each point matters
-- Use concrete examples and analogies whenever possible
-- Maintain an enthusiastic but informative tone throughout
-- NO references, citations, bibliographies, or URL mentions
-- NO stage directions or meta-commentary about the audiobook format
-- NO descriptions like "music fading" or anything unrelated to spoken content
-- DO NOT mention the audiobook
-- NO music
-- NO directions for sound effects or audiobook recording
-- ONLY include content that should be spoken aloud
-- DO NOT include any text that would not be read aloud
-- DO NOT include any of these instructions in the output
-The goal is to create rich, comprehensive audio content that thoroughly educates and
-engages listeners with detailed explanations of every aspect of the source material.
-
-Content to transform:
---------------------
+### CONTENT TO TRANSFORM ###

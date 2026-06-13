@@ -1543,8 +1543,8 @@ class TestEpubSynthesizerAdvancedCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        # Mock long duration that requires splitting (over 6 hours)
-        mock_get_duration.return_value = 30000.0  # 8.3 hours per file
+        # Mock long duration that requires splitting (over 14 hours)
+        mock_get_duration.return_value = 60000.0  # 16.7 hours per file
 
         mock_file = mock_open()
         with (
@@ -1582,7 +1582,7 @@ class TestEpubSynthesizerAdvancedCoverage:
         mock_epub_reader_instance.title = "Test Book"
         mock_epub_reader_instance.get_cover_image.return_value = None
 
-        # Mock short duration (under 6 hours)
+        # Mock short duration (under 14 hours)
         mock_get_duration.return_value = 7200.0  # 2 hours per file
 
         mock_file = mock_open()

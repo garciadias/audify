@@ -3,13 +3,14 @@
 Unit tests for the verification integration module.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from audify.verification_integration import (
-    ChapterDurationChecker,
     AudiobookVerificationCheck,
+    ChapterDurationChecker,
     VerificationPrompts,
     check_chapter_during_synthesis,
     verify_complete_audiobook,
@@ -34,7 +35,9 @@ class TestChapterDurationChecker:
     def test_get_actual_duration(self):
         """Test actual duration retrieval."""
         mock_path = Path("/test/audio.mp3")
-        with patch("audify.verification_integration.AudioProcessor.get_duration") as mock_get:
+        with patch(
+            "audify.verification_integration.AudioProcessor.get_duration"
+        ) as mock_get:
             mock_get.return_value = 1200.0
             duration = ChapterDurationChecker.get_actual_duration(mock_path)
             assert duration == 1200.0
@@ -42,9 +45,11 @@ class TestChapterDurationChecker:
     def test_check_chapter_good_ratio(self):
         """Test chapter check with good duration ratio."""
         mock_path = Path("/test/episode.mp3")
-        
+
         with patch("pathlib.Path.exists", return_value=True):
-            with patch.object(ChapterDurationChecker, "get_actual_duration", return_value=1000):
+            with patch.object(
+                ChapterDurationChecker, "get_actual_duration", return_value=1000
+            ):
                 is_ok, message, ratio = ChapterDurationChecker.check_chapter(
                     chapter_number=1,
                     chapter_title="Test Chapter",
@@ -52,7 +57,7 @@ class TestChapterDurationChecker:
                     script_word_count=1200,  # expect ~960 seconds
                     threshold=0.7,
                 )
-        
+
         assert is_ok is True
         assert ratio > 0.7
         assert "✅" in message
@@ -60,9 +65,11 @@ class TestChapterDurationChecker:
     def test_check_chapter_short_ratio(self):
         """Test chapter check with short duration ratio."""
         mock_path = Path("/test/episode.mp3")
-        
+
         with patch("pathlib.Path.exists", return_value=True):
-            with patch.object(ChapterDurationChecker, "get_actual_duration", return_value=500):
+            with patch.object(
+                ChapterDurationChecker, "get_actual_duration", return_value=500
+            ):
                 is_ok, message, ratio = ChapterDurationChecker.check_chapter(
                     chapter_number=1,
                     chapter_title="Test Chapter",
@@ -70,7 +77,7 @@ class TestChapterDurationChecker:
                     script_word_count=2000,  # expect ~1600 seconds
                     threshold=0.7,
                 )
-        
+
         assert is_ok is False
         assert ratio < 0.7
         assert "⚠️" in message
@@ -79,7 +86,7 @@ class TestChapterDurationChecker:
     def test_check_chapter_file_not_found(self):
         """Test chapter check when audio file doesn't exist."""
         mock_path = Path("/nonexistent/episode.mp3")
-        
+
         is_ok, message, ratio = ChapterDurationChecker.check_chapter(
             chapter_number=1,
             chapter_title="Test Chapter",
@@ -87,7 +94,7 @@ class TestChapterDurationChecker:
             script_word_count=1000,
             threshold=0.7,
         )
-        
+
         assert is_ok is False
         assert ratio == 0.0
         assert "not found" in message.lower()
@@ -102,23 +109,23 @@ class TestAudiobookVerificationCheck:
         # Mock the verifier and report
         mock_verifier = MagicMock()
         mock_verifier_class.return_value = mock_verifier
-        
+
         mock_report = MagicMock()
         mock_report.has_missing_chapters.return_value = False
         mock_report.has_extra_chapters.return_value = False
         mock_report.has_order_issues.return_value = False
         mock_report.duration_hint = MagicMock(ratio=0.95)
-        
+
         mock_verifier.verify.return_value = mock_report
         mock_verifier.generate_report.return_value = {
             "summary": {"matched": 6},
         }
-        
+
         passed, report = AudiobookVerificationCheck.verify_audiobook(
             Path("/test/source.epub"),
             Path("/test/audiobook.m4b"),
         )
-        
+
         assert passed is True
         assert report["verification_passed"] is True
         assert len(report.get("issues", [])) == 0
@@ -128,25 +135,25 @@ class TestAudiobookVerificationCheck:
         """Test audiobook verification with missing chapters."""
         mock_verifier = MagicMock()
         mock_verifier_class.return_value = mock_verifier
-        
+
         mock_missing = MagicMock()
         mock_missing.title = "Missing Chapter"
-        
+
         mock_report = MagicMock()
         mock_report.has_missing_chapters.return_value = True
         mock_report.missing = [mock_missing]
         mock_report.has_extra_chapters.return_value = False
         mock_report.has_order_issues.return_value = False
         mock_report.duration_hint = MagicMock(ratio=0.95)
-        
+
         mock_verifier.verify.return_value = mock_report
         mock_verifier.generate_report.return_value = {}
-        
+
         passed, report = AudiobookVerificationCheck.verify_audiobook(
             Path("/test/source.epub"),
             Path("/test/audiobook.m4b"),
         )
-        
+
         assert passed is False
         assert report["verification_passed"] is False
         assert len(report["issues"]) > 0
@@ -157,7 +164,7 @@ class TestAudiobookVerificationCheck:
         """Test audiobook verification with short duration."""
         mock_verifier = MagicMock()
         mock_verifier_class.return_value = mock_verifier
-        
+
         mock_report = MagicMock()
         mock_report.has_missing_chapters.return_value = False
         mock_report.has_extra_chapters.return_value = False
@@ -167,16 +174,16 @@ class TestAudiobookVerificationCheck:
             actual_duration_s=5000,
             expected_duration_s=10000,
         )
-        
+
         mock_verifier.verify.return_value = mock_report
         mock_verifier.generate_report.return_value = {}
-        
+
         passed, report = AudiobookVerificationCheck.verify_audiobook(
             Path("/test/source.epub"),
             Path("/test/audiobook.m4b"),
             duration_ratio_threshold=0.6,
         )
-        
+
         assert passed is False
         assert report["verification_passed"] is False
         assert any("duration" in issue.lower() for issue in report["issues"])
@@ -226,7 +233,7 @@ class TestCheckChapterDuringSynthesis:
     def test_check_chapter_ok(self, mock_check):
         """Test chapter check when OK."""
         mock_check.return_value = (True, "OK", 0.8)
-        
+
         result = check_chapter_during_synthesis(
             chapter_number=1,
             chapter_title="Test",
@@ -234,14 +241,14 @@ class TestCheckChapterDuringSynthesis:
             script_word_count=1000,
             confirm=True,
         )
-        
+
         assert result is True
 
     @patch("audify.verification_integration.ChapterDurationChecker.check_chapter")
     def test_check_chapter_short_confirm_mode(self, mock_check):
         """Test short chapter in confirm mode."""
         mock_check.return_value = (False, "SHORT", 0.5)
-        
+
         result = check_chapter_during_synthesis(
             chapter_number=1,
             chapter_title="Test",
@@ -249,15 +256,18 @@ class TestCheckChapterDuringSynthesis:
             script_word_count=1000,
             confirm=True,
         )
-        
+
         assert result is True
 
     @patch("audify.verification_integration.ChapterDurationChecker.check_chapter")
-    @patch("audify.verification_integration.VerificationPrompts.prompt_short_chapter", return_value=True)
+    @patch(
+        "audify.verification_integration.VerificationPrompts.prompt_short_chapter",
+        return_value=True,
+    )
     def test_check_chapter_short_user_accepts(self, mock_prompt, mock_check):
         """Short chapter: default continues without prompt, warn_stop prompts."""
         mock_check.return_value = (False, "SHORT", 0.5)
-        
+
         # Default (warn_stop=False): logs warning, returns True, no prompt
         result = check_chapter_during_synthesis(
             chapter_number=1,
@@ -268,7 +278,7 @@ class TestCheckChapterDuringSynthesis:
         )
         assert result is True
         assert not mock_prompt.called, "Default: should NOT prompt"
-        
+
         # With warn_stop=True: prompts user
         mock_prompt.reset_mock()
         result = check_chapter_during_synthesis(
@@ -292,7 +302,7 @@ class TestVerifyCompleteAudiobook:
             source_path=None,
             audiobook_path=Path("/test/audiobook.m4b"),
         )
-        
+
         assert result is True
 
     def test_verify_audiobook_source_not_found(self):
@@ -301,34 +311,34 @@ class TestVerifyCompleteAudiobook:
             source_path=Path("/nonexistent/source.epub"),
             audiobook_path=Path("/test/audiobook.m4b"),
         )
-        
+
         assert result is True
 
     @patch("audify.verification_integration.AudiobookVerificationCheck.verify_audiobook")
     def test_verify_audiobook_passed(self, mock_verify):
         """Test verification passed."""
         mock_verify.return_value = (True, {"verification_passed": True})
-        
+
         with patch("pathlib.Path.exists", return_value=True):
             result = verify_complete_audiobook(
                 source_path=Path("/test/source.epub"),
                 audiobook_path=Path("/test/audiobook.m4b"),
             )
-        
+
         assert result is True
 
     @patch("audify.verification_integration.AudiobookVerificationCheck.verify_audiobook")
     def test_verify_audiobook_confirm_mode(self, mock_verify):
         """Test verification failed but accepted in confirm mode."""
         mock_verify.return_value = (False, {"verification_passed": False})
-        
+
         with patch("pathlib.Path.exists", return_value=True):
             result = verify_complete_audiobook(
                 source_path=Path("/test/source.epub"),
                 audiobook_path=Path("/test/audiobook.m4b"),
                 confirm=True,
             )
-        
+
         assert result is True
 
 

@@ -23,6 +23,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "myst_parser",
+    "sphinxcontrib.mermaid",
 ]
 
 # MyST (Markdown) support
@@ -34,6 +35,10 @@ myst_enable_extensions = [
     "tasklist",
 ]
 myst_heading_anchors = 3
+
+# Render ```mermaid fenced code blocks via the sphinxcontrib-mermaid directive
+# instead of trying to highlight them as code (avoids "unknown lexer" errors).
+myst_fence_as_directive = ["mermaid"]
 
 source_suffix = {
     ".rst": "restructuredtext",

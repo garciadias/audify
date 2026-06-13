@@ -387,6 +387,18 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     "--process-only run).",
 )
 @click.option(
+    "--graph",
+    is_flag=True,
+    default=False,
+    help=(
+        "Run the LangGraph-based agentic pipeline instead of the legacy "
+        "orchestrator (experimental). Honours --process-only/--synthesize-only. "
+        "The skeleton skips the per-chapter duration check and the post-M4B "
+        "verify_complete_audiobook check — both map to Quality Checks that the "
+        "cyclic-detector PRs replace (see docs/adr/0002 and CONTEXT.md)."
+    ),
+)
+@click.option(
     "--verbose",
     is_flag=True,
     help="Show detailed log messages in terminal.",
@@ -425,6 +437,7 @@ def cli(
     max_samples: int,
     process_only: bool,
     synthesize_only: bool,
+    graph: bool,
     verbose: bool,
     warn_stop: bool,
     path: str | None,
@@ -747,7 +760,16 @@ def cli(
                 mode=mode,
                 warn_stop=warn_stop,
             )
-            output_path = creator.synthesize()
+            if graph:
+                from audify.qa.graph import run_graph
+
+                try:
+                    creator.progress.start()
+                    output_path = run_graph(creator)
+                finally:
+                    creator.progress.stop()
+            else:
+                output_path = creator.synthesize()
             output_path = _ensure_output_synced_to_host_data(
                 Path(output_path),
                 logger,

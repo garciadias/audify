@@ -361,7 +361,7 @@ class TestAudioProcessor:
 
             chunks = AudioProcessor.split_audio_by_duration(file_paths)
 
-            # Should use default 6 hours, so all files fit in one chunk
+            # Should use default 14 hours, so all files fit in one chunk
             assert len(chunks) == 1
             assert chunks[0] == file_paths
 

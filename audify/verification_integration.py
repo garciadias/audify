@@ -151,10 +151,11 @@ class AudiobookVerificationCheck:
             # Check for order violations
             if report.has_order_issues():
                 passed = False
-                issues.append(
-                    f"Chapter order issues: "
-                    f"{', '.join(f'{v.title} (pos {v.actual_position + 1})' for v in report.order_violations)}"
+                order_summary = ", ".join(
+                    f"{v.title} (pos {v.actual_position + 1})"
+                    for v in report.order_violations
                 )
+                issues.append(f"Chapter order issues: {order_summary}")
 
             # Check duration ratio
             if report.duration_hint:
@@ -202,8 +203,10 @@ class VerificationPrompts:
             return True  # No prompt needed
 
         message = (
-            f"\n⚠️  WARNING: Episode {chapter_number} ({chapter_title}) is shorter than expected\n"
-            f"   Expected duration: ~{ChapterDurationChecker.WORDS_PER_MINUTE} words/min\n"
+            f"\n⚠️  WARNING: Episode {chapter_number} ({chapter_title}) "
+            f"is shorter than expected\n"
+            f"   Expected duration: "
+            f"~{ChapterDurationChecker.WORDS_PER_MINUTE} words/min\n"
             f"   Actual ratio: {ratio:.1%}\n"
             f"\n"
             f"   Continue anyway? (y/N): "

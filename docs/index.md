@@ -32,10 +32,26 @@ commercial-apis
 
 ```{toctree}
 :maxdepth: 2
+:caption: Design & Architecture Decisions
+
+graph
+adr/0001-qa-loop-as-cyclic-graph-not-central-llm
+adr/0002-langgraph-as-cyclic-graph-substrate
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Development
 
 contributing
 changelog
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Troubleshooting
+
+troubleshooting-no-audio
 ```
 
 ## What is Audify?

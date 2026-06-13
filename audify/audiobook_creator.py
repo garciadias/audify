@@ -62,12 +62,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _clean_text_for_audiobook(text: str) -> str:
-    """Remove references, citations, and academic formatting from text.
-
-    Preserves real book content while removing elements that disrupt TTS
-    or are tedious to listen to (citation markers, URLs, footnotes).
-    """
+def clean_text_for_audiobook(text: str) -> str:
+    """Remove references, citations, and academic formatting from text."""
     text = str(text)
     if re.search(r"<[^>]+>", text):
         text = BeautifulSoup(text, "html.parser").get_text()
@@ -79,6 +75,8 @@ def _clean_text_for_audiobook(text: str) -> str:
     # Remove specific citation patterns: (Author, YYYY) or (Author et al., YYYY)
     # This is more targeted than removing ALL parenthetical with 4 digits.
     text = re.sub(r"\([A-Z][a-z]+(?:\.?\s+(?:et\s+al\.?)?)?,?\s*\d{4}[^)]*\)", "", text)
+    # Remove inline "Author et al. (YYYY)" citations (year in parens)
+    text = re.sub(r"\b[A-Z][a-z]+\s+et\s+al\.\s*\(\d{4}\)", "", text)
     # Remove collation: (pp. 12-34) or (p. 5)
     text = re.sub(r"\(pp?\.\s*\d+(?:\-\d+)?\)", "", text)
 
@@ -94,11 +92,14 @@ def _clean_text_for_audiobook(text: str) -> str:
         r"(?i)\nbibliography\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
         r"(?i)\n(?:works?\s+)?cited\s*:?\s*\n(?!\s*$)(?:.{0,200}?\n){0,3}(?=(?:\n|$))",
     ]:
-        text = re.sub(pattern, "\n[Reference section starts here]", text, flags=re.DOTALL)
+        text = re.sub(
+            pattern, "\n[Reference section starts here]", text, flags=re.DOTALL
+        )
 
     # Remove "Figure 1:" or "Table 3" labels when they appear at line start
     # (not in running text)
-    text = re.sub(r"(?mi)^(?:figure|fig|table|tab)\s*\.?\s*\d+[\s.:\-].*", "", text)
+    # Remove figure/table labels at start of lines (with optional indent)
+    text = re.sub(r"(?mi)^\s*(?:figure|fig|table|tab)\s*\.?\s*\d+[\s.:\-].*", "", text)
 
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
@@ -480,7 +481,7 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(f"✓ TTS provider '{self.tts_provider}' is available and ready")
 
     def _clean_text_for_audiobook(self, text: str) -> str:
-        return _clean_text_for_audiobook(text)
+        return clean_text_for_audiobook(text)
 
     def generate_audiobook_script(
         self, chapter_text: str, chapter_number: int, language: Optional[str] = None
@@ -961,7 +962,7 @@ class AudiobookCreator(BaseSynthesizer):
             episode_number = i + 1
             chapter_title = chapter_titles[i]
 
-            cleaned_content = _clean_text_for_audiobook(chapter_content)
+            cleaned_content = clean_text_for_audiobook(chapter_content)
             text_snippet = " ".join(cleaned_content.split()[:100])
 
             try:
@@ -1011,7 +1012,7 @@ class AudiobookCreator(BaseSynthesizer):
         # Phase 3 - synthesise TTS audio
         # ------------------------------------------------------------------
         episode_paths: list[Path] = []
-        
+
         # Track which episodes passed duration check (for validation)
         short_episodes: list[int] = []
 
@@ -1033,7 +1034,7 @@ class AudiobookCreator(BaseSynthesizer):
                     logger.info(
                         f"Successfully created Episode {episode_number}: {episode_path}"
                     )
-                    
+
                     # Check chapter duration against expected length
                     duration_ok = check_chapter_during_synthesis(
                         chapter_number=episode_number,
@@ -1044,7 +1045,7 @@ class AudiobookCreator(BaseSynthesizer):
                         threshold=0.7,  # 70% of expected duration minimum
                         warn_stop=self.warn_stop,
                     )
-                    
+
                     if not duration_ok:
                         short_episodes.append(episode_number)
                         logger.warning(
@@ -1073,7 +1074,7 @@ class AudiobookCreator(BaseSynthesizer):
 
         if episode_paths:
             self.create_m4b()
-            
+
             # Verify complete audiobook if source file is available
             audiobook_m4b = self.audiobook_path / (
                 self.file_name.stem + ".m4b"
@@ -1129,7 +1130,7 @@ class AudiobookCreator(BaseSynthesizer):
         )
 
     def _split_episodes_by_duration(
-        self, episode_mp3_files: List[Path], max_hours: float = 6.0
+        self, episode_mp3_files: List[Path], max_hours: float = 14.0
     ) -> List[List[Path]]:
         """Split episode MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
@@ -1211,18 +1212,19 @@ class AudiobookCreator(BaseSynthesizer):
         total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
         logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        # If duration is less than 6 hours, create a single M4B
-        # Using 6 hours as a safe limit to avoid WAV file size issues
-        if total_duration_hours <= 6.0:
-            logger.info("Creating single M4B file (duration <= 6 hours)")
+        # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
+        # hours, but ~15h is the practical ceiling across common audiobook
+        # players. Only split when above 14h to leave a small safety margin.
+        if total_duration_hours <= 14.0:
+            logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
         else:
             logger.info(
-                f"Duration ({total_duration_hours:.2f}h) exceeds 6 hours, "
-                f"splitting into multiple M4B files to avoid WAV file size limits"
+                f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
+                f"splitting into multiple M4B files for player compatibility"
             )
-            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=6.0)
+            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
             logger.info(f"Split into {len(chunks)} chunks")
 
             for chunk_index, chunk_files in enumerate(chunks):
@@ -1812,7 +1814,7 @@ class DirectoryAudiobookCreator:
         return audiobook_script
 
     def _clean_text_for_audiobook(self, text: str) -> str:
-        return _clean_text_for_audiobook(text)
+        return clean_text_for_audiobook(text)
 
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
@@ -1844,7 +1846,7 @@ class DirectoryAudiobookCreator:
         return total_duration
 
     def _split_episodes_by_duration(
-        self, episode_mp3_files: List[Path], max_hours: float = 6.0
+        self, episode_mp3_files: List[Path], max_hours: float = 14.0
     ) -> List[List[Path]]:
         """Split episode MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
@@ -1929,18 +1931,19 @@ class DirectoryAudiobookCreator:
         total_duration_hours = self._calculate_total_duration(episode_mp3_files) / 3600
         logger.info(f"Total audiobook duration: {total_duration_hours:.2f} hours")
 
-        # If duration is less than 6 hours, create a single M4B
-        # Using 6 hours as a safe limit to avoid WAV file size issues
-        if total_duration_hours <= 6.0:
-            logger.info("Creating single M4B file (duration <= 6 hours)")
+        # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
+        # hours, but ~15h is the practical ceiling across common audiobook
+        # players. Only split when above 14h to leave a small safety margin.
+        if total_duration_hours <= 14.0:
+            logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
         else:
             logger.info(
-                f"Duration ({total_duration_hours:.2f}h) exceeds 6 hours, "
-                f"splitting into multiple M4B files to avoid WAV file size limits"
+                f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
+                f"splitting into multiple M4B files for player compatibility"
             )
-            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=6.0)
+            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
             logger.info(f"Split into {len(chunks)} chunks")
 
             for chunk_index, chunk_files in enumerate(chunks):

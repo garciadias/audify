@@ -34,9 +34,12 @@ CHAPTER_PATTERNS = [
         rf"^(part|section|book)\s+([\divxlcdm]+|{_WRITTEN_NUMBERS})[\s.:—\-]*.*",
         re.IGNORECASE,
     ),
-    # Standalone Roman numerals (I, II, III, IV, ..., possibly with title)
+    # Standalone Roman numerals (I, II, III, IV, ..., possibly with title).
+    # Require an explicit punctuation separator (``.:—-``) so that ordinary
+    # sentences starting with the pronoun "I " (e.g. "I wore a hat…") don't
+    # get misclassified as Roman-numeral chapter headings.
     re.compile(
-        r"^[IVXLCDM]+[\s.:—\-]+.+",
+        r"^[IVXLCDM]+\s*[.:—\-]\s*\S.*",
     ),
     # Standalone numbers like "1", "2.", "1 -", possibly followed by a title
     re.compile(
@@ -268,6 +271,8 @@ class EpubReader(Reader):
                 body = soup.find("body")
                 if body is not None:
                     bodies.append(str(body))
+                elif hasattr(soup, "decode_contents"):
+                    bodies.append(soup.decode_contents())
                 else:
                     # Some EPUB files omit the ``<body>`` tag entirely.
                     # Use the whole soup (``<html>``) as the body so that
@@ -393,45 +398,6 @@ class EpubReader(Reader):
         # Fallback to old heuristic for documents that don't fit either
         # pattern cleanly
         return (len(links) > 5 or len(list_items) > 5) and indicator_count > 1
-
-        # Check headings (h1-h6) for explicit TOC markers
-        headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
-        has_toc_heading = False
-        for h in headings:
-            h_text = h.get_text(separator=" ", strip=True).lower()
-            if any(marker in h_text for marker in cls._TOC_HEADING_MARKERS):
-                has_toc_heading = True
-                break
-
-        # Check for TOC-indicating CSS classes or ids
-        has_toc_attr = False
-        if not has_toc_heading:
-            for tag in soup.find_all(True):
-                if not isinstance(tag, Tag):
-                    continue
-                classes = " ".join(tag.get("class", []))  # type: ignore[arg-type]
-                tag_id = tag.get("id", "")  # type: ignore[arg-type]
-                combined = f"{classes} {tag_id}"
-                if cls._TOC_ATTR_TOKENS.search(combined):
-                    has_toc_attr = True
-                    break
-
-        toc_context = has_toc_heading or has_toc_attr
-
-        # A TOC has many links/list-items AND heading/attr context
-        if toc_context and (len(links) > 4 or len(list_items) > 4):
-            return True
-
-        # Without heading context, only flag when link density is extreme
-        # relative to visible text — avoids false positives on link-heavy
-        # academic chapters (footnotes, citations, cross-references).
-        visible_len = len(text)
-        if visible_len > 0 and len(links) > 20:
-            link_ratio = (len(links) * 100) / max(visible_len, 1)
-            if link_ratio > 2.0:
-                return True
-
-        return False
 
     @staticmethod
     def _looks_like_copyright(text: str) -> bool:
