@@ -72,10 +72,32 @@ decorator), not one of the three remediation topologies above.
 
 - **Episode:** the audio artifact for one source chapter (`episode_NNN.mp3`).
   The unit of the coverage check.
+- **Script:** the LLM-rewritten narration text for one source chapter
+  (`scripts/episode_NNN_script.txt`). The output of `script_gen`, the input
+  of `synthesize`, and the persisted artifact that lets `synthesize` mode
+  pick up where `process` mode left off.
 - **TTS batch:** ≤5000 chars of text synthesized into one WAV
   (`batch_N.wav`). The unit of the fidelity check and the retry edge.
 - **LLM chunk:** ≤2500 words, a long chapter split to fit the LLM context
   window. Internal to script generation; not a QA unit.
+
+## Graph modes
+
+The acyclic skeleton expresses three canonical sub-graphs, each selected by a
+CLI flag and dispatched by `build_graph(mode)`:
+
+- **`full`** (default): `read → confirm → script_gen → synthesize → assemble → report`.
+- **`process`** (`--process-only`): `read → confirm → script_gen → report`. Stops
+  after Scripts are written to disk; no TTS, no M4B.
+- **`synthesize`** (`--synthesize-only`): `load_scripts → synthesize → assemble → report`.
+  Bypasses `read`/`script_gen` by loading previously-saved Scripts. The
+  companion to `process`.
+
+The TTS preflight and the user-confirm prompt are infrastructure, not Quality
+Checks: preflight runs in `run_graph` before the graph for modes that do TTS;
+the confirm prompt is a `confirm_node` between `read` and `script_gen`, and an
+abort propagates as `{"chapters": []}` so downstream nodes naturally no-op
+without conditional edges.
 
 ## Agents
 

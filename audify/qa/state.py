@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import TypeAlias, TypedDict
 
@@ -10,9 +10,11 @@ if TYPE_CHECKING:
     # because LangGraph resolves TypedDict annotations via
     # ``typing.get_type_hints``, which would fail on a forward reference to
     # ``AudiobookCreator`` (importing it at runtime here causes a cycle).
-    from audify.audiobook_creator import AudiobookCreator, DirectoryAudiobookCreator
+    # The graph pipeline only operates on single-file creators; directory
+    # processing has its own non-graph path (see audify/cli.py).
+    from audify.audiobook_creator import AudiobookCreator
 
-    CreatorT: TypeAlias = Union[AudiobookCreator, DirectoryAudiobookCreator]
+    CreatorT: TypeAlias = AudiobookCreator
 else:
     CreatorT = Any
 
@@ -27,9 +29,9 @@ class GraphState(TypedDict):
     """
 
     # ``CreatorT`` is ``Any`` at runtime (LangGraph evaluates this) and
-    # ``AudiobookCreator | DirectoryAudiobookCreator`` under mypy, so node
-    # bodies still get attribute-level type checking when annotated against
-    # this state.
+    # ``AudiobookCreator`` under mypy, so node bodies still get attribute-level
+    # type checking when annotated against this state. Directory processing
+    # does not flow through the graph, so a union is not needed here.
     creator: CreatorT
     chapters: list[str]
     chapter_titles: list[str]

@@ -11,7 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 def script_gen_node(state: GraphState) -> dict:
-    """Generate LLM scripts for every chapter (Phase 1 of the legacy pipeline)."""
+    """Generate LLM scripts for every chapter (Phase 1 of the legacy pipeline).
+
+    NOTE: this loop intentionally duplicates the script-generation block in
+    ``AudiobookCreator.create_audiobook_series`` (audiobook_creator.py:953-1001).
+    The legacy path stays the default while the graph evolves; once cyclic
+    detectors land and ``--graph`` becomes default, the legacy paths get
+    deleted — extracting a shared helper now would create churn for code that
+    is about to disappear.
+    """
     creator = state["creator"]
     chapters = state["chapters"]
     chapter_titles = state["chapter_titles"]

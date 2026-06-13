@@ -392,7 +392,10 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     default=False,
     help=(
         "Run the LangGraph-based agentic pipeline instead of the legacy "
-        "orchestrator (experimental)."
+        "orchestrator (experimental). Honours --process-only/--synthesize-only. "
+        "The skeleton skips the per-chapter duration check and the post-M4B "
+        "verify_complete_audiobook check — both map to Quality Checks that the "
+        "cyclic-detector PRs replace (see docs/adr/0002 and CONTEXT.md)."
     ),
 )
 @click.option(

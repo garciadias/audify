@@ -29,6 +29,10 @@ def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMoc
     creator.max_chapters = None
     creator.audiobook_path = tmp_path
     creator.chapter_titles = []
+    creator.mode = "full"
+    # Default to non-interactive (matches `-y/--confirm` flag): skip the
+    # confirm_node prompt so the test doesn't hang on stdin.
+    creator.confirm = False
 
     # reader is a non-EpubReader so we get the simple path. Using
     # ``MagicMock(spec=PdfReader)`` gives a durable ``isinstance`` answer
@@ -79,6 +83,26 @@ class TestBuildGraph:
                     f"Back-edge detected: {src} → {dst}; "
                     "skeleton must be acyclic."
                 )
+
+    def test_process_graph_skips_synthesis(self):
+        """`process` mode: scripts only, no synthesize/assemble nodes."""
+        graph = build_graph("process")
+        nodes = set(graph.get_graph().nodes)
+        assert {"read", "script_gen", "report"}.issubset(nodes)
+        assert "synthesize" not in nodes
+        assert "assemble" not in nodes
+
+    def test_synthesize_graph_skips_read_and_script_gen(self):
+        """`synthesize` mode: load saved scripts, no read/script_gen nodes."""
+        graph = build_graph("synthesize")
+        nodes = set(graph.get_graph().nodes)
+        assert {"load_scripts", "synthesize", "assemble", "report"}.issubset(nodes)
+        assert "read" not in nodes
+        assert "script_gen" not in nodes
+
+    def test_build_graph_rejects_unknown_mode(self):
+        with pytest.raises(ValueError, match="Unknown graph mode"):
+            build_graph("nonsense")
 
 
 class TestRunGraph:
@@ -135,6 +159,141 @@ class TestRunGraph:
 
         # max_chapters=1 → only 1 episode synthesized
         assert creator.synthesize_episode.call_count == 1
+
+
+class TestPreflightGuard:
+    """`run_graph` invokes `_verify_tts_provider_available` before TTS modes."""
+
+    def test_full_mode_runs_preflight(self, tmp_path):
+        creator = _make_creator(tmp_path)
+        creator.mode = "full"
+        run_graph(creator)
+        creator._verify_tts_provider_available.assert_called_once()
+
+    def test_synthesize_mode_runs_preflight(self, tmp_path):
+        scripts_path = tmp_path / "scripts"
+        scripts_path.mkdir()
+        creator = _make_creator(tmp_path)
+        creator.mode = "synthesize"
+        creator.scripts_path = scripts_path
+        run_graph(creator)
+        creator._verify_tts_provider_available.assert_called_once()
+
+    def test_process_mode_skips_preflight(self, tmp_path):
+        """Process mode performs no TTS, so the preflight is unnecessary."""
+        creator = _make_creator(tmp_path)
+        creator.mode = "process"
+        run_graph(creator)
+        creator._verify_tts_provider_available.assert_not_called()
+
+    def test_preflight_failure_aborts_before_graph(self, tmp_path):
+        """A failing preflight surfaces as an exception, never reaches read."""
+        creator = _make_creator(tmp_path)
+        creator.mode = "full"
+        creator._verify_tts_provider_available.side_effect = RuntimeError(
+            "TTS provider 'kokoro' is not available."
+        )
+        with pytest.raises(RuntimeError, match="not available"):
+            run_graph(creator)
+        creator.generate_audiobook_script.assert_not_called()
+
+
+class TestConfirmNode:
+    """`confirm_node` prints the TOC and may abort the pipeline."""
+
+    def test_confirm_disabled_passes_through(self, tmp_path):
+        """When `creator.confirm` is False, run_graph proceeds without prompting."""
+        creator = _make_creator(tmp_path)
+        creator.confirm = False  # default in fixture; made explicit here
+        run_graph(creator)
+        # TOC is always shown
+        creator.progress.print_table_of_contents.assert_called_once()
+        # Generation still ran (no abort)
+        creator.generate_audiobook_script.assert_called()
+
+    def test_confirm_yes_continues(self, tmp_path, monkeypatch):
+        """User typing `y` continues the pipeline."""
+        creator = _make_creator(tmp_path)
+        creator.confirm = True
+        monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+        run_graph(creator)
+        creator.generate_audiobook_script.assert_called()
+
+    def test_confirm_no_aborts(self, tmp_path, monkeypatch):
+        """User typing `n` aborts: empty chapters → no script_gen, no synth."""
+        creator = _make_creator(tmp_path)
+        creator.confirm = True
+        monkeypatch.setattr("builtins.input", lambda _prompt: "n")
+        run_graph(creator)
+        creator.generate_audiobook_script.assert_not_called()
+        creator.synthesize_episode.assert_not_called()
+        creator.create_m4b.assert_not_called()
+
+    def test_confirm_non_tty_aborts_safely(self, tmp_path, monkeypatch):
+        """OSError/EOFError on stdin (non-tty / captured) aborts, no hang."""
+        creator = _make_creator(tmp_path)
+        creator.confirm = True
+
+        def _no_stdin(_prompt):
+            raise OSError("no stdin")
+
+        monkeypatch.setattr("builtins.input", _no_stdin)
+        run_graph(creator)
+        creator.synthesize_episode.assert_not_called()
+
+
+class TestRunGraphModeDispatch:
+    """`run_graph` routes to the right sub-graph based on ``creator.mode``."""
+
+    def test_process_mode_skips_synthesis(self, tmp_path):
+        """`process`: scripts saved, no TTS, no M4B."""
+        creator = _make_creator(tmp_path)
+        creator.mode = "process"
+
+        run_graph(creator)
+
+        creator.generate_audiobook_script.assert_called()
+        # No synthesis / assembly should happen in process mode
+        creator.synthesize_episode.assert_not_called()
+        creator.create_m4b.assert_not_called()
+
+    def test_synthesize_mode_loads_scripts_and_skips_read(self, tmp_path):
+        """`synthesize`: loads saved scripts, no LLM, no `read`."""
+        scripts_path = tmp_path / "scripts"
+        scripts_path.mkdir()
+        # Two pre-existing scripts on disk, plus a chapter_titles.json
+        (scripts_path / "episode_001_script.txt").write_text("Script for chapter 1.")
+        (scripts_path / "episode_002_script.txt").write_text("Script for chapter 2.")
+        (scripts_path / "chapter_titles.json").write_text(
+            json.dumps(["Chapter 1", "Chapter 2"])
+        )
+
+        creator = _make_creator(tmp_path)
+        creator.mode = "synthesize"
+        creator.scripts_path = scripts_path
+        creator._load_chapter_titles.return_value = ["Chapter 1", "Chapter 2"]
+
+        run_graph(creator)
+
+        # No LLM should be called in synthesize mode
+        creator.generate_audiobook_script.assert_not_called()
+        # But both pre-existing scripts should be synthesised
+        assert creator.synthesize_episode.call_count == 2
+        creator.create_m4b.assert_called_once()
+
+    def test_synthesize_mode_with_no_saved_scripts_is_quiet(self, tmp_path):
+        """`synthesize` with no scripts on disk: log error, no exception."""
+        scripts_path = tmp_path / "scripts"
+        scripts_path.mkdir()
+
+        creator = _make_creator(tmp_path)
+        creator.mode = "synthesize"
+        creator.scripts_path = scripts_path
+
+        run_graph(creator)
+
+        creator.synthesize_episode.assert_not_called()
+        creator.create_m4b.assert_not_called()
 
 
 class TestRenderMermaid:
