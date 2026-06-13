@@ -7,12 +7,18 @@ from langgraph.graph import END, StateGraph
 
 from audify.qa.nodes.assemble import assemble_node
 from audify.qa.nodes.confirm import confirm_node
+from audify.qa.nodes.fidelity import fidelity_node, fidelity_route
 from audify.qa.nodes.load_scripts import load_scripts_node
 from audify.qa.nodes.read import read_node
 from audify.qa.nodes.report import report_node
 from audify.qa.nodes.script_gen import script_gen_node
 from audify.qa.nodes.synthesize import synthesize_node
 from audify.qa.state import GraphState
+
+# Bound on graph supersteps. The cycle-3 retry edge loops
+# synthesize ↔ fidelity at most MAX_BUDGET_PER_CYCLE times per run, so the
+# default LangGraph limit (25) is ample; set explicitly for clarity/safety.
+_RECURSION_LIMIT = 50
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -23,12 +29,15 @@ if TYPE_CHECKING:
 def build_graph(mode: str = "full") -> "CompiledStateGraph":
     """Assemble the QA pipeline graph for the requested *mode*.
 
-    Three topologies, each acyclic (no back-edges in this skeleton):
+    Three topologies:
 
-    * ``"full"`` — ``read → script_gen → synthesize → assemble → report → END``
-    * ``"process"`` — ``read → script_gen → report → END`` (no TTS)
-    * ``"synthesize"`` — ``load_scripts → synthesize → assemble → report → END``
-      (loads previously-saved scripts, no LLM)
+    * ``"full"`` — ``read → confirm → script_gen → synthesize → fidelity →
+      assemble → report → END`` with a cycle-3 ``fidelity → synthesize``
+      retry back-edge.
+    * ``"process"`` — ``read → confirm → script_gen → report → END`` (no TTS,
+      acyclic).
+    * ``"synthesize"`` — ``load_scripts → synthesize → fidelity → assemble →
+      report → END`` (loads previously-saved scripts, no LLM; retry edge applies).
 
     Each shape mirrors the corresponding branch of the legacy
     ``AudiobookCreator.create_audiobook_series`` orchestrator.
@@ -51,6 +60,7 @@ def _build_full_graph() -> "CompiledStateGraph":
     builder.add_node("confirm", confirm_node)
     builder.add_node("script_gen", script_gen_node)
     builder.add_node("synthesize", synthesize_node)
+    builder.add_node("fidelity", fidelity_node)
     builder.add_node("assemble", assemble_node)
     builder.add_node("report", report_node)
 
@@ -58,7 +68,14 @@ def _build_full_graph() -> "CompiledStateGraph":
     builder.add_edge("read", "confirm")
     builder.add_edge("confirm", "script_gen")
     builder.add_edge("script_gen", "synthesize")
-    builder.add_edge("synthesize", "assemble")
+    builder.add_edge("synthesize", "fidelity")
+    # Cycle-3 retry edge: loop back to synthesize while episodes are flagged
+    # for re-chunk, otherwise continue to assemble.
+    builder.add_conditional_edges(
+        "fidelity",
+        fidelity_route,
+        {"synthesize": "synthesize", "assemble": "assemble"},
+    )
     builder.add_edge("assemble", "report")
     builder.add_edge("report", END)
     return builder.compile()
@@ -83,12 +100,18 @@ def _build_synthesize_graph() -> "CompiledStateGraph":
     builder: StateGraph = StateGraph(GraphState)
     builder.add_node("load_scripts", load_scripts_node)
     builder.add_node("synthesize", synthesize_node)
+    builder.add_node("fidelity", fidelity_node)
     builder.add_node("assemble", assemble_node)
     builder.add_node("report", report_node)
 
     builder.set_entry_point("load_scripts")
     builder.add_edge("load_scripts", "synthesize")
-    builder.add_edge("synthesize", "assemble")
+    builder.add_edge("synthesize", "fidelity")
+    builder.add_conditional_edges(
+        "fidelity",
+        fidelity_route,
+        {"synthesize": "synthesize", "assemble": "assemble"},
+    )
     builder.add_edge("assemble", "report")
     builder.add_edge("report", END)
     return builder.compile()
@@ -123,9 +146,11 @@ def run_graph(creator: "AudiobookCreator") -> Path:
         "retry_budget": {},
         "best_wer": {},
         "flags": {},
+        "pending_retry": [],
+        "episodes_to_check": [],
     }
 
-    graph.invoke(initial_state)
+    graph.invoke(initial_state, {"recursion_limit": _RECURSION_LIMIT})
     return Path(creator.audiobook_path)
 
 
@@ -143,14 +168,24 @@ def render_mermaid(output_path: Path = Path("docs/graph.md")) -> None:
     output_path.write_text(
         "# QA Pipeline Graph\n\n"
         "Topology of the LangGraph QA pipeline in `full` mode "
-        "(`read → script_gen → synthesize → assemble → report`).\n\n"
+        "(`read → confirm → script_gen → synthesize → fidelity → "
+        "assemble → report`).\n\n"
         f"```mermaid\n{diagram}\n```\n\n"
+        "## Cycle 3 — fidelity retry edge\n\n"
+        "`fidelity` boundary-samples each freshly-synthesized episode "
+        "(head/tail STT round-trip + duration ratio). When it suspects TTS "
+        "truncation it loops back to `synthesize` to re-chunk the offending "
+        "episode on a smaller batch size, bounded to 3 retries per chapter "
+        "(the `fidelity → synthesize` back-edge above). On exhaustion the "
+        "lowest-WER attempt is kept and the chapter is flagged in the report; "
+        "the run never aborts.\n\n"
         "## Sub-graphs\n\n"
         "* **`process` mode** (`--process-only`): "
         "`read → confirm → script_gen → report → END` — no TTS, no M4B.\n"
         "* **`synthesize` mode** (`--synthesize-only`): "
-        "`load_scripts → synthesize → assemble → report → END` — "
-        "scripts are loaded from a previous `--process-only` run.\n"
+        "`load_scripts → synthesize → fidelity → assemble → report → END` — "
+        "scripts are loaded from a previous `--process-only` run; the cycle-3 "
+        "retry edge applies here too.\n"
     )
     print(f"Graph diagram written to {output_path}")
 

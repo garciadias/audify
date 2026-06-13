@@ -81,3 +81,11 @@ class GraphState(TypedDict):
     best_wer: dict[str, float]
     # flags[chapter_id] = ordered list of FlagEntry raised against the chapter
     flags: dict[str, list[FlagEntry]]
+    # episode numbers the cycle-3 fidelity check scheduled for re-synthesis on
+    # the next ``synthesize`` visit. Empty on the first pass; populated by the
+    # back-edge and cleared once ``synthesize`` consumes it.
+    pending_retry: list[int]
+    # episode numbers the next ``fidelity`` visit should evaluate. Set by
+    # ``synthesize`` to all episodes on the first pass, and to just the
+    # re-synthesized episodes on a retry pass.
+    episodes_to_check: list[int]

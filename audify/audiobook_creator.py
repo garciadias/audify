@@ -275,6 +275,7 @@ class AudiobookCreator(BaseSynthesizer):
         prompt_file: Optional[str | Path] = None,
         mode: str = "full",
         warn_stop: bool = False,
+        fidelity_check: bool = False,
     ):
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
@@ -321,6 +322,11 @@ class AudiobookCreator(BaseSynthesizer):
         self.max_chapters = max_chapters
         self.confirm = confirm
         self.warn_stop = warn_stop
+        # Cycle-3 boundary-sampling fidelity check (issue #38). Opt-in: requires
+        # the docker-compose STT service. ``stt_client`` may be injected for
+        # tests; when None the fidelity node builds a WhisperSTTClient from env.
+        self.fidelity_check = fidelity_check
+        self.stt_client: Optional[object] = None
         self.progress = ProgressIndicator()
 
         # Resolve task prompt and LLM parameters
@@ -611,8 +617,18 @@ class AudiobookCreator(BaseSynthesizer):
 
         return audiobook_script
 
-    def synthesize_episode(self, audiobook_script: str, episode_number: int) -> Path:
-        """Synthesizes a single audiobook episode from script."""
+    def synthesize_episode(
+        self,
+        audiobook_script: str,
+        episode_number: int,
+        max_text_length: Optional[int] = None,
+    ) -> Path:
+        """Synthesizes a single audiobook episode from script.
+
+        *max_text_length* overrides the TTS batch size for this episode (used by
+        the cycle-3 retry edge to re-chunk smaller); ``None`` uses the provider
+        default.
+        """
         logger.info(f"Synthesizing Audiobook Episode {episode_number}...")
         # Use standardized episode file naming (tests expect episode_###.wav)
         episode_wav_path = self.episodes_path / f"episode_{episode_number:03d}.wav"
@@ -660,7 +676,9 @@ class AudiobookCreator(BaseSynthesizer):
             return episode_mp3_path
 
         try:
-            self._synthesize_sentences(sentences, episode_wav_path)
+            self._synthesize_sentences(
+                sentences, episode_wav_path, max_text_length=max_text_length
+            )
             return self._convert_to_mp3(episode_wav_path)
         except Exception as e:
             logger.error(

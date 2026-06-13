@@ -233,9 +233,17 @@ class BaseSynthesizer:
         return batches
 
     def _synthesize_with_provider(
-        self, sentences: List[str], output_wav_path: Path
+        self,
+        sentences: List[str],
+        output_wav_path: Path,
+        max_text_length: Optional[int] = None,
     ) -> None:
-        """Synthesize sentences using the configured TTS provider."""
+        """Synthesize sentences using the configured TTS provider.
+
+        *max_text_length* overrides the provider's default batch size when set
+        (used by the cycle-3 retry edge to re-chunk smaller); otherwise the
+        provider's ``max_text_length`` is used.
+        """
         tts_config = self._get_tts_config()
         temp_audio_files: List[Path] = []
         attempted_sentences = 0
@@ -264,8 +272,14 @@ class BaseSynthesizer:
                 )
 
             # Group sentences into batches based on provider's max text length
+            # (or the smaller re-chunk override supplied by the retry edge).
+            batch_length = (
+                max_text_length
+                if max_text_length is not None
+                else tts_config.max_text_length
+            )
             batches = self._batch_sentences(
-                sentences, tts_config.max_text_length, unit=tts_config.limit_unit
+                sentences, batch_length, unit=tts_config.limit_unit
             )
             logger.info(
                 f"Processing {len(batches)} batch(es) for {len(sentences)} sentences"
@@ -372,11 +386,20 @@ class BaseSynthesizer:
             raise
 
     def _synthesize_sentences(
-        self, sentences: List[str], output_wav_path: Path
+        self,
+        sentences: List[str],
+        output_wav_path: Path,
+        max_text_length: Optional[int] = None,
     ) -> None:
-        """Synthesize a list of sentences into a single WAV file."""
+        """Synthesize a list of sentences into a single WAV file.
+
+        *max_text_length* is forwarded to the provider to override the default
+        batch size (cycle-3 re-chunk); ``None`` keeps the provider default.
+        """
         output_wav_path.parent.mkdir(parents=True, exist_ok=True)
-        self._synthesize_with_provider(sentences, output_wav_path)
+        self._synthesize_with_provider(
+            sentences, output_wav_path, max_text_length=max_text_length
+        )
         logger.info(f"Raw WAV synthesis complete: {output_wav_path}")
 
     def _convert_to_mp3(self, wav_path: Path) -> Path:

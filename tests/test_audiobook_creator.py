@@ -729,7 +729,9 @@ class TestAudiobookCreatorSynthesizeEpisode:
             result = creator.synthesize_episode("Script text", 1)
 
             assert result == mp3_path
-            mock_synth.assert_called_once_with(sentences, wav_path)
+            mock_synth.assert_called_once_with(
+                sentences, wav_path, max_text_length=None
+            )
             mock_convert.assert_called_once_with(wav_path)
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
@@ -774,7 +776,9 @@ class TestAudiobookCreatorSynthesizeEpisode:
             assert result == mp3_path
             # Should call with translated sentences
             expected_translated = ["Primera oración.", "Segunda oración."]
-            mock_synth.assert_called_once_with(expected_translated, wav_path)
+            mock_synth.assert_called_once_with(
+                expected_translated, wav_path, max_text_length=None
+            )
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     @patch("pathlib.Path.exists")
@@ -810,7 +814,9 @@ class TestAudiobookCreatorSynthesizeEpisode:
 
             # Should use original sentences when translation fails
             assert result == mp3_path
-            mock_synth.assert_called_once_with(sentences, wav_path)
+            mock_synth.assert_called_once_with(
+                sentences, wav_path, max_text_length=None
+            )
 
 
 class TestAudiobookCreatorCreateSeries:

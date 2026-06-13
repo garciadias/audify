@@ -37,6 +37,10 @@ def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMoc
     # never fires in tests that don't set it explicitly. A MagicMock would
     # otherwise read as truthy here.
     creator.warn_stop = False
+    # Cycle-3 fidelity check is opt-in; keep it off for the skeleton tests so
+    # they don't route through the STT round-trip. A MagicMock attribute would
+    # otherwise read as truthy here. The dedicated fidelity tests below set it.
+    creator.fidelity_check = False
 
     # reader is a non-EpubReader so we get the simple path. Using
     # ``MagicMock(spec=PdfReader)`` gives a durable ``isinstance`` answer
@@ -71,13 +75,30 @@ class TestBuildGraph:
     def test_graph_has_expected_nodes(self):
         graph = build_graph()
         nodes = set(graph.get_graph().nodes)
-        expected = {"read", "script_gen", "synthesize", "assemble", "report"}
+        expected = {
+            "read",
+            "script_gen",
+            "synthesize",
+            "fidelity",
+            "assemble",
+            "report",
+        }
         assert expected.issubset(nodes)
 
-    def test_graph_is_acyclic(self):
-        """The skeleton must have no back-edges — all edges must go forward."""
+    def test_full_graph_has_fidelity_back_edge(self):
+        """Cycle 3: full mode must contain the fidelity → synthesize back-edge."""
         graph = build_graph()
-        node_order = ["read", "script_gen", "synthesize", "assemble", "report"]
+        edges = {(e[0], e[1]) for e in graph.get_graph().edges}
+        assert ("synthesize", "fidelity") in edges
+        assert ("fidelity", "synthesize") in edges, (
+            "cycle-3 retry edge missing: fidelity must be able to loop back "
+            "to synthesize"
+        )
+
+    def test_process_graph_is_acyclic(self):
+        """`process` mode performs no TTS, so it stays a forward-only DAG."""
+        graph = build_graph("process")
+        node_order = ["read", "confirm", "script_gen", "report"]
         rank = {name: i for i, name in enumerate(node_order)}
 
         for edge in graph.get_graph().edges:
@@ -85,7 +106,7 @@ class TestBuildGraph:
             if src in rank and dst in rank:
                 assert rank[src] < rank[dst], (
                     f"Back-edge detected: {src} → {dst}; "
-                    "skeleton must be acyclic."
+                    "process mode must be acyclic."
                 )
 
     def test_process_graph_skips_synthesis(self):
@@ -791,3 +812,236 @@ class TestReportNode:
         assert report["pipeline_status"] == "partial"
         assert report["episodes_synthesised"] == 1
         assert report["chapters_expected"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Cycle 3 — boundary-sampling fidelity check + re-chunk retry edge (issue #38)
+# ---------------------------------------------------------------------------
+
+
+class _FileBackedSTT:
+    """STT stub that 'transcribes' the text written into the episode file.
+
+    The head window returns the first few words of the file content, the tail
+    window the last few. Because a truncated episode's file is missing its
+    tail, the tail-window transcript will not match the script's closing words.
+    """
+
+    def __init__(self, window_words: int = 4):
+        self.window_words = window_words
+        self.calls: list[tuple] = []
+
+    def transcribe(self, audio_path, *, start_s=None, end_s=None, language=None):
+        self.calls.append((Path(audio_path).name, start_s, end_s))
+        words = Path(audio_path).read_text().split()
+        if start_s == 0.0:  # head window
+            return " ".join(words[: self.window_words])
+        return " ".join(words[-self.window_words :])  # tail window
+
+
+class _RaisingSTT:
+    """STT stub that is always unreachable (exercises graceful degradation)."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def transcribe(self, audio_path, *, start_s=None, end_s=None, language=None):
+        from audify.qa.stt import STTServiceError
+
+        self.calls += 1
+        raise STTServiceError("STT service unreachable")
+
+
+class _FidelityCreator:
+    """Minimal real (non-Mock) creator for synthesize-mode graph runs.
+
+    ``truncate_after`` controls how many synthesis attempts produce truncated
+    audio before full audio is emitted: ``1`` means the first pass truncates
+    and the first re-chunk recovers; a large value means it never recovers.
+    """
+
+    def __init__(self, tmp_path: Path, scripts: dict[int, str], *, truncate_after=1):
+        self.audiobook_path = tmp_path / "out"
+        self.audiobook_path.mkdir(parents=True, exist_ok=True)
+        self.scripts_path = tmp_path / "scripts"
+        self.scripts_path.mkdir(parents=True, exist_ok=True)
+        self.episodes_path = tmp_path / "episodes"
+        self.episodes_path.mkdir(parents=True, exist_ok=True)
+
+        self._scripts = scripts
+        self._titles = [f"Chapter {n}" for n in sorted(scripts)]
+        for n, text in scripts.items():
+            (self.scripts_path / f"episode_{n:03d}_script.txt").write_text(text)
+
+        self.mode = "synthesize"
+        self.fidelity_check = True
+        self.stt_client = _FileBackedSTT()
+        self.language = "en"
+        self.resolved_language = "en"
+        self.warn_stop = False
+        self.progress = MagicMock()
+
+        self._truncate_after = truncate_after
+        self._attempts: dict[int, int] = {}
+        self.synth_calls: list[tuple[int, int | None]] = []
+        self.m4b_calls = 0
+
+    def _verify_tts_provider_available(self):
+        return None
+
+    def _load_chapter_titles(self):
+        return list(self._titles)
+
+    def _get_tts_config(self):
+        cfg = MagicMock()
+        cfg.max_text_length = 4000
+        return cfg
+
+    def synthesize_episode(self, script, episode_number, max_text_length=None):
+        self.synth_calls.append((episode_number, max_text_length))
+        self._attempts[episode_number] = self._attempts.get(episode_number, 0) + 1
+        path = self.episodes_path / f"episode_{episode_number:03d}.mp3"
+        words = script.split()
+        if self._attempts[episode_number] <= self._truncate_after:
+            content = " ".join(words[: len(words) // 2])  # drop the tail
+        else:
+            content = script  # re-chunk restored full fidelity
+        path.write_text(content)
+        return path
+
+    def create_m4b(self):
+        self.m4b_calls += 1
+
+
+# A 20-word script with distinct tokens so head/tail windows are unambiguous.
+_SCRIPT_20 = " ".join(f"word{i:02d}" for i in range(20))
+
+
+@pytest.fixture
+def fixed_duration(monkeypatch):
+    """Pin episode duration so WER (not duration ratio) drives detection."""
+    from audify.utils.audio import AudioProcessor
+
+    monkeypatch.setattr(AudioProcessor, "get_duration", lambda path: 60.0)
+
+
+class TestFidelityCycle:
+    def _load_report(self, creator) -> dict:
+        return json.loads(
+            (Path(creator.audiobook_path) / "quality_report.json").read_text()
+        )
+
+    def test_truncation_triggers_rechunk_retry_and_resolves(
+        self, tmp_path, fixed_duration
+    ):
+        """A truncating first pass fires the cycle; re-chunk resolves it."""
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=1)
+
+        run_graph(creator)
+
+        # Initial synthesis used the provider default (None); the single retry
+        # used a smaller batch size — proving the re-chunk back-edge fired.
+        assert creator.synth_calls == [(1, None), (1, 2000)]
+        assert creator.m4b_calls == 1
+
+        report = self._load_report(creator)
+        chapter = report["chapters"]["chapter_1"]
+        assert chapter["verdict"] == "flagged"
+        assert chapter["attempts_used"]["cycle_3_retry"] == 1
+        assert chapter["best_wer"] == 0.0
+        assert len(chapter["flags"]) == 1
+        flag = chapter["flags"][0]
+        assert flag["cycle"] == "cycle_3_retry"
+        assert flag["exhausted"] is False
+
+        # The re-chunked audio on disk now carries the full script.
+        final = (creator.episodes_path / "episode_001.mp3").read_text()
+        assert final == _SCRIPT_20
+
+    def test_clean_episode_never_triggers_cycle(self, tmp_path, fixed_duration):
+        """An episode that transcribes faithfully raises no flag, no retry."""
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=0)
+
+        run_graph(creator)
+
+        assert creator.synth_calls == [(1, None)]  # no retry
+        report = self._load_report(creator)
+        chapter = report["chapters"]["chapter_1"]
+        assert chapter["verdict"] == "clean"
+        assert chapter["flags"] == []
+
+    def test_exhaustion_keeps_best_effort_and_never_aborts(
+        self, tmp_path, fixed_duration
+    ):
+        """When re-chunk never recovers, budget exhausts but the book completes."""
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=99)
+
+        run_graph(creator)
+
+        # 1 initial attempt + 3 bounded retries.
+        assert len(creator.synth_calls) == 4
+        assert creator.synth_calls[0] == (1, None)
+        assert [mtl for _, mtl in creator.synth_calls[1:]] == [2000, 1333, 1000]
+        # Book is still assembled — the cycle is warn-only.
+        assert creator.m4b_calls == 1
+
+        report = self._load_report(creator)
+        chapter = report["chapters"]["chapter_1"]
+        assert chapter["verdict"] == "unrecoverable"
+        assert chapter["attempts_used"]["cycle_3_retry"] == 3
+        assert chapter["flags"][-1]["exhausted"] is True
+        assert report["verdict_counts"]["unrecoverable"] == 1
+
+    def test_unreachable_stt_degrades_to_passthrough(
+        self, tmp_path, fixed_duration
+    ):
+        """An unreachable STT service skips detection rather than aborting."""
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=1)
+        creator.stt_client = _RaisingSTT()
+
+        run_graph(creator)
+
+        assert creator.synth_calls == [(1, None)]  # no retry attempted
+        assert creator.m4b_calls == 1
+        report = self._load_report(creator)
+        assert report["chapters"]["chapter_1"]["verdict"] == "clean"
+
+    def test_disabled_flag_skips_fidelity(self, tmp_path, fixed_duration):
+        """fidelity_check=False routes straight through to assemble."""
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=1)
+        creator.fidelity_check = False
+
+        run_graph(creator)
+
+        assert creator.synth_calls == [(1, None)]
+        report = self._load_report(creator)
+        assert report["chapters"]["chapter_1"]["verdict"] == "clean"
+
+    def test_duration_ratio_alone_flags_truncation(self, tmp_path, monkeypatch):
+        """Even with WER=0, a short duration ratio corroborates truncation."""
+        from audify.qa.nodes.fidelity import fidelity_node
+        from audify.utils.audio import AudioProcessor
+
+        # Perfect transcripts (file holds the full script) but the audio is far
+        # shorter than the ~16s the 20-word script implies at 75 wpm.
+        monkeypatch.setattr(AudioProcessor, "get_duration", lambda path: 2.0)
+
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=0)
+        episode_path = creator.episodes_path / "episode_001.mp3"
+        episode_path.write_text(_SCRIPT_20)  # full, faithful content
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, _SCRIPT_20)],
+            "chapter_titles": ["Chapter 1"],
+            "episode_paths": [episode_path],
+            "episodes_to_check": [1],
+            "retry_budget": {},
+            "best_wer": {},
+            "flags": {},
+            "pending_retry": [],
+        }
+
+        out = fidelity_node(state)
+        assert out["pending_retry"] == [1]
+        assert out["retry_budget"]["chapter_1"]["cycle_3_retry"] == 2

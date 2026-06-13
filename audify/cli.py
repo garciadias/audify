@@ -399,6 +399,17 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     ),
 )
 @click.option(
+    "--fidelity-check",
+    is_flag=True,
+    default=False,
+    help=(
+        "Enable the cycle-3 boundary-sampling fidelity check (requires --graph "
+        "and the docker-compose STT service). Transcribes the head/tail of each "
+        "episode and re-chunks/re-synthesizes chapters that look truncated, up "
+        "to 3 attempts. Self-disables when no STT service is reachable."
+    ),
+)
+@click.option(
     "--verbose",
     is_flag=True,
     help="Show detailed log messages in terminal.",
@@ -438,6 +449,7 @@ def cli(
     process_only: bool,
     synthesize_only: bool,
     graph: bool,
+    fidelity_check: bool,
     verbose: bool,
     warn_stop: bool,
     path: str | None,
@@ -759,6 +771,7 @@ def cli(
                 prompt_file=prompt_file,
                 mode=mode,
                 warn_stop=warn_stop,
+                fidelity_check=fidelity_check,
             )
             if graph:
                 from audify.qa.graph import run_graph

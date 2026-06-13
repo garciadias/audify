@@ -294,6 +294,23 @@ task audiobook "book.epub" --synthesize-only
 
 If a run is interrupted, re-running the same command will automatically skip episodes whose MP3 files already exist.
 
+### Agentic QA Pipeline (experimental)
+
+The `--graph` flag runs the LangGraph-based agentic pipeline instead of the legacy
+orchestrator. It adds quality-assurance cycles on top of the same
+`read → script_gen → synthesize → assemble → report` stages (see `docs/graph.md`).
+
+```bash
+# Run the graph pipeline with the boundary-sampling fidelity check enabled
+task audiobook "book.epub" --graph --fidelity-check
+```
+
+`--fidelity-check` enables the cycle-3 detector: after each episode is synthesized
+it transcribes the head and tail of the audio via the STT service and re-chunks /
+re-synthesizes any chapter that looks truncated (up to 3 attempts), recording the
+outcome in `quality_report.json`. It requires the docker-compose STT service
+(`faster-whisper` on port 8888) and self-disables if no service is reachable.
+
 ### Advanced Options
 
 ```bash
