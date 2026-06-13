@@ -32,9 +32,9 @@ accepted
 ## Skeleton scope (deferred behaviours)
 
 The skeleton expresses the legacy linear orchestration as an acyclic graph and
-deliberately defers anything cyclic. Two legacy behaviours map onto
-[CONTEXT.md](../../CONTEXT.md) Quality Checks and are therefore deferred to the
-cyclic-detector PRs, not reimplemented inside the skeleton:
+deliberately defers anything cyclic. Two legacy behaviours map onto the
+Quality Checks defined in `CONTEXT.md` at the repo root and are therefore
+deferred to the cyclic-detector PRs, not reimplemented inside the skeleton:
 
 - **Per-chapter duration check** (`check_chapter_during_synthesis`,
   `verification_integration.py`): maps to the **Fidelity check** plus the
