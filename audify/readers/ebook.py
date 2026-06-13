@@ -34,9 +34,12 @@ CHAPTER_PATTERNS = [
         rf"^(part|section|book)\s+([\divxlcdm]+|{_WRITTEN_NUMBERS})[\s.:—\-]*.*",
         re.IGNORECASE,
     ),
-    # Standalone Roman numerals (I, II, III, IV, ..., possibly with title)
+    # Standalone Roman numerals (I, II, III, IV, ..., possibly with title).
+    # Require an explicit punctuation separator (``.:—-``) so that ordinary
+    # sentences starting with the pronoun "I " (e.g. "I wore a hat…") don't
+    # get misclassified as Roman-numeral chapter headings.
     re.compile(
-        r"^[IVXLCDM]+[\s.:—\-]+.+",
+        r"^[IVXLCDM]+\s*[.:—\-]\s*\S.*",
     ),
     # Standalone numbers like "1", "2.", "1 -", possibly followed by a title
     re.compile(
