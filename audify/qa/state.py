@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from typing_extensions import TypeAlias, TypedDict
+from typing_extensions import Literal, TypeAlias, TypedDict
 
 if TYPE_CHECKING:
     # Only imported for type-checkers; the runtime field is kept as ``Any``
@@ -19,6 +19,37 @@ else:
     CreatorT = Any
 
 
+CycleId = Literal[
+    "cycle_1_escalation",
+    "cycle_2_reroute",
+    "cycle_3_retry",
+]
+"""Canonical identifiers for the three remediation cycles (see ADR-0001)."""
+
+
+class FlagEntry(TypedDict):
+    """One quality-check flag raised against a chapter during the run.
+
+    Cyclic detectors (#3 retry, #4 reroute, #5 escalation) append a
+    ``FlagEntry`` to ``GraphState.flags[chapter_id]`` each time a Quality
+    Check fires. The aggregator consumes the list to derive a per-chapter
+    verdict and surface diagnostics in the final quality report.
+
+    Fields:
+        cycle: which remediation cycle raised the flag.
+        reason: short, human-readable diagnostic, e.g.
+            ``"text-extraction: mojibake"`` or
+            ``"WER 0.42 exceeds 0.3 threshold"``.
+        exhausted: ``True`` when the cycle's retry budget reached zero and
+            the best-effort artifact was kept. ``False`` when the detector
+            fired but the cycle resolved within its budget.
+    """
+
+    cycle: CycleId
+    reason: str
+    exhausted: bool
+
+
 class GraphState(TypedDict):
     """Shared state carried by the LangGraph QA pipeline between nodes.
 
@@ -26,6 +57,12 @@ class GraphState(TypedDict):
     keyed by ``chapter_id`` (``"chapter_{episode_number}"``).  They are
     populated as the graph processes each chapter and are consumed by the
     report node at the end.
+
+    ``retry_budget`` is two-level: outer key is the chapter id, inner key is
+    the cycle id from :data:`CycleId`. Each cycle owns an independent
+    counter so the aggregator can report attempts-used per cycle. Empty
+    dictionaries are valid at every level — the cyclic detectors populate
+    their own slots lazily as they fire.
     """
 
     # ``CreatorT`` is ``Any`` at runtime (LangGraph evaluates this) and
@@ -38,9 +75,9 @@ class GraphState(TypedDict):
     # list of (episode_number, script) pairs produced by script_gen
     chapter_scripts: list[tuple[int, str]]
     episode_paths: list[Path]
-    # retry_budget[chapter_id] = remaining attempts (starts at 3 per cycle)
-    retry_budget: dict[str, int]
-    # best_wer[chapter_id] = lowest WER seen across retry attempts
+    # retry_budget[chapter_id][cycle_id] = remaining attempts for that cycle
+    retry_budget: dict[str, dict[CycleId, int]]
+    # best_wer[chapter_id] = lowest WER seen across cycle-3 retry attempts
     best_wer: dict[str, float]
-    # flags[chapter_id] = human-readable flag strings for the quality report
-    flags: dict[str, list[str]]
+    # flags[chapter_id] = ordered list of FlagEntry raised against the chapter
+    flags: dict[str, list[FlagEntry]]

@@ -115,3 +115,59 @@ without conditional edges.
 - **Graph state:** the shared object LangGraph carries between nodes and across
   back-edges — per-chapter retry budget, best-so-far WER, and the flags that
   feed the final quality report.
+
+## Quality report schema
+
+The terminal `report` node of every graph mode aggregates per-chapter
+**flags** raised by cyclic detectors into a single end-of-run report, written
+as `quality_report.json` (machine-readable) and `quality_report.txt`
+(human-readable Rich-rendered table) next to the M4B output.
+
+### Verdicts
+
+Per chapter, the aggregator emits one of three verdicts:
+
+- **`clean`** — no flag was raised against the chapter.
+- **`flagged`** — at least one cycle fired and resolved within its retry
+  budget (no `FlagEntry` has `exhausted=True`).
+- **`unrecoverable`** — at least one cycle ran out of retries
+  (`exhausted=True`). The best-effort artifact is kept on disk and the
+  chapter is surfaced in the report; the run does not abort. Mirrors the
+  warn-only halting philosophy of commit `0bffc34`.
+
+### `FlagEntry`
+
+Each entry in `flags[chapter_id]` records:
+
+- **`cycle`** — which remediation cycle fired the flag. Allowed values:
+  `cycle_1_escalation`, `cycle_2_reroute`, `cycle_3_retry`.
+- **`reason`** — short, human-readable diagnostic, e.g. `"WER 0.42 exceeds
+  0.3 threshold"` or `"text-extraction: mojibake"`.
+- **`exhausted`** — `True` when the cycle's retry budget reached zero;
+  `False` when the detector fired but the cycle resolved within budget.
+
+### JSON shape
+
+```json
+{
+  "pipeline_status": "complete" | "partial" | "failed" | "no_chapters",
+  "episodes_synthesised": int,
+  "chapters_expected": int,
+  "verdict_counts": { "clean": int, "flagged": int, "unrecoverable": int },
+  "chapters": {
+    "chapter_<n>": {
+      "title": str,
+      "verdict": "clean" | "flagged" | "unrecoverable",
+      "attempts_used": { "<cycle_id>": int },
+      "best_wer": float | null,
+      "flags": [FlagEntry, ...]
+    }
+  }
+}
+```
+
+`attempts_used` only contains keys for cycles that actually fired against
+the chapter — cycles that never ran are omitted rather than reported as
+`0/3`. `best_wer` is populated only when `cycle_3_retry` ran; otherwise
+`null`. With stub data (no cyclic detector has shipped yet) every chapter
+is `clean` with an empty `flags` list.
