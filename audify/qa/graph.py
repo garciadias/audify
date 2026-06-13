@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from langgraph.graph import END, StateGraph
 
@@ -14,6 +14,8 @@ from audify.qa.state import GraphState
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
+
+    from audify.audiobook_creator import AudiobookCreator, DirectoryAudiobookCreator
 
 
 def build_graph() -> "CompiledStateGraph":
@@ -40,7 +42,7 @@ def build_graph() -> "CompiledStateGraph":
     return builder.compile()
 
 
-def run_graph(creator: Any) -> Path:
+def run_graph(creator: "AudiobookCreator | DirectoryAudiobookCreator") -> Path:
     """Run the LangGraph pipeline for *creator* and return the output path.
 
     Initialises GraphState with the creator instance and empty collection

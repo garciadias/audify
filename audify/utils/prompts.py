@@ -1,5 +1,4 @@
 # ruff: noqa: E501 - long lines are intentional in prompt templates
-# ruff: noqa: E501 - long lines are intentional in prompt templates
 # PODCAST_PROMPT lives in audify/prompts/builtin/podcast.txt
 
 

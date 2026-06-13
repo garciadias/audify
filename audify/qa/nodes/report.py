@@ -18,22 +18,50 @@ def report_node(state: GraphState) -> dict:
     """
     creator = state["creator"]
     chapter_titles = state["chapter_titles"]
+    episode_paths = state.get("episode_paths", [])
     flags = state.get("flags", {})
     best_wer = state.get("best_wer", {})
     retry_budget = state.get("retry_budget", {})
 
     max_budget = 3
-    report: dict[str, dict] = {}
+    chapters_report: dict[str, dict] = {}
     for i, title in enumerate(chapter_titles, 1):
         chapter_id = f"chapter_{i}"
         budget_remaining = retry_budget.get(chapter_id, max_budget)
-        report[chapter_id] = {
+        # Until the cyclic detectors land, no node writes to `flags` /
+        # `best_wer` / `retry_budget`. Surface that explicitly instead of
+        # reporting a misleading "ok" for every chapter.
+        chapter_flags = flags.get(chapter_id)
+        if chapter_flags:
+            verdict = "flagged"
+        elif chapter_id in best_wer or chapter_id in retry_budget:
+            verdict = "ok"
+        else:
+            verdict = "skeleton"
+        chapters_report[chapter_id] = {
             "title": title,
-            "verdict": "flagged" if flags.get(chapter_id) else "ok",
+            "verdict": verdict,
             "attempts_used": max_budget - budget_remaining,
             "best_wer": best_wer.get(chapter_id),
             "flags": flags.get(chapter_id, []),
         }
+
+    expected_chapters = len(chapter_titles)
+    if expected_chapters == 0:
+        pipeline_status = "no_chapters"
+    elif len(episode_paths) == expected_chapters:
+        pipeline_status = "complete"
+    elif len(episode_paths) == 0:
+        pipeline_status = "failed"
+    else:
+        pipeline_status = "partial"
+
+    report = {
+        "pipeline_status": pipeline_status,
+        "episodes_synthesised": len(episode_paths),
+        "chapters_expected": expected_chapters,
+        "chapters": chapters_report,
+    }
 
     report_path = Path(creator.audiobook_path) / "quality_report.json"
     report_path.write_text(json.dumps(report, indent=2))

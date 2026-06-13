@@ -17,6 +17,7 @@ from audify.qa.graph import (
 from audify.qa.nodes.assemble import assemble_node
 from audify.qa.nodes.script_gen import script_gen_node
 from audify.qa.nodes.synthesize import synthesize_node
+from audify.readers.pdf import PdfReader
 
 
 def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMock:
@@ -29,11 +30,12 @@ def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMoc
     creator.audiobook_path = tmp_path
     creator.chapter_titles = []
 
-    # reader is a non-EpubReader so we get the simple path
+    # reader is a non-EpubReader so we get the simple path. Using
+    # ``MagicMock(spec=PdfReader)`` gives a durable ``isinstance`` answer
+    # (False for EpubReader, True for PdfReader) instead of rebinding
+    # ``__class__``, which would break if EpubReader joined a wider MRO.
+    creator.reader = MagicMock(spec=PdfReader)
     creator.reader.cleaned_text = "\n\n".join(chapters)
-    # make isinstance(..., EpubReader) return False
-
-    creator.reader.__class__ = MagicMock  # not EpubReader
 
     # script_gen returns a fake script per episode
     def _gen_script(chapter_content: str, episode_number: int) -> str:
@@ -99,9 +101,16 @@ class TestRunGraph:
         report_path = tmp_path / "quality_report.json"
         assert report_path.exists(), "Quality report JSON must be written"
         report = json.loads(report_path.read_text())
-        assert "chapter_1" in report
-        assert report["chapter_1"]["verdict"] == "ok"
-        assert report["chapter_1"]["flags"] == []
+        # Top-level pipeline status mirrors completion against expected
+        # chapter count.
+        assert report["pipeline_status"] == "complete"
+        assert report["episodes_synthesised"] == report["chapters_expected"]
+        chapters = report["chapters"]
+        assert "chapter_1" in chapters
+        # Until the cyclic detectors run, "skeleton" is the honest verdict —
+        # no cycle node has yet populated ``best_wer``/``retry_budget``.
+        assert chapters["chapter_1"]["verdict"] == "skeleton"
+        assert chapters["chapter_1"]["flags"] == []
 
     def test_run_graph_returns_audiobook_path(self, tmp_path):
         creator = _make_creator(tmp_path)
@@ -116,8 +125,9 @@ class TestRunGraph:
 
         creator = _make_creator(tmp_path)
         creator.max_chapters = 1
-        # Simulate an EpubReader with 3 chapters
-        creator.reader.__class__ = EpubReader
+        # Simulate an EpubReader with 3 chapters. ``spec=EpubReader`` gives a
+        # durable ``isinstance`` answer without rebinding ``__class__``.
+        creator.reader = MagicMock(spec=EpubReader)
         creator.reader.get_chapters.return_value = ["Ch1", "Ch2", "Ch3"]
         creator.reader.get_chapter_title.side_effect = lambda c: f"Title of {c}"
 
