@@ -8,7 +8,7 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 
-from audify.qa.state import FlagEntry, GraphState
+from audify.qa.state import CycleId, FlagEntry, GraphState
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def _derive_verdict(chapter_flags: list[FlagEntry]) -> str:
 
 def _attempts_used(
     chapter_flags: list[FlagEntry],
-    chapter_budget: dict[str, int],
+    chapter_budget: dict[CycleId, int],
 ) -> dict[str, int]:
     """Return attempts-used per cycle, only for cycles that actually fired.
 
@@ -136,13 +136,20 @@ def _attempts_used(
     or a flag entry. Cycles that never ran are omitted from the dict rather
     than reported as ``0/3`` — keeps the report focused on what actually
     happened.
+
+    Iterates over :data:`CYCLE_ORDER` (then any unknown cycles in sorted
+    order) so the resulting dict has deterministic key insertion order,
+    keeping ``quality_report.json`` diffs stable across runs.
     """
     fired_cycles = set(chapter_budget.keys()) | {
         entry["cycle"] for entry in chapter_flags
     }
+    ordered_cycles = [c for c in CYCLE_ORDER if c in fired_cycles] + sorted(
+        fired_cycles - set(CYCLE_ORDER)
+    )
     return {
         cycle: MAX_BUDGET_PER_CYCLE - chapter_budget.get(cycle, MAX_BUDGET_PER_CYCLE)
-        for cycle in fired_cycles
+        for cycle in ordered_cycles
     }
 
 

@@ -76,7 +76,7 @@ class GraphState(TypedDict):
     chapter_scripts: list[tuple[int, str]]
     episode_paths: list[Path]
     # retry_budget[chapter_id][cycle_id] = remaining attempts for that cycle
-    retry_budget: dict[str, dict[str, int]]
+    retry_budget: dict[str, dict[CycleId, int]]
     # best_wer[chapter_id] = lowest WER seen across cycle-3 retry attempts
     best_wer: dict[str, float]
     # flags[chapter_id] = ordered list of FlagEntry raised against the chapter

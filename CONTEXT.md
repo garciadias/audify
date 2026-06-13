@@ -148,7 +148,7 @@ Each entry in `flags[chapter_id]` records:
 
 ### JSON shape
 
-```
+```json
 {
   "pipeline_status": "complete" | "partial" | "failed" | "no_chapters",
   "episodes_synthesised": int,

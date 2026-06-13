@@ -742,8 +742,15 @@ class TestReportNode:
         monkeypatch.setattr("builtins.input", _should_not_be_called)
         report_node(state)
 
-    def test_warn_stop_non_tty_does_not_hang(self, tmp_path, monkeypatch):
-        """EOFError on stdin (CI/non-tty) is swallowed; the run completes."""
+    @pytest.mark.parametrize(
+        "stdin_exc",
+        [EOFError("no stdin"), OSError("no stdin")],
+        ids=["eof", "oserror"],
+    )
+    def test_warn_stop_non_tty_does_not_hang(
+        self, tmp_path, monkeypatch, stdin_exc
+    ):
+        """EOFError/OSError on stdin (CI/non-tty) is swallowed; run completes."""
         from audify.qa.nodes.report import report_node
 
         creator = self._stub_creator(tmp_path, warn_stop=True)
@@ -763,7 +770,7 @@ class TestReportNode:
         )
 
         def _no_stdin(_prompt: str) -> str:
-            raise EOFError("no stdin")
+            raise stdin_exc
 
         monkeypatch.setattr("builtins.input", _no_stdin)
         report_node(state)  # Must not raise
