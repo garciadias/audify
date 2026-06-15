@@ -4,7 +4,22 @@ from __future__ import annotations
 
 import pytest
 
-from audify.qa.wer import comparable_reference, normalize_words, word_error_rate
+from audify.qa.wer import (
+    _levenshtein,
+    comparable_reference,
+    normalize_words,
+    word_error_rate,
+)
+
+
+class TestLevenshtein:
+    def test_empty_reference_is_hypothesis_length(self):
+        # word_error_rate short-circuits before calling _levenshtein with an
+        # empty reference, so cover the guard directly.
+        assert _levenshtein([], ["x", "y", "z"]) == 3
+
+    def test_empty_hypothesis_is_reference_length(self):
+        assert _levenshtein(["a", "b"], []) == 2
 
 
 class TestNormalizeWords:
@@ -50,6 +65,10 @@ class TestWordErrorRate:
 
     def test_empty_reference_nonempty_hyp_is_one(self):
         assert word_error_rate("", "spurious words") == 1.0
+
+    def test_nonempty_reference_empty_hyp_is_one(self):
+        # Silent episode: every reference word is a deletion → WER 1.0.
+        assert word_error_rate("alpha beta gamma", "") == 1.0
 
     def test_clamped_to_one(self):
         # many insertions cannot push WER above 1.0

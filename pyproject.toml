@@ -74,7 +74,13 @@ docs = [
 ]
 
 [tool.coverage.report]
-exclude_lines = ["if __name__ == .__main__.:", "def test_", "ABC"]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "def test_",
+    "ABC",
+    "if TYPE_CHECKING:",
+]
 omit = ["*.venv/*"]
 
 [tool.pytest.ini_options]

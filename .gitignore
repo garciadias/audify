@@ -192,3 +192,5 @@ input
 bin/
 
 .sisyphus/
+
+.codegraph/

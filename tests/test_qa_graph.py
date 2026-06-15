@@ -459,6 +459,85 @@ class TestSynthesizeNode:
         assert result["episode_paths"] == []
 
 
+class TestResynthesize:
+    """Retry pass of ``synthesize_node`` (``pending_retry`` populated)."""
+
+    def _retry_creator(self, tmp_path: Path) -> MagicMock:
+        creator = MagicMock()
+        creator.progress = MagicMock()
+        creator.episodes_path = tmp_path
+        creator._get_tts_config.return_value.max_text_length = 4000
+        return creator
+
+    def test_skips_episode_without_script(self, tmp_path):
+        """A pending episode number absent from chapter_scripts is skipped."""
+        creator = self._retry_creator(tmp_path)
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text.")],
+            "pending_retry": [2],  # not in chapter_scripts
+            "retry_budget": {},
+        }
+        result = synthesize_node(state)
+
+        assert result == {"episodes_to_check": [2], "pending_retry": []}
+        creator.synthesize_episode.assert_not_called()
+
+    def test_warns_when_retry_produces_no_audio(self, tmp_path):
+        """A retry whose synthesis emits no file logs a warning, not an error."""
+        creator = self._retry_creator(tmp_path)
+        creator.synthesize_episode.return_value = tmp_path / "episode_001.mp3"
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text here.")],
+            "pending_retry": [1],
+            "retry_budget": {},
+        }
+        result = synthesize_node(state)
+
+        assert result["episodes_to_check"] == [1]
+        creator.synthesize_episode.assert_called_once()
+
+    def test_retry_re_raises_tts_error(self, tmp_path):
+        from audify.text_to_speech import TTSSynthesisError
+
+        creator = self._retry_creator(tmp_path)
+        creator.synthesize_episode.side_effect = TTSSynthesisError(
+            "TTS failed", failed_batches=1, total_batches=1
+        )
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text.")],
+            "pending_retry": [1],
+            "retry_budget": {},
+        }
+        with pytest.raises(TTSSynthesisError):
+            synthesize_node(state)
+
+    def test_retry_re_raises_generic_error(self, tmp_path):
+        creator = self._retry_creator(tmp_path)
+        creator.synthesize_episode.side_effect = RuntimeError("boom")
+
+        state = {
+            "creator": creator,
+            "chapter_scripts": [(1, "Script text.")],
+            "pending_retry": [1],
+            "retry_budget": {},
+        }
+        with pytest.raises(RuntimeError):
+            synthesize_node(state)
+
+    def test_tts_base_length_returns_none_on_error(self):
+        from audify.qa.nodes.synthesize import _tts_base_length
+
+        creator = MagicMock()
+        creator._get_tts_config.side_effect = RuntimeError("no config")
+        assert _tts_base_length(creator) is None
+
+
 class TestReportNode:
     """Verdict derivation and artifact generation for the report aggregator.
 
@@ -1045,3 +1124,123 @@ class TestFidelityCycle:
         out = fidelity_node(state)
         assert out["pending_retry"] == [1]
         assert out["retry_budget"]["chapter_1"]["cycle_3_retry"] == 2
+
+
+class TestFidelityHelpers:
+    """Direct coverage of fidelity branches not reached by the cycle tests."""
+
+    def _state(self, creator, *, to_check, scripts):
+        return {
+            "creator": creator,
+            "chapter_scripts": list(scripts.items()),
+            "chapter_titles": [f"Chapter {n}" for n in scripts],
+            "episode_paths": [],
+            "episodes_to_check": to_check,
+            "retry_budget": {},
+            "best_wer": {},
+            "flags": {},
+            "pending_retry": [],
+        }
+
+    def test_no_stt_client_passes_through(self, tmp_path, monkeypatch):
+        """When no STT client can be obtained, the node is a no-op."""
+        from audify.qa.nodes import fidelity as fid
+
+        monkeypatch.setattr(fid, "_get_stt_client", lambda creator: None)
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=0)
+
+        state = self._state(creator, to_check=[1], scripts={1: _SCRIPT_20})
+        assert fid.fidelity_node(state) == {}
+
+    def test_skips_episode_without_script(self, tmp_path, fixed_duration):
+        """An episode_to_check absent from chapter_scripts is skipped."""
+        from audify.qa.nodes.fidelity import fidelity_node
+
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=0)
+        out = fidelity_node(self._state(creator, to_check=[2], scripts={1: _SCRIPT_20}))
+        assert out["pending_retry"] == []
+
+    def test_skips_episode_without_audio(self, tmp_path, fixed_duration):
+        """No audio file on disk means a different cycle owns the chapter."""
+        from audify.qa.nodes.fidelity import fidelity_node
+
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=0)
+        # No episode_001.mp3 is ever written.
+        out = fidelity_node(self._state(creator, to_check=[1], scripts={1: _SCRIPT_20}))
+        assert out["pending_retry"] == []
+
+    def test_get_stt_client_builds_when_not_injected(self, monkeypatch):
+        from audify.qa.nodes import fidelity as fid
+
+        sentinel = object()
+        monkeypatch.setattr(fid, "WhisperSTTClient", lambda base_url: sentinel)
+
+        class _NoClient:
+            pass
+
+        assert fid._get_stt_client(_NoClient()) is sentinel
+
+    def test_save_best_candidate_handles_oserror(self, tmp_path, monkeypatch):
+        from audify.qa.nodes import fidelity as fid
+
+        creator = MagicMock()
+        creator.episodes_path = tmp_path
+        source = tmp_path / "episode_001.mp3"
+        source.write_text("audio")
+
+        def _boom(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(fid.shutil, "copy2", _boom)
+        # Must not raise — failure to cache is best-effort.
+        fid._save_best_candidate(creator, 1, source)
+
+    def test_restore_best_candidate_noop_without_cache(self, tmp_path):
+        from audify.qa.nodes import fidelity as fid
+
+        creator = MagicMock()
+        creator.episodes_path = tmp_path
+        dest = tmp_path / "episode_001.mp3"
+        fid._restore_best_candidate(creator, 1, dest)
+        assert not dest.exists()
+
+    def test_restore_best_candidate_handles_oserror(self, tmp_path, monkeypatch):
+        from audify.qa.nodes import fidelity as fid
+
+        creator = MagicMock()
+        creator.episodes_path = tmp_path
+        cache = tmp_path / ".fidelity_best"
+        cache.mkdir()
+        (cache / "episode_001.mp3").write_text("best")
+        dest = tmp_path / "episode_001.mp3"
+
+        def _boom(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(fid.shutil, "copy2", _boom)
+        fid._restore_best_candidate(creator, 1, dest)  # must not raise
+
+    def test_window_wers_zero_duration_is_total_failure(self, tmp_path, monkeypatch):
+        from audify.qa.nodes import fidelity as fid
+        from audify.utils.audio import AudioProcessor
+
+        monkeypatch.setattr(AudioProcessor, "get_duration", lambda path: 0.0)
+        episode = tmp_path / "episode_001.mp3"
+        episode.write_text("content")
+
+        assert fid._window_wers(
+            _FileBackedSTT(), episode, _SCRIPT_20, 8.0, "en"
+        ) == (1.0, 1.0)
+
+    def test_suspect_reason_lists_every_signal(self):
+        from audify.qa.nodes.fidelity import _suspect_reason
+
+        reason = _suspect_reason(0.9, 0.8, 0.1, 0.3, 0.5)
+        assert "head WER" in reason
+        assert "tail WER" in reason
+        assert "duration ratio" in reason
+
+    def test_suspect_reason_below_thresholds(self):
+        from audify.qa.nodes.fidelity import _suspect_reason
+
+        assert _suspect_reason(0.0, 0.0, 1.0, 0.3, 0.5) == "below thresholds"
