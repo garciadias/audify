@@ -817,6 +817,16 @@ def test_cli_single_file_mode_with_prompt_file():
                                 assert result.exit_code == 0
 
 
+def test_cli_fidelity_check_requires_graph():
+    """--fidelity-check without --graph should fail with a clear error."""
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["some-book.epub", "--fidelity-check"])
+    assert result.exit_code == 1
+    assert "--fidelity-check requires --graph" in result.output
+
+
 def test_main_module_import():
     """Test that the main module can be imported."""
     import audify.__main__ as main_module

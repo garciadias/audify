@@ -615,6 +615,13 @@ def cli(
     else:
         mode = "full"
 
+    if fidelity_check and not graph:
+        click.echo(
+            "Error: --fidelity-check requires --graph.",
+            err=True,
+        )
+        ctx.exit(1)
+
     path_obj = Path(path_str)
 
     if not path_obj.exists():

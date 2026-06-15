@@ -278,6 +278,10 @@ class BaseSynthesizer:
                 if max_text_length is not None
                 else tts_config.max_text_length
             )
+            if batch_length <= 0:
+                raise ValueError(
+                    f"max_text_length must be > 0, got {batch_length}"
+                )
             batches = self._batch_sentences(
                 sentences, batch_length, unit=tts_config.limit_unit
             )
