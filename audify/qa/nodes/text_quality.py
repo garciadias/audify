@@ -148,10 +148,9 @@ def _classify(text: str, chapter_id: str, creator: Any) -> str:
         return "garbage"
 
     moji_env = __import__("os").environ.get("MOJIBAKE_THRESHOLD", _MOJIBAKE_THRESHOLD)
-    threshold = float(
-        getattr(creator, "mojibake_threshold", None)
-        or float(moji_env)
-    )
+    # Use __dict__.get to avoid MagicMock auto-attribute creation.
+    moji_attr = getattr(creator, "__dict__", {}).get("mojibake_threshold")
+    threshold = float(moji_attr) if moji_attr is not None else float(moji_env)
     if _has_high_mojibake_ratio(text, threshold):
         logger.debug("%s: garbage — mojibake ratio", chapter_id)
         return "garbage"
@@ -163,10 +162,8 @@ def _classify(text: str, chapter_id: str, creator: Any) -> str:
     nw_env = __import__("os").environ.get(
         "NONWORD_RATIO_THRESHOLD", _NONWORD_RATIO_THRESHOLD
     )
-    nw_threshold = float(
-        getattr(creator, "nonword_ratio_threshold", None)
-        or float(nw_env)
-    )
+    nw_attr = getattr(creator, "__dict__", {}).get("nonword_ratio_threshold")
+    nw_threshold = float(nw_attr) if nw_attr is not None else float(nw_env)
     if _has_high_nonword_ratio(text, nw_threshold):
         logger.debug("%s: garbage — high nonword ratio", chapter_id)
         return "garbage"

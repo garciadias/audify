@@ -2157,3 +2157,170 @@ class TestTextQualityHelpers:
         result = escalate_node(state)
         # Should not crash; returns with empty pending_escalation
         assert result["pending_escalation"] == []
+
+    def test_classify_mojibake_text(self):
+        """_classify returns garbage for text with high mojibake ratio."""
+        from audify.qa.nodes.text_quality import _classify
+
+        creator = MagicMock()
+        text = "\x80\x81\x82\x83\x84" * 10 + "normal "
+        assert _classify(text, "ch1", creator) == "garbage"
+
+    def test_classify_high_nonword_ratio(self):
+        """_classify returns garbage for text with high nonword ratio."""
+        from audify.qa.nodes.text_quality import _classify
+
+        creator = MagicMock()
+        # Text that passes whitespace check but fails nonword check.
+        # Ratio of non-alphanumeric chars must be > 0.30.
+        norm = "Normal words here "
+        symbols = ">>>>..,,,,,;;;;;!!!!!%%%%%"
+        text = norm * 2 + symbols  # ~52 alnum + ~35 symbols = ~40% nonword
+        assert _classify(text, "ch1", creator) == "garbage"
+
+    def test_classify_bad_whitespace_ratio(self):
+        """_classify returns garbage for text with extreme whitespace."""
+        from audify.qa.nodes.text_quality import _classify
+
+        creator = MagicMock()
+        # Text with content but very high whitespace ratio (>0.70).
+        # Must pass empty check first (len > 10 after strip).
+        text = "word" + " " * 80 + "another"
+        assert _classify(text, "ch1", creator) == "garbage"
+
+    def test_mojibake_empty_text(self):
+        """_has_high_mojibake_ratio returns True for empty text."""
+        from audify.qa.nodes.text_quality import _has_high_mojibake_ratio
+
+        assert _has_high_mojibake_ratio("")
+
+    def test_mojibake_c1_control_chars(self):
+        """_has_high_mojibake_ratio detects C1 control characters."""
+        from audify.qa.nodes.text_quality import _has_high_mojibake_ratio
+
+        # C1 range is 0x80-0x9F. 3 C1 chars out of 10 total = 0.3
+        text = chr(0x85) + chr(0x90) + chr(0x95) + "normal"
+        assert _has_high_mojibake_ratio(text, threshold=0.25)
+
+    def test_mojibake_c0_control_chars(self):
+        """_has_high_mojibake_ratio detects C0 control characters."""
+        from audify.qa.nodes.text_quality import _has_high_mojibake_ratio
+
+        # C0 range below 0x20, excluding tab(0x09), lf(0x0A), cr(0x0D)
+        text = chr(0x01) + chr(0x02) + chr(0x03) + "normal"
+        assert _has_high_mojibake_ratio(text, threshold=0.25)
+
+    def test_whitespace_empty_text(self):
+        """_has_bad_whitespace_ratio returns True for empty text."""
+        from audify.qa.nodes.text_quality import _has_bad_whitespace_ratio
+
+        assert _has_bad_whitespace_ratio("")
+
+    def test_nonword_empty_text(self):
+        """_has_high_nonword_ratio returns True for empty text."""
+        from audify.qa.nodes.text_quality import _has_high_nonword_ratio
+
+        assert _has_high_nonword_ratio("")
+
+    def test_is_epub_reader_fallback(self, monkeypatch):
+        """_is_epub_reader fallback: TypeError triggers class-name check."""
+        from audify.qa.nodes.text_quality import _is_epub_reader
+
+        creator = MagicMock()
+        creator.reader = MagicMock()
+
+        # Patch isinstance globally so the first isinstance call raises TypeError.
+        import builtins
+        real_isinstance = builtins.isinstance
+
+        call_count = 0
+
+        def _broken_isinstance(obj, cls):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise TypeError("simulated isinstance failure")
+            return real_isinstance(obj, cls)
+
+        monkeypatch.setattr(builtins, "isinstance", _broken_isinstance)
+        # Fallback checks type().__name__ which is "MagicMock", not "EpubReader"
+        assert not _is_epub_reader(creator)
+
+    def test_escalate_epub_reader_success(self, monkeypatch):
+        """escalate_node with EPUB reader succeeds when escalation returns text."""
+        from audify.qa.nodes.text_quality import escalate_node as enode
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._is_epub_reader",
+            lambda c: True,
+        )
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._escalate_epub",
+            lambda path, attempt: "Escalated clean text.",
+        )
+        creator = MagicMock()
+        creator.reader = MagicMock()
+        creator.reader.path = "/fake/book.epub"
+        state = {
+            "creator": creator,
+            "chapters": [""],
+            "chapter_titles": ["Ch 1"],
+            "pending_escalation": [1],
+            "retry_budget": {"chapter_1": {"cycle_1_escalation": 0}},
+        }
+        result = enode(state)
+        assert result["pending_escalation"] == []
+        assert result["chapters"][0] == "Escalated clean text."
+
+    def test_escalate_epub_dispatch(self, monkeypatch):
+        """_escalate_epub dispatches to correct ladder rung by attempt number."""
+        from audify.qa.nodes.text_quality import _escalate_epub
+
+        # attempt 1 returns None (already done by read_node)
+        assert _escalate_epub("/fake/book.epub", 1) is None
+
+        # attempt 2 tries ebooklib raw — missing dep returns None
+        assert _escalate_epub("/fake/book.epub", 2) is None
+
+        # attempt 3 tries regex — missing dep returns None
+        assert _escalate_epub("/fake/book.epub", 3) is None
+
+        # attempt 4+ also uses regex
+        assert _escalate_epub("/fake/book.epub", 4) is None
+
+    def test_escalate_pdf_dispatch(self, monkeypatch):
+        """_escalate_pdf dispatches to correct ladder rung by attempt number."""
+        from audify.qa.nodes.text_quality import _escalate_pdf
+
+        # attempt 1 returns None (already done by read_node)
+        assert _escalate_pdf("/fake/doc.pdf", 1) is None
+
+        # attempt 2 tries sort-mode — missing fitz returns None
+        assert _escalate_pdf("/fake/doc.pdf", 2) is None
+
+        # attempt 3 tries OCR — missing deps returns None
+        assert _escalate_pdf("/fake/doc.pdf", 3) is None
+
+    def test_escalate_pdf_reader_success(self, monkeypatch):
+        """escalate_node with PDF reader succeeds when escalation returns text."""
+        from audify.qa.nodes.text_quality import escalate_node as enode
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._is_epub_reader",
+            lambda c: False,
+        )
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._escalate_pdf",
+            lambda path, attempt: "OCR extracted text.",
+        )
+        creator = MagicMock()
+        creator.reader = MagicMock()
+        creator.reader.path = "/fake/doc.pdf"
+        state = {
+            "creator": creator,
+            "chapters": [""],
+            "chapter_titles": ["Ch 1"],
+            "pending_escalation": [1],
+            "retry_budget": {"chapter_1": {"cycle_1_escalation": 0}},
+        }
+        result = enode(state)
+        assert result["pending_escalation"] == []
+        assert result["chapters"][0] == "OCR extracted text."
