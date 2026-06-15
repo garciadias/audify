@@ -85,6 +85,11 @@ class GraphState(TypedDict):
     # the next ``synthesize`` visit. Empty on the first pass; populated by the
     # back-edge and cleared once ``synthesize`` consumes it.
     pending_retry: list[int]
+    # episode numbers the cycle-2 reroute back-edge scheduled for
+    # script regeneration on the next ``script_gen`` visit. Empty on the
+    # first pass; populated by the script-validity judge and consumed by
+    # the back-edge routing once regeneration completes.
+    pending_reroute: list[int]
     # episode numbers the next ``fidelity`` visit should evaluate. Set by
     # ``synthesize`` to all episodes on the first pass, and to just the
     # re-synthesized episodes on a retry pass.

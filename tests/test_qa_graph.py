@@ -95,19 +95,22 @@ class TestBuildGraph:
             "to synthesize"
         )
 
-    def test_process_graph_is_acyclic(self):
-        """`process` mode performs no TTS, so it stays a forward-only DAG."""
+    def test_process_graph_has_cycle_2_back_edge(self):
+        """`process` mode has the cycle-2 ``script_validity → script_gen`` reroute."""
         graph = build_graph("process")
-        node_order = ["read", "confirm", "script_gen", "report"]
-        rank = {name: i for i, name in enumerate(node_order)}
+        edges = {(e[0], e[1]) for e in graph.get_graph().edges}
+        assert ("script_validity", "script_gen") in edges, (
+            "process mode must have cycle-2 reroute back-edge"
+        )
 
-        for edge in graph.get_graph().edges:
-            src, dst = edge[0], edge[1]
-            if src in rank and dst in rank:
-                assert rank[src] < rank[dst], (
-                    f"Back-edge detected: {src} → {dst}; "
-                    "process mode must be acyclic."
-                )
+    def test_process_graph_has_no_cycle_3(self):
+        """`process` mode performs no TTS, so it must not have fidelity or cycle-3."""
+        graph = build_graph("process")
+        edges = {(e[0], e[1]) for e in graph.get_graph().edges}
+        cycle_3_edges = {e for e in edges if "fidelity" in e[0] or "synthesize" in e[0]}
+        assert not cycle_3_edges, (
+            f"process mode must not have cycle-3 edges, found: {cycle_3_edges}"
+        )
 
     def test_process_graph_skips_synthesis(self):
         """`process` mode: scripts only, no synthesize/assemble nodes."""
@@ -1244,3 +1247,422 @@ class TestFidelityHelpers:
         from audify.qa.nodes.fidelity import _suspect_reason
 
         assert _suspect_reason(0.0, 0.0, 1.0, 0.3, 0.5) == "below thresholds"
+
+
+# ---------------------------------------------------------------------------
+# Cycle 2 — script-validity LLM judge + reroute back-edge (issue #39)
+# ---------------------------------------------------------------------------
+
+
+class _ScriptValidityStubLLM:
+    """LLM stub for script-validity testing. Returns configurable verdicts."""
+
+    def __init__(self, verdicts: dict[int, tuple[str, str]] | None = None):
+        """
+        Args:
+            verdicts: Mapping episode_number -> (verdict, reason).
+                      Unmapped episodes default to ("pass", "").
+        """
+        self.verdicts = verdicts or {}
+        self.calls: list[tuple[int, str, str]] = []
+
+    def generate_script(self, *, text: str, prompt: str, language, temperature):
+        # Store the call info (no access to episode_number here, we rely on context)
+        self._last_text = text
+        self._last_prompt = prompt
+        # Return the appropriate verdict for this call based on the script content
+        # Determine which episode from context (source/script in text)
+        # We track by call order
+        idx = len(self.calls)
+        self.calls.append((idx, text[:50], prompt[:50]))
+        # Default: pass
+        return '{"verdict": "pass", "reason": "Faithful narration."}'
+
+
+class _ScriptValidityCreator:
+    """Minimal creator for script-validity graph runs."""
+
+    def __init__(
+        self,
+        tmp_path: Path,
+        chapters: list[str],
+        llm_verdicts: dict[int, tuple[str, str]] | None = None,
+        *,
+        mode: str = "full",
+    ):
+        self.audiobook_path = tmp_path / "out"
+        self.audiobook_path.mkdir(parents=True, exist_ok=True)
+        self.llm_client = _ScriptValidityStubLLM(llm_verdicts)
+        self.mode = mode
+        self.language = "en"
+        self.resolved_language = "en"
+        self.warn_stop = False
+        self.progress = MagicMock()
+        self._chapters = chapters
+        self._titles = [f"Chapter {i + 1}" for i in range(len(chapters))]
+
+    def _verify_tts_provider_available(self):
+        return None
+
+
+class TestScriptValidityNode:
+    """Unit tests for the script_validity_node in isolation."""
+
+    def _state(
+        self,
+        creator,
+        *,
+        chapters: list[str] | None = None,
+        chapter_scripts: list[tuple[int, str]] | None = None,
+    ):
+        if chapters is None:
+            chapters = ["Source text for a real narration. " * 50]
+        if chapter_scripts is None:
+            script = "Long healthy narration script text. " * 50
+            chapter_scripts = [(1, script)]
+        return {
+            "creator": creator,
+            "chapters": chapters,
+            "chapter_titles": [f"Chapter {i + 1}" for i in range(len(chapters))],
+            "chapter_scripts": chapter_scripts,
+            "episode_paths": [],
+            "retry_budget": {},
+            "best_wer": {},
+            "flags": {},
+            "pending_reroute": [],
+            "pending_retry": [],
+            "episodes_to_check": [],
+        }
+
+    def test_clean_script_passes(self):
+        """A script with healthy word count skips the LLM judge entirely."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        creator = MagicMock()
+        chapters = ["Source chapter text. " * 100]
+        script = "Long healthy narration script text. " * 100
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []
+        assert result["flags"] == {}
+        assert (1, script) in result["chapter_scripts"]
+
+    def test_short_script_triggers_llm_judge(self):
+        """A suspiciously short script reaches the LLM judge."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        creator = MagicMock()
+        llm = _ScriptValidityStubLLM()
+        creator.llm_client = llm
+        chapters = ["Source chapter with real content. " * 100]
+        # Short script that triggers the judge
+        script = "Short."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        # LLM was called (since script is short)
+        assert len(llm.calls) >= 1
+        assert result["pending_reroute"] == []
+
+    def test_summary_script_triggers_reroute(self):
+        """A summary-like script gets rerouted."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+        # Override generate_script to return a reroute verdict
+
+        def _reroute(text, prompt, language, temperature):
+            llm.calls.append((len(llm.calls), text[:50], prompt[:50]))
+            return ('{"verdict": "reroute", '
+                    '"reason": "Script is a summary, not a narration."}')
+        llm.generate_script = _reroute
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter with real content. " * 100]
+        script = "Short summary. The chapter is about X."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == [1]
+        assert result["retry_budget"]["chapter_1"]["cycle_2_reroute"] == 2
+
+    def test_refusal_script_triggers_reroute(self):
+        """A refusal script gets rerouted."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+
+        def _refusal(text, prompt, language, temperature):
+            llm.calls.append((len(llm.calls), text[:50], prompt[:50]))
+            return ('{"verdict": "reroute", '
+                    '"reason": "Script contains refusal language."}')
+        llm.generate_script = _refusal
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        script = "I'm sorry, I cannot narrate this content."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == [1]
+
+    def test_exhaustion_keeps_best_effort(self):
+        """After 3 reroute attempts, budget exhausts and script is kept."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+
+        def _always_reroute(text, prompt, language, temperature):
+            llm.calls.append((len(llm.calls), text[:50], prompt[:50]))
+            return '{"verdict": "reroute", "reason": "Bad script."}'
+        llm.generate_script = _always_reroute
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        script = "Bad script."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        # Set retry_budget to 0 so the first call exhausts budget
+        state["retry_budget"] = {"chapter_1": {"cycle_2_reroute": 0}}
+
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []  # No more retries
+        flags = result["flags"]["chapter_1"]
+        assert flags[-1]["exhausted"] is True
+        assert flags[-1]["cycle"] == "cycle_2_reroute"
+
+    def test_no_llm_client_skips_judge(self):
+        """When no LLM client is available, the node passes through."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        creator = MagicMock()
+        # No llm_client attribute
+        chapters = ["Source chapter. " * 100]
+        script = "Short script."  # Would trigger judge if client existed
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []
+        assert result["flags"] == {}
+
+    def test_borderline_passes_through(self):
+        """A borderline verdict passes through without reroute."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+
+        def _borderline(text, prompt, language, temperature):
+            llm.calls.append((len(llm.calls), text[:50], prompt[:50]))
+            return '{"verdict": "borderline", "reason": "Slightly abbreviated."}'
+        llm.generate_script = _borderline
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        script = "Short script."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []  # borderline = pass through
+        assert result["flags"] == {}  # No flag for borderline
+
+    def test_routing_reroute_to_script_gen(self):
+        """script_validity_route returns 'script_gen' when reroutes pending."""
+        from audify.qa.nodes.script_validity import script_validity_route
+
+        state = {"pending_reroute": [1], "creator": MagicMock()}
+        assert script_validity_route(state) == "script_gen"
+
+    def test_routing_pass_to_synthesize_full_mode(self):
+        """script_validity_route returns 'synthesize' in full mode."""
+        from audify.qa.nodes.script_validity import script_validity_route
+
+        creator = MagicMock()
+        creator.mode = "full"
+        state = {"pending_reroute": [], "creator": creator}
+        assert script_validity_route(state) == "synthesize"
+
+    def test_routing_pass_to_report_process_mode(self):
+        """script_validity_route returns 'report' in process mode."""
+        from audify.qa.nodes.script_validity import script_validity_route
+
+        creator = MagicMock()
+        creator.mode = "process"
+        state = {"pending_reroute": [], "creator": creator}
+        assert script_validity_route(state) == "report"
+
+    def test_parse_judge_response_handles_markdown_fences(self):
+        """_parse_judge_response strips markdown code fences."""
+        from audify.qa.nodes.script_validity import _parse_judge_response
+
+        response = """```json
+{"verdict": "reroute", "reason": "Summary detected."}
+```"""
+        parsed = _parse_judge_response(response)
+        assert parsed["verdict"] == "reroute"
+        assert parsed["reason"] == "Summary detected."
+
+    def test_multi_chapter_reroute_only_failing_chapters(self):
+        """Only chapters with bad scripts get rerouted; clean ones pass."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        def _mixed_verdicts(text, prompt, language, temperature):
+            # Only called for chapter 2 (short script); chapter 1 is long enough
+            # to skip the LLM judge entirely.
+            return '{"verdict": "reroute", "reason": "Summary."}'
+
+        llm = _ScriptValidityStubLLM()
+        llm.generate_script = _mixed_verdicts
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = [
+            "Source chapter one. " * 100,
+            "Source chapter two. " * 100,
+        ]
+        scripts = [
+            (1, "Long healthy script that passes the pre-filter. " * 100),  # Clean
+            (2, "Short script."),  # Will trigger LLM and fail
+        ]
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=scripts)
+        result = script_validity_node(state)
+
+        # Only chapter 2 should be in pending_reroute
+        assert result["pending_reroute"] == [2]
+        assert "chapter_2" not in result["flags"]
+
+
+class TestScriptValidityCycle:
+    """Integration tests: script_validity back-edge firing in the compiled graph."""
+
+    def test_reroute_back_edge_fires_and_resolves(self, tmp_path):
+        """A reroutable script triggers the back-edge; script_gen re-runs."""
+        from audify.qa.graph import run_graph
+
+        call_log: list[int] = []
+
+        def _gen_script(chapter_content: str, episode_number: int) -> str:
+            call_log.append(episode_number)
+            if len(call_log) == 1:
+                # First call produces bad script
+                return "Short bad script."
+            # Retry produces good script
+            return "Long enough narration script that passes the pre-filter. " * 100
+
+        # Build a fresh MagicMock with configure_mock to override attributes
+        creator = MagicMock()
+        creator.max_chapters = None
+        creator.audiobook_path = tmp_path / "out"
+        (tmp_path / "out").mkdir(parents=True, exist_ok=True)
+        creator.chapter_titles = []
+        creator.mode = "full"
+        creator.confirm = False
+        creator.warn_stop = False
+        creator.fidelity_check = False
+        creator.language = "en"
+        creator.resolved_language = "en"
+        from audify.readers.pdf import PdfReader
+        creator.reader = MagicMock(spec=PdfReader)
+        creator.reader.cleaned_text = "\n\n".join(["Chapter one text. " * 200])
+        creator.generate_audiobook_script.side_effect = _gen_script
+        creator.progress = MagicMock()
+        creator._verify_tts_provider_available.return_value = None
+
+        # Add an LLM client that returns reroute for short scripts
+        def _judge(text, prompt, language, temperature):
+            if "Short bad script" in text:
+                return ('{"verdict": "reroute", '
+                        '"reason": "Script too short to be faithful."}')
+            return '{"verdict": "pass", "reason": "Looks good."}'
+
+        llm = _ScriptValidityStubLLM()
+        llm.generate_script = _judge
+        creator.llm_client = llm
+
+        # synthesize needs to create a file
+        def _synth(script, episode_number):
+            p = tmp_path / "out" / f"episode_{episode_number:03d}.mp3"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"FAKE")
+            return p
+
+        creator.synthesize_episode.side_effect = _synth
+        creator._validate_chapters.return_value = None
+        creator._save_chapter_titles.return_value = None
+        creator.create_m4b.return_value = None
+
+        with patch("audify.readers.ebook.EpubReader"):
+            run_graph(creator)
+
+        # script_gen was called 2 times: 1 initial + 1 reroute
+        assert len(call_log) == 2, f"Expected 2 calls, got {len(call_log)}"
+
+        report_path = tmp_path / "out" / "quality_report.json"
+        assert report_path.exists()
+        report = json.loads(report_path.read_text())
+        # Chapter should have been flagged as resolved
+        chapter = report["chapters"]["chapter_1"]
+        v = chapter["verdict"]
+        assert v == "flagged", f"Expected flagged, got {v}"
+
+    def test_process_mode_reroute_also_fires(self, tmp_path):
+        """Cycle-2 reroute edge applies in process mode too."""
+        from audify.qa.graph import run_graph
+
+        call_log: list[int] = []
+
+        def _gen_script(chapter_content: str, episode_number: int) -> str:
+            call_log.append(episode_number)
+            return "Short bad script."  # Always bad
+
+        def _judge(text, prompt, language, temperature):
+            return '{"verdict": "reroute", "reason": "Summary detected."}'
+
+        llm = _ScriptValidityStubLLM()
+        llm.generate_script = _judge
+
+        creator = MagicMock()
+        creator.max_chapters = None
+        creator.audiobook_path = tmp_path / "out"
+        (tmp_path / "out").mkdir(parents=True, exist_ok=True)
+        creator.chapter_titles = []
+        creator.mode = "process"
+        creator.confirm = False
+        creator.warn_stop = False
+        creator.fidelity_check = False
+        creator.language = "en"
+        creator.resolved_language = "en"
+        from audify.readers.pdf import PdfReader
+        creator.reader = MagicMock(spec=PdfReader)
+        creator.reader.cleaned_text = "\n\n".join(["Chapter one text. " * 200])
+        creator.generate_audiobook_script.side_effect = _gen_script
+        creator.llm_client = llm
+        creator.progress = MagicMock()
+        creator._validate_chapters.return_value = None
+        creator._save_chapter_titles.return_value = None
+        creator.create_m4b.return_value = None
+        creator.synthesize_episode = MagicMock()  # Not called in process mode
+
+        with patch("audify.readers.ebook.EpubReader"):
+            run_graph(creator)
+
+        # script_gen was called at least 2 times (initial + reroute back-edge)
+        assert len(call_log) >= 2, f"Expected >=2 calls, got {call_log}"
+
+        report_path = tmp_path / "out" / "quality_report.json"
+        assert report_path.exists()
+        report = json.loads(report_path.read_text())
+        chapter = report["chapters"]["chapter_1"]
+        assert chapter["attempts_used"]["cycle_2_reroute"] >= 1
