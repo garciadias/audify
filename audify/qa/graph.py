@@ -12,12 +12,16 @@ from audify.qa.nodes.load_scripts import load_scripts_node
 from audify.qa.nodes.read import read_node
 from audify.qa.nodes.report import report_node
 from audify.qa.nodes.script_gen import script_gen_node
+from audify.qa.nodes.script_validity import (
+    script_validity_node,
+    script_validity_route,
+)
 from audify.qa.nodes.synthesize import synthesize_node
 from audify.qa.state import GraphState
 
-# Bound on graph supersteps. The cycle-3 retry edge loops
-# synthesize ↔ fidelity at most MAX_BUDGET_PER_CYCLE times per run, so the
-# default LangGraph limit (25) is ample; set explicitly for clarity/safety.
+# Bound on graph supersteps. The cycle-2 reroute and cycle-3 retry edges
+# loop at most MAX_BUDGET_PER_CYCLE times per run, so the default LangGraph
+# limit (25) is ample; set explicitly for clarity/safety.
 _RECURSION_LIMIT = 50
 
 if TYPE_CHECKING:
@@ -31,13 +35,16 @@ def build_graph(mode: str = "full") -> "CompiledStateGraph":
 
     Three topologies:
 
-    * ``"full"`` — ``read → confirm → script_gen → synthesize → fidelity →
-      assemble → report → END`` with a cycle-3 ``fidelity → synthesize``
-      retry back-edge.
-    * ``"process"`` — ``read → confirm → script_gen → report → END`` (no TTS,
-      acyclic).
+    * ``"full"`` — ``read → confirm → script_gen → script_validity →
+      synthesize → fidelity → assemble → report → END`` with a cycle-2
+      ``script_validity → script_gen`` reroute back-edge and a cycle-3
+      ``fidelity → synthesize`` retry back-edge.
+    * ``"process"`` — ``read → confirm → script_gen → script_validity →
+      report → END`` (no TTS, acyclic; cycle-2 applies to catch LLM errors
+      before TTS spend).
     * ``"synthesize"`` — ``load_scripts → synthesize → fidelity → assemble →
-      report → END`` (loads previously-saved scripts, no LLM; retry edge applies).
+      report → END`` (loads previously-saved scripts, no LLM; cycle-3 retry
+      edge applies; cycle-2 is skipped because scripts are pre-validated).
 
     Each shape mirrors the corresponding branch of the legacy
     ``AudiobookCreator.create_audiobook_series`` orchestrator.
@@ -59,6 +66,7 @@ def _build_full_graph() -> "CompiledStateGraph":
     builder.add_node("read", read_node)
     builder.add_node("confirm", confirm_node)
     builder.add_node("script_gen", script_gen_node)
+    builder.add_node("script_validity", script_validity_node)
     builder.add_node("synthesize", synthesize_node)
     builder.add_node("fidelity", fidelity_node)
     builder.add_node("assemble", assemble_node)
@@ -67,7 +75,14 @@ def _build_full_graph() -> "CompiledStateGraph":
     builder.set_entry_point("read")
     builder.add_edge("read", "confirm")
     builder.add_edge("confirm", "script_gen")
-    builder.add_edge("script_gen", "synthesize")
+    builder.add_edge("script_gen", "script_validity")
+    # Cycle-2 reroute edge: loop back to script_gen when the validity judge
+    # flags a script, otherwise continue to synthesize.
+    builder.add_conditional_edges(
+        "script_validity",
+        script_validity_route,
+        {"script_gen": "script_gen", "synthesize": "synthesize"},
+    )
     builder.add_edge("synthesize", "fidelity")
     # Cycle-3 retry edge: loop back to synthesize while episodes are flagged
     # for re-chunk, otherwise continue to assemble.
@@ -86,12 +101,20 @@ def _build_process_graph() -> "CompiledStateGraph":
     builder.add_node("read", read_node)
     builder.add_node("confirm", confirm_node)
     builder.add_node("script_gen", script_gen_node)
+    builder.add_node("script_validity", script_validity_node)
     builder.add_node("report", report_node)
 
     builder.set_entry_point("read")
     builder.add_edge("read", "confirm")
     builder.add_edge("confirm", "script_gen")
-    builder.add_edge("script_gen", "report")
+    builder.add_edge("script_gen", "script_validity")
+    # Cycle-2 reroute edge applies in process mode too — catch LLM errors
+    # before TTS spend. Downstream target differs: report instead of synth.
+    builder.add_conditional_edges(
+        "script_validity",
+        script_validity_route,
+        {"script_gen": "script_gen", "report": "report"},
+    )
     builder.add_edge("report", END)
     return builder.compile()
 
@@ -146,6 +169,7 @@ def run_graph(creator: "AudiobookCreator") -> Path:
         "retry_budget": {},
         "best_wer": {},
         "flags": {},
+        "pending_reroute": [],
         "pending_retry": [],
         "episodes_to_check": [],
     }
@@ -168,9 +192,17 @@ def render_mermaid(output_path: Path = Path("docs/graph.md")) -> None:
     output_path.write_text(
         "# QA Pipeline Graph\n\n"
         "Topology of the LangGraph QA pipeline in `full` mode "
-        "(`read → confirm → script_gen → synthesize → fidelity → "
-        "assemble → report`).\n\n"
+        "(`read → confirm → script_gen → script_validity → "
+        "synthesize → fidelity → assemble → report`).\n\n"
         f"```mermaid\n{diagram}\n```\n\n"
+        "## Cycle 2 — script-validity reroute edge\n\n"
+        "`script_validity` sits between `script_gen` and `synthesize`. It uses "
+        "a duration-based pre-filter and an LLM judge to check each generated "
+        "script for faithfulness (no summaries, refusals, or error messages) "
+        "and policy compliance (no raw code blocks read aloud). When it detects "
+        "a bad script it loops back to `script_gen` on a reroute edge, bounded "
+        "to 3 retries per chapter. On exhaustion the best-effort script is kept "
+        "and the chapter is flagged in the report; the run never aborts.\n\n"
         "## Cycle 3 — fidelity retry edge\n\n"
         "`fidelity` boundary-samples each freshly-synthesized episode "
         "(head/tail STT round-trip + duration ratio). When it suspects TTS "
@@ -181,7 +213,8 @@ def render_mermaid(output_path: Path = Path("docs/graph.md")) -> None:
         "the run never aborts.\n\n"
         "## Sub-graphs\n\n"
         "* **`process` mode** (`--process-only`): "
-        "`read → confirm → script_gen → report → END` — no TTS, no M4B.\n"
+        "`read → confirm → script_gen → script_validity → report → END` — "
+        "no TTS, no M4B; cycle-2 applies to catch LLM errors before TTS spend.\n"
         "* **`synthesize` mode** (`--synthesize-only`): "
         "`load_scripts → synthesize → fidelity → assemble → report → END` — "
         "scripts are loaded from a previous `--process-only` run; the cycle-3 "
