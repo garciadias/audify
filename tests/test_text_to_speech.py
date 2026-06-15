@@ -129,6 +129,38 @@ class TestBaseSynthesizer:
         assert mock_tts_config.synthesize.call_count == 2
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
+    def test_synthesize_non_positive_max_text_length_rejected(self, mock_temp_dir):
+        """A non-positive max_text_length override is rejected before batching."""
+        mock_temp_dir.return_value.name = "/tmp/test_dir"
+
+        synthesizer = BaseSynthesizer(
+            path="test.txt",
+            voice="test_voice",
+            translate=None,
+            save_text=False,
+            language="en",
+        )
+
+        mock_tts_config = MagicMock()
+        mock_tts_config.provider_name = "kokoro"
+        mock_tts_config.is_available.return_value = True
+        mock_tts_config.get_available_voices.return_value = ["test_voice"]
+        mock_tts_config.voice = "test_voice"
+        mock_tts_config.max_text_length = 5000
+        mock_tts_config.limit_unit = "chars"
+
+        with (
+            patch.object(synthesizer, "_get_tts_config", return_value=mock_tts_config),
+            pytest.raises(ValueError, match="max_text_length must be > 0"),
+        ):
+            synthesizer._synthesize_with_provider(
+                ["Hello world"], Path("/tmp/output.wav"), max_text_length=0
+            )
+
+        # Batching never reached, so no synthesis calls were attempted.
+        mock_tts_config.synthesize.assert_not_called()
+
+    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_synthesize_kokoro_api_unavailable(self, mock_temp_dir):
         """Test Kokoro API synthesis when API is unavailable."""
         mock_temp_dir.return_value.name = "/tmp/test_dir"
