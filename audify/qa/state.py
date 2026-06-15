@@ -81,6 +81,11 @@ class GraphState(TypedDict):
     best_wer: dict[str, float]
     # flags[chapter_id] = ordered list of FlagEntry raised against the chapter
     flags: dict[str, list[FlagEntry]]
+    # episode numbers the cycle-1 escalation back-edge scheduled for
+    # re-extraction on the next ``escalate`` visit. Empty on the first pass;
+    # populated by the text-quality detector and consumed by the escalation
+    # node; cleared once ``escalate`` re-extracts the chapter.
+    pending_escalation: list[int]
     # episode numbers the cycle-3 fidelity check scheduled for re-synthesis on
     # the next ``synthesize`` visit. Empty on the first pass; populated by the
     # back-edge and cleared once ``synthesize`` consumes it.
