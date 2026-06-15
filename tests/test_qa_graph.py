@@ -1445,7 +1445,7 @@ class TestScriptValidityNode:
         from audify.qa.nodes.script_validity import script_validity_node
 
         creator = MagicMock()
-        # No llm_client attribute
+        creator.llm_client = None  # Explicitly None (MagicMock auto-creates attrs)
         chapters = ["Source chapter. " * 100]
         script = "Short script."  # Would trigger judge if client existed
 
@@ -1542,6 +1542,106 @@ class TestScriptValidityNode:
         # Only chapter 2 should be in pending_reroute
         assert result["pending_reroute"] == [2]
         assert "chapter_2" not in result["flags"]
+
+    def test_pass_after_reroute_adds_resolved_flag(self):
+        """A short script that passes LLM judge after a previous reroute gets a flag."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        call_count = 0
+
+        def _first_reroute_then_pass(text, prompt, language, temperature):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return '{"verdict": "reroute", "reason": "Summary detected."}'
+            return '{"verdict": "pass", "reason": "Now faithful."}'
+
+        llm = _ScriptValidityStubLLM()
+        llm.generate_script = _first_reroute_then_pass
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        scripts = [(1, "Short script.")]
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=scripts)
+        # First call: reroute
+        result1 = script_validity_node(state)
+        assert result1["pending_reroute"] == [1]
+        # Merge result1 into a fresh state for the second pass
+        state2 = self._state(creator, chapters=chapters, chapter_scripts=scripts)
+        state2.update(result1)
+
+        # Second call: pass (simulate reroute back-edge completed)
+        result2 = script_validity_node(state2)
+        assert result2["pending_reroute"] == []
+        flags = result2["flags"]["chapter_1"]
+        assert len(flags) == 1
+        assert flags[0]["cycle"] == "cycle_2_reroute"
+        assert flags[0]["exhausted"] is False
+
+    def test_llm_exception_degrades_gracefully(self):
+        """LLM judge exception is caught, defaults to pass."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+
+        def _explode(text, prompt, language, temperature):
+            raise RuntimeError("LLM service unavailable")
+
+        llm.generate_script = _explode
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        script = "Short busted script."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []
+
+    def test_unknown_judge_verdict_defaults_to_pass(self):
+        """An unrecognized LLM verdict defaults to pass."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+
+        def _unknown(text, prompt, language, temperature):
+            return '{"verdict": "maybe", "reason": "Not sure."}'
+
+        llm.generate_script = _unknown
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        script = "Short ambiguous script."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []
+
+    def test_unparseable_judge_response_defaults_to_pass(self):
+        """LLM returns garbage JSON, defaults to pass."""
+        from audify.qa.nodes.script_validity import script_validity_node
+
+        llm = _ScriptValidityStubLLM()
+
+        def _garbage(text, prompt, language, temperature):
+            return "This is not JSON at all."
+
+        llm.generate_script = _garbage
+
+        creator = MagicMock()
+        creator.llm_client = llm
+        chapters = ["Source chapter. " * 100]
+        script = "Short garbage script."
+
+        state = self._state(creator, chapters=chapters, chapter_scripts=[(1, script)])
+        result = script_validity_node(state)
+
+        assert result["pending_reroute"] == []
 
 
 class TestScriptValidityCycle:
