@@ -150,7 +150,11 @@ def _classify(text: str, chapter_id: str, creator: Any) -> str:
     moji_env = __import__("os").environ.get("MOJIBAKE_THRESHOLD", _MOJIBAKE_THRESHOLD)
     # Use __dict__.get to avoid MagicMock auto-attribute creation.
     moji_attr = getattr(creator, "__dict__", {}).get("mojibake_threshold")
-    threshold = float(moji_attr) if moji_attr is not None else float(moji_env)
+    threshold = _safe_float_threshold(
+        moji_attr if moji_attr is not None else moji_env,
+        _MOJIBAKE_THRESHOLD,
+        "MOJIBAKE_THRESHOLD",
+    )
     if _has_high_mojibake_ratio(text, threshold):
         logger.debug("%s: garbage — mojibake ratio", chapter_id)
         return "garbage"
@@ -163,12 +167,27 @@ def _classify(text: str, chapter_id: str, creator: Any) -> str:
         "NONWORD_RATIO_THRESHOLD", _NONWORD_RATIO_THRESHOLD
     )
     nw_attr = getattr(creator, "__dict__", {}).get("nonword_ratio_threshold")
-    nw_threshold = float(nw_attr) if nw_attr is not None else float(nw_env)
+    nw_threshold = _safe_float_threshold(
+        nw_attr if nw_attr is not None else nw_env,
+        _NONWORD_RATIO_THRESHOLD,
+        "NONWORD_RATIO_THRESHOLD",
+    )
     if _has_high_nonword_ratio(text, nw_threshold):
         logger.debug("%s: garbage — high nonword ratio", chapter_id)
         return "garbage"
 
     return "clean"
+
+
+def _safe_float_threshold(raw: Any, default: float, name: str) -> float:
+    """Parse *raw* as float, falling back to *default* on invalid input."""
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s=%r; using default %s", name, raw, default)
+        return default
 
 
 def _is_empty_after_clean(text: str) -> bool:
@@ -392,6 +411,10 @@ def _epub_escalate_regex(source_path: Path) -> Optional[str]:
             if text:
                 texts.append(text)
         except Exception:
+            logger.debug(
+                "Failed to parse EPUB item in regex escalation",
+                exc_info=True,
+            )
             continue
 
     if not texts:
@@ -443,6 +466,10 @@ def _pdf_escalate_sort(source_path: Path) -> Optional[str]:
             if text:
                 texts.append(text.strip())
         except Exception:
+            logger.debug(
+                "Failed to extract text from page in sort-mode PDF",
+                exc_info=True,
+            )
             continue
 
     doc.close()

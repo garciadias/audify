@@ -46,7 +46,8 @@ def build_graph(mode: str = "full") -> "CompiledStateGraph":
       back-edge, a cycle-2 ``script_validity → script_gen`` reroute back-edge
       and a cycle-3 ``fidelity → synthesize`` retry back-edge.
     * ``"process"`` — same as ``"full"`` but stops after the report node (no
-      TTS, no M4B). All three cycles apply.
+      TTS, no M4B). Cycle-1 and cycle-2 apply; cycle-3 (fidelity) is
+      skipped because no synthesis occurs.
     * ``"synthesize"`` — ``load_scripts → synthesize → fidelity → assemble →
       report → END`` (loads previously-saved scripts, no LLM; cycle-3 retry
       edge applies; cycles 1 and 2 are skipped because extraction and script
