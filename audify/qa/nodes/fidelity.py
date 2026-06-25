@@ -55,6 +55,8 @@ def fidelity_node(state: GraphState) -> dict:
     if not getattr(creator, "fidelity_check", False):
         return {}
 
+    creator.progress.set_phase("Checking fidelity")
+
     client = _get_stt_client(creator)
     if client is None:
         logger.info("Fidelity check skipped: no STT client available.")

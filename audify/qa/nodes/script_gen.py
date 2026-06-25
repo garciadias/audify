@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from rich.progress import track
-
 from audify.audiobook_creator import clean_text_for_audiobook
 from audify.qa.state import GraphState
 
@@ -23,17 +21,18 @@ def script_gen_node(state: GraphState) -> dict:
     creator = state["creator"]
     chapters = state["chapters"]
     chapter_titles = state["chapter_titles"]
+    total_chapters = len(chapters)
 
     script_word_counts: list[tuple[str, int]] = []
     chapter_scripts: list[tuple[int, str]] = []
 
     creator.progress.set_phase("Generating")
 
-    for i, chapter_content in enumerate(
-        track(chapters, description="Creating Audiobook Scripts")
-    ):
+    for i, chapter_content in enumerate(chapters):
         episode_number = i + 1
         chapter_title = chapter_titles[i]
+
+        creator.progress.set_counter(i + 1, total_chapters)
 
         cleaned_content = clean_text_for_audiobook(chapter_content)
         text_snippet = " ".join(cleaned_content.split()[:100])

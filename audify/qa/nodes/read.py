@@ -8,6 +8,8 @@ def read_node(state: GraphState) -> dict:
     """Extract chapters and titles from the source file via the existing reader."""
     creator = state["creator"]
 
+    creator.progress.set_phase("Reading")
+
     if isinstance(creator.reader, EpubReader):
         chapters = creator.reader.get_chapters()
     else:

@@ -18,6 +18,8 @@ def load_scripts_node(state: GraphState) -> dict:
     """
     creator = state["creator"]
 
+    creator.progress.set_phase("Loading scripts")
+
     script_files = sorted(creator.scripts_path.glob("episode_*_script.txt"))
     if not script_files:
         logger.error(

@@ -175,11 +175,14 @@ def run_graph(creator: "AudiobookCreator") -> Path:
     """
     mode = getattr(creator, "mode", "full")
 
+    creator.progress.set_phase("Starting pipeline")
+
     # Preflight guard: matches the legacy
     # ``_verify_tts_provider_available`` calls in
     # ``create_audiobook_series`` and ``_synthesize_from_existing_scripts``.
     # Skipped for ``"process"`` since no TTS happens.
     if mode != "process":
+        creator.progress.set_phase("Verifying TTS provider")
         creator._verify_tts_provider_available()
 
     graph = build_graph(mode)
@@ -199,6 +202,7 @@ def run_graph(creator: "AudiobookCreator") -> Path:
         "episodes_to_check": [],
     }
 
+    creator.progress.set_phase("Running pipeline")
     graph.invoke(initial_state, {"recursion_limit": _RECURSION_LIMIT})
     return Path(creator.audiobook_path)
 

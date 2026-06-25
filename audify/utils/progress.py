@@ -38,17 +38,19 @@ PHASE_EMOJIS = {
 
 class ProgressIndicator:
     """
-    Thread-safe progress indicator with rotating spinner and phase description.
+    Thread-safe progress indicator with rotating spinner, phase description,
+    and optional chapter-level counter.
 
-    Displays: ⠋ Reading... ⠙ Translating... etc.
+    Displays: ``⠋ 🔊 Synthesizing... [3/20]`` or just ``⠋ ✨ Generating...``
 
     Example:
         >>> progress = ProgressIndicator()
         >>> progress.start()
         >>> progress.set_phase("Reading")
+        >>> progress.set_counter(1, 20)  # "[1/20]"
         >>> # do work
-        >>> progress.set_phase("Translating")
-        >>> # do more work
+        >>> progress.set_phase("Generating")
+        >>> progress.set_counter(5, 20)  # "[5/20]"
         >>> progress.stop()
     """
 
@@ -60,6 +62,8 @@ class ProgressIndicator:
         """
         self.update_interval = update_interval
         self._current_phase = "Processing"
+        self._current_counter: Optional[int] = None
+        self._total_counter: Optional[int] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._spinner = cycle(SPINNER_FRAMES)
@@ -95,6 +99,25 @@ class ProgressIndicator:
         """
         with self._lock:
             self._current_phase = phase
+
+    def set_counter(self, current: int, total: int) -> None:
+        """Update the chapter-level progress counter.
+
+        Displayed as ``[current/total]`` next to the spinner. Pass
+        ``current=1, total=20`` to show ``[1/20]``. Resets when
+        ``current >= total`` so the next phase does not inherit
+        stale counter state.
+
+        Args:
+            current: Current chapter/episode number (1-indexed).
+            total: Total number of chapters/episodes.
+        """
+        with self._lock:
+            self._current_counter = current
+            self._total_counter = total
+            if current >= total:
+                self._current_counter = None
+                self._total_counter = None
 
     def print_table_of_contents(self, chapters: list[str]) -> None:
         """Display table of contents for all chapters with modern styling.
@@ -177,27 +200,37 @@ class ProgressIndicator:
 
         # Progress indicator line with lightning emoji
         sys.stdout.write(f"{Colors.YELLOW}⚡ Processing...{Colors.RESET}\n")
-        # Add blank line to separate from tqdm output
         sys.stdout.write("\n")
         sys.stdout.flush()
-        # Don't restart spinner here - let tqdm display without interference
+        # Restart spinner so the user sees phase + counter during the slow
+        # LLM/TTS call that follows.  The brief stop/start is imperceptible.
+        self.start()
 
     def _run(self) -> None:
-        """Main loop for the progress indicator with dynamic styling."""
+        """Main loop for the progress indicator with dynamic styling.
+
+        Renders: ``⠋ \U0001f50a Synthesizing... [3/20]``
+        or just ``⠋ ✨ Generating...`` when no counter is set.
+        """
         while self._running:
             with self._lock:
                 frame = next(self._spinner)
                 phase = self._current_phase
+                current = self._current_counter
+                total = self._total_counter
 
             # Get emoji for current phase
             emoji = PHASE_EMOJIS.get(phase, "⏳")
 
-            # Write to stderr so it doesn't interfere with stdout
+            # Build message: spinner + emoji + phase + optional counter
+            has_counter = current is not None and total is not None
+            counter_part = f" [{current}/{total}]" if has_counter else ""
             message = (
                 f"{Colors.GREEN}{frame}{Colors.RESET} {emoji} "
                 f"{Colors.CYAN}{phase}...{Colors.RESET}"
+                f"{Colors.YELLOW}{counter_part}{Colors.RESET}"
             )
-            sys.stderr.write(f"\r{message:<70}")
+            sys.stderr.write(f"\r{message:<80}")
             sys.stderr.flush()
 
             time.sleep(self.update_interval)

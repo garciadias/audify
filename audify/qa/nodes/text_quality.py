@@ -55,6 +55,8 @@ def text_quality_node(state: GraphState) -> dict:
     chapters: list[str] = state["chapters"]
     chapter_titles: list[str] = state["chapter_titles"]
 
+    creator.progress.set_phase("Checking text quality")
+
     # Copy nested containers so we never mutate inbound state in place.
     retry_budget = {k: dict(v) for k, v in state.get("retry_budget", {}).items()}
     flags = {k: list(v) for k, v in state.get("flags", {}).items()}
@@ -271,6 +273,7 @@ def escalate_node(state: GraphState) -> dict:
     pending_escalation: list[int] = state.get("pending_escalation", [])
     retry_budget = state.get("retry_budget", {})
 
+    creator.progress.set_phase("Re-extracting low-quality chapters")
     is_epub = _is_epub_reader(creator)
     source_path = getattr(creator.reader, "path", None)
 
