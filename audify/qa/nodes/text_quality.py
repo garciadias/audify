@@ -17,6 +17,7 @@ best-effort text is kept and the chapter is flagged in the report.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -65,7 +66,9 @@ def text_quality_node(state: GraphState) -> dict:
     clean_chapters: list[str] = []
     clean_titles: list[str] = []
 
-    for i, (chapter_text, title) in enumerate(zip(chapters, chapter_titles)):
+    for i, (chapter_text, title) in enumerate(
+        zip(chapters, chapter_titles, strict=True)
+    ):
         episode_number = i + 1
         chapter_id = f"chapter_{episode_number}"
 
@@ -149,7 +152,7 @@ def _classify(text: str, chapter_id: str, creator: Any) -> str:
         logger.debug("%s: garbage — empty after clean", chapter_id)
         return "garbage"
 
-    moji_env = __import__("os").environ.get("MOJIBAKE_THRESHOLD", _MOJIBAKE_THRESHOLD)
+    moji_env = os.environ.get("MOJIBAKE_THRESHOLD", _MOJIBAKE_THRESHOLD)
     # Use __dict__.get to avoid MagicMock auto-attribute creation.
     moji_attr = getattr(creator, "__dict__", {}).get("mojibake_threshold")
     threshold = _safe_float_threshold(
@@ -165,9 +168,7 @@ def _classify(text: str, chapter_id: str, creator: Any) -> str:
         logger.debug("%s: garbage — bad whitespace ratio", chapter_id)
         return "garbage"
 
-    nw_env = __import__("os").environ.get(
-        "NONWORD_RATIO_THRESHOLD", _NONWORD_RATIO_THRESHOLD
-    )
+    nw_env = os.environ.get("NONWORD_RATIO_THRESHOLD", _NONWORD_RATIO_THRESHOLD)
     nw_attr = getattr(creator, "__dict__", {}).get("nonword_ratio_threshold")
     nw_threshold = _safe_float_threshold(
         nw_attr if nw_attr is not None else nw_env,
@@ -204,8 +205,6 @@ def _has_high_mojibake_ratio(text: str, threshold: float = _MOJIBAKE_THRESHOLD) 
     Suspicious characters include:
     - The Unicode replacement character U+FFFD
     - Control characters (C0/C1 ranges, excluding common whitespace)
-    - Characters outside the Latin-1 complement range (beyond U+00FF),
-      which often indicate encoding mismatch
     """
     if not text:
         return True
@@ -269,7 +268,7 @@ def escalate_node(state: GraphState) -> dict:
       3. OCR via ``pytesseract`` (Tesseract)
     """
     creator = state["creator"]
-    chapters: list[str] = state["chapters"]
+    chapters: list[str] = list(state["chapters"])
     pending_escalation: list[int] = state.get("pending_escalation", [])
     retry_budget = state.get("retry_budget", {})
 
