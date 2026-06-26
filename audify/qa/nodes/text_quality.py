@@ -251,11 +251,13 @@ def _has_high_nonword_ratio(text: str, threshold: float = 0.30) -> bool:
 
 
 def escalate_node(state: GraphState) -> dict:
-    """Re-extract garbage chapters using the next escalation-ladder method.
+    """Re-extract chapters using the next escalation-ladder method.
 
-    Reads ``pending_escalation`` from state and for each chapter invokes the
-    next available parser in the escalation ladder based on the remaining
-    retry budget.
+    Called once per cycle — re-extracts the entire source file with a
+    more capable parser, groups the output into chapters using the same
+    TOC-boundary logic the reader uses, and replaces **all** chapters.
+    This ensures self-consistent output even when only a subset of
+    chapters were flagged.
 
     EPUB ladder:
       1. ``BeautifulSoup`` (current default — already tried in ``read_node``)
@@ -272,35 +274,53 @@ def escalate_node(state: GraphState) -> dict:
     pending_escalation: list[int] = state.get("pending_escalation", [])
     retry_budget = state.get("retry_budget", {})
 
+    if not pending_escalation:
+        return {"chapters": chapters, "pending_escalation": []}
+
     creator.progress.set_phase("Re-extracting low-quality chapters")
     is_epub = _is_epub_reader(creator)
     source_path = getattr(creator.reader, "path", None)
 
-    for episode_number in pending_escalation:
-        i = episode_number - 1
-        chapter_id = f"chapter_{episode_number}"
-        budget = retry_budget.get(chapter_id, {}).get(_CYCLE, MAX_BUDGET_PER_CYCLE)
-        # Attempt number: MAX_BUDGET_PER_CYCLE - remaining
-        attempt = MAX_BUDGET_PER_CYCLE - budget  # 1-indexed
+    if not source_path:
+        logger.warning("Cannot escalate: no source path available")
+        return {"chapters": chapters, "pending_escalation": []}
 
-        if is_epub and source_path:
-            new_text = _escalate_epub(source_path, attempt)
-        elif not is_epub and source_path:
-            new_text = _escalate_pdf(source_path, attempt)
+    # Derive attempt number from first flagged chapter's remaining budget.
+    first_chapter = f"chapter_{pending_escalation[0]}"
+    budget = retry_budget.get(first_chapter, {}).get(_CYCLE, MAX_BUDGET_PER_CYCLE)
+    attempt = MAX_BUDGET_PER_CYCLE - budget  # 1-indexed
+
+    if is_epub:
+        item_texts = _escalate_epub(source_path, attempt)
+        if item_texts:
+            new_chapters = _group_epub_spine_texts(source_path, item_texts)
+            if new_chapters:
+                chapters = new_chapters
+                logger.info(
+                    "Escalated EPUB (attempt %d): %d chapters, %d total chars",
+                    attempt, len(chapters), sum(len(c) for c in chapters),
+                )
+            else:
+                logger.warning(
+                    "Escalation attempt %d produced no chapter text; "
+                    "keeping previous.", attempt,
+                )
         else:
-            logger.warning("Cannot escalate %s: no source path available", chapter_id)
-            continue
-
+            logger.warning(
+                "Escalation attempt %d produced no text; keeping previous.",
+                attempt,
+            )
+    else:
+        new_text = _escalate_pdf(source_path, attempt)
         if new_text:
-            chapters[i] = new_text
+            chapters = [new_text]
             logger.info(
-                "Escalated %s (attempt %d via %s): %d chars extracted",
-                chapter_id, attempt, "EPUB" if is_epub else "PDF", len(new_text),
+                "Escalated PDF (attempt %d): %d chars", attempt, len(new_text),
             )
         else:
             logger.warning(
-                "Escalation attempt %d for %s produced no text; keeping previous.",
-                attempt, chapter_id,
+                "Escalation attempt %d produced no text; keeping previous.",
+                attempt,
             )
 
     return {
@@ -314,8 +334,10 @@ def escalate_node(state: GraphState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _escalate_epub(source_path: Path, attempt: int) -> Optional[str]:
+def _escalate_epub(source_path: Path, attempt: int) -> Optional[list[str]]:
     """Re-extract EPUB text using the *attempt*-th parser in the ladder.
+
+    Returns per-spine-item texts in reading order (``None`` on failure).
 
     Attempt 1: ``BeautifulSoup`` via default reader (already done in read_node,
                 so attempt 1 is a no-op — we try attempt 2+).
@@ -329,12 +351,11 @@ def _escalate_epub(source_path: Path, attempt: int) -> Optional[str]:
     return None
 
 
-def _epub_escalate_ebooklib_raw(source_path: Path) -> Optional[str]:
+def _epub_escalate_ebooklib_raw(source_path: Path) -> Optional[list[str]]:
     """Extract text from EPUB using raw ``ebooklib`` item walking.
 
-    Iterates all ``ITEM_DOCUMENT`` items and parses each with ``lxml.html``,
-    extracting all text content without TOC-based chapter grouping.
-    Returns concatenated text or ``None`` on failure.
+    Iterates spine ``ITEM_DOCUMENT`` items in reading order and parses each
+    with ``lxml.html``. Returns per-item texts or ``None`` on failure.
     """
     try:
         import ebooklib
@@ -356,8 +377,9 @@ def _epub_escalate_ebooklib_raw(source_path: Path) -> Optional[str]:
         return None
 
     texts: list[str] = []
-    for item in book.get_items():
-        if item.get_type() != ebooklib.ITEM_DOCUMENT:
+    for spine_id, _linear in book.spine:
+        item = book.get_item_with_id(spine_id)
+        if not item or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
         try:
             html_content = item.get_body_content()
@@ -376,14 +398,14 @@ def _epub_escalate_ebooklib_raw(source_path: Path) -> Optional[str]:
 
     if not texts:
         return None
-    return "\n\n".join(texts)
+    return texts
 
 
-def _epub_escalate_regex(source_path: Path) -> Optional[str]:
+def _epub_escalate_regex(source_path: Path) -> Optional[list[str]]:
     """Last-resort EPUB extraction: read raw HTML, strip tags with regex.
 
-    This is deliberately fragile — it's the final escalation step before
-    giving up entirely.
+    Iterates spine items in reading order. This is deliberately fragile —
+    it's the final escalation step before giving up entirely.
     """
     try:
         import ebooklib
@@ -399,8 +421,9 @@ def _epub_escalate_regex(source_path: Path) -> Optional[str]:
         return None
 
     texts: list[str] = []
-    for item in book.get_items():
-        if item.get_type() != ebooklib.ITEM_DOCUMENT:
+    for spine_id, _linear in book.spine:
+        item = book.get_item_with_id(spine_id)
+        if not item or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
         try:
             raw = item.get_body_content()
@@ -421,7 +444,105 @@ def _epub_escalate_regex(source_path: Path) -> Optional[str]:
 
     if not texts:
         return None
-    return "\n\n".join(texts)
+    return texts
+
+
+# Token patterns used by the reader to skip non-chapter spine items.
+_NON_CHAPTER_FILENAME_TOKENS = [
+    "toc", "nav", "titlepage", "cover", "cubierta", "sinopsis",
+    "synopsis", "titulo", "título", "colophon", "bio", "notes",
+    "notas", "appendix", "apendice", "apéndice", "index", "indice",
+    "índice", "bibliography", "bibliografía", "references", "referencias",
+]
+
+
+def _group_epub_spine_texts(
+    source_path: Path, item_texts: list[str],
+) -> Optional[list[str]]:
+    """Group per-spine-item texts into chapters using TOC boundaries.
+
+    Reads the EPUB book to obtain the table of contents, then groups
+    *item_texts* (which must be in spine reading order, one entry per
+    non-skipped ``ITEM_DOCUMENT``) into chapters bracketed by TOC entries.
+
+    Returns ``None`` when the book cannot be read or TOC grouping produces
+    no chapters.
+    """
+    try:
+        import ebooklib
+        from ebooklib import epub
+    except ImportError:
+        return None
+
+    try:
+        book = epub.read_epub(str(source_path))
+    except Exception as exc:
+        logger.warning("Failed to read EPUB for chapter grouping: %s", exc)
+        return None
+
+    # --- build TOC boundary name set ---
+    raw_toc = getattr(book, "toc", None)
+    toc_hrefs: list[str] = []
+
+    def _walk(entries):
+        for entry in entries:
+            if isinstance(entry, tuple) and len(entry) == 2:
+                nav_point, sub = entry
+                href = getattr(nav_point, "href", None)
+                if href:
+                    toc_hrefs.append(href)
+                _walk(sub)
+            else:
+                href = getattr(entry, "href", None)
+                if href:
+                    toc_hrefs.append(href)
+
+    try:
+        _walk(raw_toc if isinstance(raw_toc, list) else [])
+    except (TypeError, AttributeError):
+        pass
+
+    toc_names: set[str] = set()
+    for href in toc_hrefs:
+        name = href.split("#")[0].lstrip("./").lower()
+        if name:
+            toc_names.add(name)
+
+    # --- iterate spine, collecting texts per chapter group ---
+    chapters: list[str] = []
+    current_group: list[str] = []
+    text_idx = 0
+
+    for spine_id, _linear in book.spine:
+        item = book.get_item_with_id(spine_id)
+        if not item or item.get_type() != ebooklib.ITEM_DOCUMENT:
+            continue
+
+        item_name = item.get_name().lower()
+        # Mirror the reader's name-based skip filter.
+        if any(token in item_name for token in _NON_CHAPTER_FILENAME_TOKENS):
+            continue
+
+        if text_idx >= len(item_texts):
+            break
+
+        is_toc_boundary = item_name in toc_names
+
+        if is_toc_boundary and current_group:
+            chapters.append("\n\n".join(current_group))
+            current_group = [item_texts[text_idx]]
+        else:
+            current_group.append(item_texts[text_idx])
+
+        text_idx += 1
+
+    if current_group:
+        chapters.append("\n\n".join(current_group))
+
+    if not chapters:
+        # Fall back to single-slab: join everything.
+        return ["\n\n".join(item_texts)]
+    return chapters
 
 
 # ---------------------------------------------------------------------------

@@ -2255,7 +2255,11 @@ class TestTextQualityHelpers:
         )
         monkeypatch.setattr(
             "audify.qa.nodes.text_quality._escalate_epub",
-            lambda path, attempt: "Escalated clean text.",
+            lambda path, attempt: ["Item 1", "Item 2"],
+        )
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._group_epub_spine_texts",
+            lambda path, item_texts: ["Escalated clean text."],
         )
         creator = MagicMock()
         creator.reader = MagicMock()
@@ -2269,7 +2273,7 @@ class TestTextQualityHelpers:
         }
         result = enode(state)
         assert result["pending_escalation"] == []
-        assert result["chapters"][0] == "Escalated clean text."
+        assert result["chapters"] == ["Escalated clean text."]
 
     def test_escalate_epub_dispatch(self, monkeypatch):
         """_escalate_epub dispatches to correct ladder rung by attempt number."""
