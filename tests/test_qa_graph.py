@@ -2648,6 +2648,51 @@ class TestTextQualityEscalationExtraction:
 
         assert _pdf_escalate_ocr(tmp_path / "doc.pdf") is None
 
+    # --- escalation attempt mapping --------------------------------------------
+
+    @pytest.mark.parametrize(
+        ("remaining_budget", "expected_attempt"),
+        [
+            (2, 2),  # first escalation: budget already decremented 3 -> 2
+            (1, 3),  # second escalation: last-resort rung
+            (0, 4),  # third escalation: stays on the last rung
+        ],
+    )
+    def test_escalation_attempt_starts_at_first_fallback(
+        self, monkeypatch, remaining_budget, expected_attempt
+    ):
+        """First escalation must use ladder rung 2, not the no-op rung 1.
+
+        Rung 1 (the default parser) already ran in read_node, so mapping the
+        first escalation to attempt 1 would burn a cycle without re-extracting.
+        """
+        from audify.qa.nodes.text_quality import escalate_node as enode
+
+        seen: dict[str, int] = {}
+
+        def _capture(path, attempt):
+            seen["attempt"] = attempt
+            return None
+
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._is_epub_reader", lambda c: True
+        )
+        monkeypatch.setattr(
+            "audify.qa.nodes.text_quality._escalate_epub", _capture
+        )
+        creator = MagicMock()
+        creator.reader = MagicMock()
+        creator.reader.path = "/fake/book.epub"
+        state = {
+            "creator": creator,
+            "chapters": [""],
+            "chapter_titles": ["Ch 1"],
+            "pending_escalation": [1],
+            "retry_budget": {"chapter_1": {"cycle_1_escalation": remaining_budget}},
+        }
+        enode(state)
+        assert seen["attempt"] == expected_attempt
+
     # --- _is_epub_reader inner fallback ---------------------------------------
 
     def test_is_epub_reader_fallback_broken_type_name(self, monkeypatch):

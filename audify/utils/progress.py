@@ -94,19 +94,24 @@ class ProgressIndicator:
     def set_phase(self, phase: str) -> None:
         """Update the current phase description.
 
+        Clears any chapter counter from the previous phase so the new
+        phase does not inherit stale ``[N/N]`` state.
+
         Args:
             phase: Short description of current phase (e.g., "Reading", "Synthesizing").
         """
         with self._lock:
             self._current_phase = phase
+            self._current_counter = None
+            self._total_counter = None
 
     def set_counter(self, current: int, total: int) -> None:
         """Update the chapter-level progress counter.
 
         Displayed as ``[current/total]`` next to the spinner. Pass
-        ``current=1, total=20`` to show ``[1/20]``. Resets when
-        ``current >= total`` so the next phase does not inherit
-        stale counter state.
+        ``current=1, total=20`` to show ``[1/20]``. The counter stays
+        visible (including the final ``[N/N]``) until the next
+        ``set_phase()`` call clears it.
 
         Args:
             current: Current chapter/episode number (1-indexed).
@@ -115,9 +120,6 @@ class ProgressIndicator:
         with self._lock:
             self._current_counter = current
             self._total_counter = total
-            if current >= total:
-                self._current_counter = None
-                self._total_counter = None
 
     def print_table_of_contents(self, chapters: list[str]) -> None:
         """Display table of contents for all chapters with modern styling.

@@ -50,5 +50,5 @@ graph TD;
 
 ## Sub-graphs
 
-* **`process` mode** (`--process-only`): `read → text_quality → escalate ↔ text_quality → confirm → script_gen → script_validity → report → END` — no TTS, no M4B; all three cycles apply.
+* **`process` mode** (`--process-only`): `read → text_quality → escalate ↔ text_quality → confirm → script_gen → script_validity → report → END` — no TTS, no M4B; cycle-1 and cycle-2 apply, cycle-3 (fidelity) is skipped because no synthesis occurs.
 * **`synthesize` mode** (`--synthesize-only`): `load_scripts → synthesize → fidelity → assemble → report → END` — scripts are loaded from a previous `--process-only` run; only cycle-3 applies.

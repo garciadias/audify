@@ -286,9 +286,11 @@ def escalate_node(state: GraphState) -> dict:
         return {"chapters": chapters, "pending_escalation": []}
 
     # Derive attempt number from first flagged chapter's remaining budget.
+    # Attempt 1 (the default parser) already ran in read_node, so the first
+    # escalation starts at rung 2 of the ladder.
     first_chapter = f"chapter_{pending_escalation[0]}"
     budget = retry_budget.get(first_chapter, {}).get(_CYCLE, MAX_BUDGET_PER_CYCLE)
-    attempt = MAX_BUDGET_PER_CYCLE - budget  # 1-indexed
+    attempt = max(2, MAX_BUDGET_PER_CYCLE - budget + 1)
 
     if is_epub:
         item_texts = _escalate_epub(source_path, attempt)
