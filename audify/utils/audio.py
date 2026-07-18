@@ -285,6 +285,42 @@ class AudioProcessor:
             raise
 
     @staticmethod
+    def prepend_audio_with_pause(
+        intro_path: Path,
+        main_path: Path,
+        pause_ms: int = 1000,
+        output_path: Optional[Path] = None,
+    ) -> Path:
+        """Prepend *intro_path* audio plus a silent pause to *main_path*.
+
+        Used to place a spoken chapter-title announcement (followed by a short
+        pause) before the chapter audio. Writes the combined audio to
+        *output_path*, defaulting to overwriting *main_path* in place. The
+        export format is inferred from the destination suffix.
+
+        Args:
+            intro_path: Audio to place first (e.g. the spoken title).
+            main_path: The main audio content.
+            pause_ms: Silence duration between intro and main, in milliseconds.
+            output_path: Destination file; defaults to *main_path*.
+
+        Returns:
+            Path to the combined audio file.
+        """
+        intro = AudioSegment.from_file(str(intro_path))
+        main = AudioSegment.from_file(str(main_path))
+        silence = AudioSegment.silent(
+            duration=max(int(pause_ms), 0), frame_rate=intro.frame_rate
+        )
+        combined = intro + silence + main
+
+        destination = output_path or main_path
+        export_format = destination.suffix.lstrip(".").lower() or "wav"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        combined.export(str(destination), format=export_format)
+        return destination
+
+    @staticmethod
     def create_temp_audio_file(
         file_paths: List[Path],
         output_prefix: str,

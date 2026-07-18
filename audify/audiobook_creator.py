@@ -16,6 +16,7 @@ from audify.translate import translate_sentence
 from audify.utils.api_config import CommercialAPIConfig, OllamaAPIConfig
 from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
+    CHAPTER_TITLE_PAUSE_MS,
     DEFAULT_TTS_PROVIDER,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
@@ -622,12 +623,16 @@ class AudiobookCreator(BaseSynthesizer):
         audiobook_script: str,
         episode_number: int,
         max_text_length: Optional[int] = None,
+        title: Optional[str] = None,
     ) -> Path:
         """Synthesizes a single audiobook episode from script.
 
         *max_text_length* overrides the TTS batch size for this episode (used by
         the cycle-3 retry edge to re-chunk smaller); ``None`` uses the provider
         default.
+
+        *title*, when provided, is spoken at the start of the episode followed
+        by a short pause so the listener knows a new chapter has started.
         """
         logger.info(f"Synthesizing Audiobook Episode {episode_number}...")
         # Use standardized episode file naming (tests expect episode_###.wav)
@@ -679,6 +684,9 @@ class AudiobookCreator(BaseSynthesizer):
             self._synthesize_sentences(
                 sentences, episode_wav_path, max_text_length=max_text_length
             )
+            # Announce the chapter title (with a short pause) so the listener
+            # knows a new chapter has started.
+            self._prepend_title_announcement(title, episode_wav_path)
             return self._convert_to_mp3(episode_wav_path)
         except Exception as e:
             logger.error(
@@ -895,7 +903,9 @@ class AudiobookCreator(BaseSynthesizer):
             self.progress.print_chapter_start(episode_num, chapter_title, text_snippet)
 
             self.progress.set_phase("Synthesizing")
-            episode_path = self.synthesize_episode(audiobook_script, episode_num)
+            episode_path = self.synthesize_episode(
+                audiobook_script, episode_num, title=chapter_title
+            )
 
             if episode_path.exists():
                 episode_paths.append(episode_path)
@@ -1045,7 +1055,9 @@ class AudiobookCreator(BaseSynthesizer):
                 )
 
                 self.progress.set_phase("Synthesizing")
-                episode_path = self.synthesize_episode(audiobook_script, episode_number)
+                episode_path = self.synthesize_episode(
+                    audiobook_script, episode_number, title=chapter_title
+                )
 
                 if episode_path.exists():
                     episode_paths.append(episode_path)
@@ -1448,7 +1460,9 @@ class AudiobookPdfCreator(AudiobookCreator):
                 )
                 return []
 
-            episode_path = self.synthesize_episode(audiobook_script, 1)
+            episode_path = self.synthesize_episode(
+                audiobook_script, 1, title=self.title
+            )
 
             if episode_path.exists():
                 logger.info(f"Successfully created audiobook episode: {episode_path}")
@@ -1682,7 +1696,9 @@ class DirectoryAudiobookCreator:
                     title_audio = AudioSegment.from_mp3(title_audio_path)
                     combined_audio += title_audio
                     # Add a short pause after title
-                    combined_audio += AudioSegment.silent(duration=1000)
+                    combined_audio += AudioSegment.silent(
+                        duration=CHAPTER_TITLE_PAUSE_MS
+                    )
                 except Exception as e:
                     logger.error(f"Error adding title audio: {e}")
 
@@ -1778,7 +1794,9 @@ class DirectoryAudiobookCreator:
             combined_audio = AudioSegment.empty()
             if title_audio_path and title_audio_path.exists():
                 combined_audio += AudioSegment.from_mp3(title_audio_path)
-                combined_audio += AudioSegment.silent(duration=1000)
+                combined_audio += AudioSegment.silent(
+                    duration=CHAPTER_TITLE_PAUSE_MS
+                )
 
             combined_audio += AudioSegment.from_mp3(content_mp3_path)
 

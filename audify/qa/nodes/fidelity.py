@@ -30,6 +30,7 @@ from audify.qa.nodes.report import MAX_BUDGET_PER_CYCLE
 from audify.qa.state import CycleId, FlagEntry, GraphState
 from audify.qa.stt import STTClient, STTServiceError, WhisperSTTClient
 from audify.qa.wer import comparable_reference, word_error_rate
+from audify.utils.text import format_title_announcement
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ def fidelity_node(state: GraphState) -> dict:
     )
 
     scripts: dict[int, str] = dict(state["chapter_scripts"])
+    chapter_titles: list[str] = state.get("chapter_titles", [])
     to_check: list[int] = state.get("episodes_to_check", [])
 
     # Copy nested containers so we never mutate the inbound state in place.
@@ -92,9 +94,19 @@ def fidelity_node(state: GraphState) -> dict:
             # No audio produced — coverage check (a different cycle) owns this.
             continue
 
+        # The episode audio opens with the spoken chapter-title announcement
+        # (see synthesize_episode), so the head-window reference must include
+        # it — otherwise every announced episode scores a spurious head WER.
+        announcement = (
+            format_title_announcement(chapter_titles[episode_number - 1])
+            if 0 < episode_number <= len(chapter_titles)
+            else ""
+        )
+        reference = f"{announcement} {script}".strip()
+
         try:
             head_wer, tail_wer = _window_wers(
-                client, episode_path, script, window_s, language
+                client, episode_path, reference, window_s, language
             )
         except STTServiceError as exc:
             logger.warning(

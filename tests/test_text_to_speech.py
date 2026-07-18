@@ -15,6 +15,7 @@ from audify.text_to_speech import (
     suppress_stdout,
 )
 from audify.utils.api_config import KokoroAPIConfig
+from audify.utils.constants import CHAPTER_TITLE_PAUSE_MS
 
 
 class TestKokoroAPIConfig:
@@ -88,6 +89,114 @@ class TestBaseSynthesizer:
         ):
             result = synthesizer.get_terminal_output()
             assert result == test_content
+
+    def _make_synthesizer(self, tmp_path, translate=None):
+        """Build a BaseSynthesizer whose tmp_dir is a real directory."""
+        with patch(
+            "audify.text_to_speech.tempfile.TemporaryDirectory"
+        ) as mock_temp_dir:
+            mock_temp_dir.return_value.name = str(tmp_path)
+            return BaseSynthesizer(
+                path="test.txt",
+                voice="test_voice",
+                translate=translate,
+                save_text=False,
+                language="en",
+            )
+
+    def test_prepend_title_announcement_success(self, tmp_path):
+        """The title is synthesized and prepended with the default pause."""
+        synthesizer = self._make_synthesizer(tmp_path)
+        output_wav = tmp_path / "chapter_001.wav"
+        output_wav.write_bytes(b"main audio")
+        title_wav = tmp_path / "title_chapter_001.wav"
+
+        def fake_synth(sentences, path, max_text_length=None):
+            path.write_bytes(b"title audio")
+
+        with (
+            patch.object(
+                synthesizer, "_synthesize_sentences", side_effect=fake_synth
+            ) as mock_synth,
+            patch(
+                "audify.text_to_speech.AudioProcessor.prepend_audio_with_pause"
+            ) as mock_prepend,
+        ):
+            synthesizer._prepend_title_announcement("Chapter One", output_wav)
+
+        mock_synth.assert_called_once_with(["Chapter One."], title_wav)
+        mock_prepend.assert_called_once_with(
+            title_wav, output_wav, pause_ms=CHAPTER_TITLE_PAUSE_MS
+        )
+        # The temporary title WAV is cleaned up afterwards.
+        assert not title_wav.exists()
+
+    @pytest.mark.parametrize("title", [None, "", "   "])
+    def test_prepend_title_announcement_blank_title_noop(self, tmp_path, title):
+        """Blank titles never trigger synthesis."""
+        synthesizer = self._make_synthesizer(tmp_path)
+        output_wav = tmp_path / "chapter_001.wav"
+        output_wav.write_bytes(b"main audio")
+
+        with patch.object(synthesizer, "_synthesize_sentences") as mock_synth:
+            synthesizer._prepend_title_announcement(title, output_wav)
+
+        mock_synth.assert_not_called()
+
+    def test_prepend_title_announcement_missing_wav_noop(self, tmp_path):
+        """A missing chapter WAV skips the announcement entirely."""
+        synthesizer = self._make_synthesizer(tmp_path)
+        missing_wav = tmp_path / "chapter_404.wav"
+
+        with patch.object(synthesizer, "_synthesize_sentences") as mock_synth:
+            synthesizer._prepend_title_announcement("Chapter One", missing_wav)
+
+        mock_synth.assert_not_called()
+
+    def test_prepend_title_announcement_failure_keeps_chapter_audio(self, tmp_path):
+        """A TTS failure is swallowed and leaves the chapter audio untouched."""
+        synthesizer = self._make_synthesizer(tmp_path)
+        output_wav = tmp_path / "chapter_001.wav"
+        output_wav.write_bytes(b"main audio")
+
+        with patch.object(
+            synthesizer,
+            "_synthesize_sentences",
+            side_effect=RuntimeError("TTS down"),
+        ):
+            # Must not raise.
+            synthesizer._prepend_title_announcement("Chapter One", output_wav)
+
+        assert output_wav.read_bytes() == b"main audio"
+
+    def test_prepend_title_announcement_translates_title(self, tmp_path):
+        """With translation enabled, the announcement is translated first."""
+        synthesizer = self._make_synthesizer(tmp_path, translate="es")
+        output_wav = tmp_path / "chapter_001.wav"
+        output_wav.write_bytes(b"main audio")
+
+        with (
+            patch.object(synthesizer, "_synthesize_sentences") as mock_synth,
+            patch(
+                "audify.text_to_speech.AudioProcessor.prepend_audio_with_pause"
+            ),
+            patch(
+                "audify.text_to_speech.translate_sentence",
+                return_value="Capítulo Uno.",
+            ) as mock_translate,
+        ):
+            synthesizer._prepend_title_announcement("Chapter One", output_wav)
+
+        mock_translate.assert_called_once_with(
+            sentence="Chapter One.",
+            src_lang="en",
+            tgt_lang="es",
+            model=None,
+            base_url=None,
+        )
+        mock_synth.assert_called_once_with(
+            ["Capítulo Uno."], tmp_path / "title_chapter_001.wav"
+        )
 
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
     def test_synthesize_kokoro_success(self, mock_temp_dir):
@@ -524,6 +633,82 @@ class TestEpubSynthesizer:
             assert "chapter_001.mp3" in str(result)
             # Methods may not be called if file already exists
             assert mock_convert is not None
+
+    @patch("audify.text_to_speech.EpubReader")
+    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
+    @patch("audify.text_to_speech.break_text_into_sentences")
+    def test_synthesize_chapter_announces_title(
+        self, mock_break, mock_temp_dir, mock_epub_reader
+    ):
+        """The chapter title is announced before the chapter audio."""
+        mock_temp_dir.return_value.name = "/tmp/test_dir"
+        mock_epub_reader_instance = MagicMock()
+        mock_epub_reader.return_value = mock_epub_reader_instance
+        mock_epub_reader_instance.get_language.return_value = "en"
+        mock_epub_reader_instance.title = "Test Book"
+        mock_epub_reader_instance.get_cover_image.return_value = None
+        mock_epub_reader_instance.extract_text.return_value = "Chapter content"
+        mock_epub_reader_instance.get_chapter_title.return_value = "The Beginning"
+
+        mock_break.return_value = ["Sentence 1."]
+
+        mock_file = mock_open()
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.mkdir"),
+            patch("builtins.open", mock_file),
+            patch.object(EpubSynthesizer, "_synthesize_sentences"),
+            patch.object(
+                EpubSynthesizer, "_prepend_title_announcement"
+            ) as mock_announce,
+            patch.object(EpubSynthesizer, "_convert_to_mp3") as mock_convert,
+        ):
+            mock_convert.return_value = Path("/tmp/chapter_001.mp3")
+
+            synthesizer = EpubSynthesizer(path="test.epub")
+            synthesizer.synthesize_chapter("chapter content", 1)
+
+            mock_announce.assert_called_once()
+            announced_title = mock_announce.call_args[0][0]
+            assert announced_title == "The Beginning"
+
+    @patch("audify.text_to_speech.EpubReader")
+    @patch("audify.text_to_speech.tempfile.TemporaryDirectory")
+    @patch("audify.text_to_speech.break_text_into_sentences")
+    def test_synthesize_chapter_announces_fallback_title(
+        self, mock_break, mock_temp_dir, mock_epub_reader
+    ):
+        """Chapters without an extractable title announce 'Chapter N'."""
+        mock_temp_dir.return_value.name = "/tmp/test_dir"
+        mock_epub_reader_instance = MagicMock()
+        mock_epub_reader.return_value = mock_epub_reader_instance
+        mock_epub_reader_instance.get_language.return_value = "en"
+        mock_epub_reader_instance.title = "Test Book"
+        mock_epub_reader_instance.get_cover_image.return_value = None
+        mock_epub_reader_instance.extract_text.return_value = "Chapter content"
+        mock_epub_reader_instance.get_chapter_title.return_value = ""
+
+        mock_break.return_value = ["Sentence 1."]
+
+        mock_file = mock_open()
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.mkdir"),
+            patch("builtins.open", mock_file),
+            patch.object(EpubSynthesizer, "_synthesize_sentences"),
+            patch.object(
+                EpubSynthesizer, "_prepend_title_announcement"
+            ) as mock_announce,
+            patch.object(EpubSynthesizer, "_convert_to_mp3") as mock_convert,
+        ):
+            mock_convert.return_value = Path("/tmp/chapter_002.mp3")
+
+            synthesizer = EpubSynthesizer(path="test.epub")
+            synthesizer.synthesize_chapter("chapter content", 2)
+
+            mock_announce.assert_called_once()
+            announced_title = mock_announce.call_args[0][0]
+            assert announced_title == "Chapter 2"
 
     @patch("audify.text_to_speech.EpubReader")
     @patch("audify.text_to_speech.tempfile.TemporaryDirectory")

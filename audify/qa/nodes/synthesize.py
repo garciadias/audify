@@ -49,7 +49,9 @@ def synthesize_node(state: GraphState) -> dict:
             creator.progress.print_chapter_start(
                 episode_number, chapter_title, text_snippet
             )
-            episode_path = creator.synthesize_episode(audiobook_script, episode_number)
+            episode_path = creator.synthesize_episode(
+                audiobook_script, episode_number, title=chapter_title
+            )
 
             if episode_path.exists():
                 episode_paths.append(episode_path)
@@ -84,6 +86,7 @@ def _resynthesize(state: GraphState, pending_retry: list[int]) -> dict:
     """
     creator = state["creator"]
     scripts = dict(state["chapter_scripts"])
+    chapter_titles = state.get("chapter_titles", [])
     retry_budget = state.get("retry_budget", {})
     base = _tts_base_length(creator)
 
@@ -93,6 +96,12 @@ def _resynthesize(state: GraphState, pending_retry: list[int]) -> dict:
         script = scripts.get(episode_number)
         if script is None:
             continue
+
+        chapter_title = (
+            chapter_titles[episode_number - 1]
+            if 0 < episode_number <= len(chapter_titles)
+            else None
+        )
 
         chapter_id = f"chapter_{episode_number}"
         remaining = retry_budget.get(chapter_id, {}).get(
@@ -108,7 +117,10 @@ def _resynthesize(state: GraphState, pending_retry: list[int]) -> dict:
 
         try:
             episode_path = creator.synthesize_episode(
-                script, episode_number, max_text_length=max_text_length
+                script,
+                episode_number,
+                max_text_length=max_text_length,
+                title=chapter_title,
             )
         except TTSSynthesisError:
             raise

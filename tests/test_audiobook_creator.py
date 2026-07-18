@@ -736,6 +736,66 @@ class TestAudiobookCreatorSynthesizeEpisode:
 
     @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
     @patch("pathlib.Path.exists")
+    def test_synthesize_episode_announces_title(self, mock_exists, mock_init):
+        """A provided title is announced before the episode audio."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        creator.episodes_path = Path("/fake/episodes")
+        creator.translate = None
+
+        mp3_path = creator.episodes_path / "episode_001.mp3"
+        wav_path = creator.episodes_path / "episode_001.wav"
+        sentences = ["First sentence."]
+
+        mock_exists.return_value = False
+
+        with (
+            patch.object(
+                creator, "_break_script_into_segments", return_value=sentences
+            ),
+            patch.object(creator, "_synthesize_sentences"),
+            patch.object(
+                creator, "_prepend_title_announcement"
+            ) as mock_announce,
+            patch.object(creator, "_convert_to_mp3", return_value=mp3_path),
+        ):
+            result = creator.synthesize_episode(
+                "Script text", 1, title="Chapter One"
+            )
+
+            assert result == mp3_path
+            mock_announce.assert_called_once_with("Chapter One", wav_path)
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    @patch("pathlib.Path.exists")
+    def test_synthesize_episode_no_title_by_default(self, mock_exists, mock_init):
+        """Without a title the announcement helper receives None (a no-op)."""
+        creator = AudiobookCreator.__new__(AudiobookCreator)
+        creator.episodes_path = Path("/fake/episodes")
+        creator.translate = None
+
+        mp3_path = creator.episodes_path / "episode_001.mp3"
+        wav_path = creator.episodes_path / "episode_001.wav"
+
+        mock_exists.return_value = False
+
+        with (
+            patch.object(
+                creator,
+                "_break_script_into_segments",
+                return_value=["First sentence."],
+            ),
+            patch.object(creator, "_synthesize_sentences"),
+            patch.object(
+                creator, "_prepend_title_announcement"
+            ) as mock_announce,
+            patch.object(creator, "_convert_to_mp3", return_value=mp3_path),
+        ):
+            creator.synthesize_episode("Script text", 1)
+
+            mock_announce.assert_called_once_with(None, wav_path)
+
+    @patch("audify.audiobook_creator.AudiobookCreator.__init__", return_value=None)
+    @patch("pathlib.Path.exists")
     def test_synthesize_episode_with_translation(self, mock_exists, mock_init):
         """Test episode synthesis with translation."""
         creator = AudiobookCreator.__new__(AudiobookCreator)
@@ -1803,6 +1863,7 @@ class TestAudiobookPdfCreator:
         creator.language = "en"
         creator.resolved_language = "en"
         creator.translate = None
+        creator.title = "Test PDF Book"
 
         # Mock PDF reader
         mock_reader = Mock(spec=PdfReader)
@@ -1836,6 +1897,7 @@ class TestAudiobookPdfCreator:
         creator.language = "en"
         creator.resolved_language = "en"
         creator.translate = None
+        creator.title = "Test PDF Book"
 
         # Mock PDF reader
         mock_reader = Mock(spec=PdfReader)
@@ -1906,6 +1968,7 @@ class TestAudiobookPdfCreator:
         creator.language = "en"
         creator.resolved_language = "en"
         creator.translate = None
+        creator.title = "Test PDF Book"
 
         # Mock PDF reader with short text (< 200 words)
         mock_reader = Mock(spec=PdfReader)
@@ -1938,6 +2001,7 @@ class TestAudiobookPdfCreator:
         creator.language = "es"  # Spanish
         creator.resolved_language = "es"
         creator.translate = None
+        creator.title = "Libro de Prueba"
 
         # Mock PDF reader
         mock_reader = Mock(spec=PdfReader)

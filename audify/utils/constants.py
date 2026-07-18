@@ -32,6 +32,10 @@ OLLAMA_API_BASE_URL = _get_config("OLLAMA_API_URL", "http://localhost:11434")
 DEFAULT_TTS_PROVIDER = _get_config("TTS_PROVIDER", "kokoro")
 AVAILABLE_TTS_PROVIDERS = ["kokoro", "openai", "aws", "google", "qwen"]
 
+# Silence inserted after the spoken chapter-title announcement (milliseconds),
+# so the listener clearly hears that a new chapter has started.
+CHAPTER_TITLE_PAUSE_MS = int(_get_config("CHAPTER_TITLE_PAUSE_MS", "1000"))
+
 OPENAI_API_KEY = _get_config("OPENAI_API_KEY", "")
 OPENAI_TTS_MODEL = _get_config("OPENAI_TTS_MODEL", "gpt-4o-mini-tts-2025-03-20")
 OPENAI_TTS_VOICE = _get_config("OPENAI_TTS_VOICE", "coral")

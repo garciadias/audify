@@ -22,6 +22,7 @@ from audify.utils.api_config import (
 )
 from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
+    CHAPTER_TITLE_PAUSE_MS,
     DEFAULT_MODEL,
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
@@ -34,7 +35,11 @@ from audify.utils.m4b_builder import (
     assemble_m4b,
     write_metadata_header,
 )
-from audify.utils.text import break_text_into_sentences, get_file_name_title
+from audify.utils.text import (
+    break_text_into_sentences,
+    format_title_announcement,
+    get_file_name_title,
+)
 
 # Configure logging
 logger = setup_logging(module_name=__name__)
@@ -410,6 +415,58 @@ class BaseSynthesizer:
         """Converts a WAV file to MP3 and removes the original WAV."""
         return AudioProcessor.convert_wav_to_mp3(wav_path)
 
+    def _prepend_title_announcement(
+        self,
+        title: Optional[str],
+        output_wav_path: Path,
+        pause_ms: int = CHAPTER_TITLE_PAUSE_MS,
+    ) -> None:
+        """Prepend a spoken *title* followed by a short pause to *output_wav_path*.
+
+        Announcing the chapter title (and pausing briefly afterwards) tells the
+        listener a new chapter has started. When translation is enabled the
+        title is translated so the announcement matches the narration language.
+
+        Best-effort: any synthesis or audio-processing failure is logged and
+        leaves the already-synthesized chapter audio untouched.
+        """
+        announcement = format_title_announcement(title or "")
+        if not announcement:
+            return
+        if not output_wav_path.exists():
+            logger.warning(
+                f"Cannot announce title '{title}': "
+                f"{output_wav_path} does not exist."
+            )
+            return
+
+        if self.translate and self.language:
+            try:
+                announcement = translate_sentence(
+                    sentence=announcement,
+                    src_lang=self.language,
+                    tgt_lang=self.translate,
+                    model=self.llm_model,
+                    base_url=self.llm_base_url,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not translate title announcement '{title}': {e}. "
+                    "Announcing the original title."
+                )
+
+        title_wav_path = self.tmp_dir / f"title_{output_wav_path.stem}.wav"
+        try:
+            self._synthesize_sentences([announcement], title_wav_path)
+            AudioProcessor.prepend_audio_with_pause(
+                title_wav_path, output_wav_path, pause_ms=pause_ms
+            )
+            logger.info(f"Prepended chapter-title announcement: {announcement}")
+        except Exception as e:
+            logger.warning(f"Skipping title announcement for '{title}': {e}")
+        finally:
+            title_wav_path.unlink(missing_ok=True)
+
     def synthesize(self) -> Path:
         """Abstract method for the main synthesis process."""
         raise NotImplementedError("Subclasses must implement the synthesize method.")
@@ -571,6 +628,14 @@ class EpubSynthesizer(BaseSynthesizer):
                 sentences = break_text_into_sentences(chapter_txt)
 
         self._synthesize_sentences(sentences, chapter_wav_path)
+
+        # Announce the chapter title (with a short pause) so the listener
+        # knows a new chapter has started.
+        chapter_title = str(self.reader.get_chapter_title(chapter_content) or "")
+        self._prepend_title_announcement(
+            chapter_title or f"Chapter {chapter_number}", chapter_wav_path
+        )
+
         return self._convert_to_mp3(chapter_wav_path)
 
     def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
