@@ -65,6 +65,8 @@ def report_node(state: GraphState) -> dict:
     best_wer = state.get("best_wer", {})
     retry_budget = state.get("retry_budget", {})
 
+    creator.progress.set_phase("Generating quality report")
+
     chapters_report: dict[str, dict] = {}
     for i, title in enumerate(chapter_titles, 1):
         chapter_id = f"chapter_{i}"

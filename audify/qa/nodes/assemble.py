@@ -12,6 +12,8 @@ def assemble_node(state: GraphState) -> dict:
     creator = state["creator"]
     episode_paths = state["episode_paths"]
 
+    creator.progress.set_phase("Assembling")
+
     if episode_paths:
         creator.create_m4b()
         logger.info(f"Audiobook series complete with {len(episode_paths)} episodes.")

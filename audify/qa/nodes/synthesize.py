@@ -37,9 +37,11 @@ def synthesize_node(state: GraphState) -> dict:
 
     episode_paths: list[Path] = []
 
+    total_scripts = len(chapter_scripts)
     creator.progress.set_phase("Synthesizing")
 
-    for episode_number, audiobook_script in chapter_scripts:
+    for idx, (episode_number, audiobook_script) in enumerate(chapter_scripts, 1):
+        creator.progress.set_counter(idx, total_scripts)
         chapter_title = chapter_titles[episode_number - 1]
         text_snippet = " ".join(audiobook_script.split()[:100])
 

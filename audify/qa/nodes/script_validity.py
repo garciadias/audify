@@ -108,6 +108,8 @@ def script_validity_node(state: GraphState) -> dict:
     chapters = state["chapters"]
     chapter_scripts: list[tuple[int, str]] = state["chapter_scripts"]
 
+    creator.progress.set_phase("Validating scripts")
+
     # Copy nested containers so we never mutate inbound state in place.
     retry_budget = {k: dict(v) for k, v in state.get("retry_budget", {}).items()}
     flags = {k: list(v) for k, v in state.get("flags", {}).items()}

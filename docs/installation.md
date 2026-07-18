@@ -10,6 +10,10 @@
 - **Docker & Docker Compose** -- for local Kokoro TTS
 - **CUDA GPU** -- recommended for local TTS providers
 - **API keys** -- for cloud TTS/LLM providers
+- **Tesseract OCR** -- for PDF OCR fallback when text extraction fails:
+  - Linux: `sudo apt install tesseract-ocr`
+  - macOS: `brew install tesseract`
+  - Windows: [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
 
 ## Install from PyPI
 

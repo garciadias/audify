@@ -17,11 +17,16 @@ from audify.qa.nodes.script_validity import (
     script_validity_route,
 )
 from audify.qa.nodes.synthesize import synthesize_node
+from audify.qa.nodes.text_quality import (
+    escalate_node,
+    text_quality_node,
+    text_quality_route,
+)
 from audify.qa.state import GraphState
 
-# Bound on graph supersteps. The cycle-2 reroute and cycle-3 retry edges
-# loop at most MAX_BUDGET_PER_CYCLE times per run, so the default LangGraph
-# limit (25) is ample; set explicitly for clarity/safety.
+# Bound on graph supersteps. The three cyclic back-edges each loop at most
+# MAX_BUDGET_PER_CYCLE times per run, so the default LangGraph limit (25)
+# is ample; set explicitly for clarity/safety.
 _RECURSION_LIMIT = 50
 
 if TYPE_CHECKING:
@@ -35,16 +40,18 @@ def build_graph(mode: str = "full") -> "CompiledStateGraph":
 
     Three topologies:
 
-    * ``"full"`` — ``read → confirm → script_gen → script_validity →
-      synthesize → fidelity → assemble → report → END`` with a cycle-2
-      ``script_validity → script_gen`` reroute back-edge and a cycle-3
-      ``fidelity → synthesize`` retry back-edge.
-    * ``"process"`` — ``read → confirm → script_gen → script_validity →
-      report → END`` (no TTS, acyclic; cycle-2 applies to catch LLM errors
-      before TTS spend).
+    * ``"full"`` — ``read → text_quality → escalate ↔ text_quality → confirm
+      → script_gen → script_validity → synthesize → fidelity → assemble →
+      report → END`` with a cycle-1 ``text_quality → escalate`` escalation
+      back-edge, a cycle-2 ``script_validity → script_gen`` reroute back-edge
+      and a cycle-3 ``fidelity → synthesize`` retry back-edge.
+    * ``"process"`` — same as ``"full"`` but stops after the report node (no
+      TTS, no M4B). Cycle-1 and cycle-2 apply; cycle-3 (fidelity) is
+      skipped because no synthesis occurs.
     * ``"synthesize"`` — ``load_scripts → synthesize → fidelity → assemble →
       report → END`` (loads previously-saved scripts, no LLM; cycle-3 retry
-      edge applies; cycle-2 is skipped because scripts are pre-validated).
+      edge applies; cycles 1 and 2 are skipped because extraction and script
+      generation are already complete).
 
     Each shape mirrors the corresponding branch of the legacy
     ``AudiobookCreator.create_audiobook_series`` orchestrator.
@@ -64,6 +71,8 @@ def build_graph(mode: str = "full") -> "CompiledStateGraph":
 def _build_full_graph() -> "CompiledStateGraph":
     builder: StateGraph = StateGraph(GraphState)
     builder.add_node("read", read_node)
+    builder.add_node("text_quality", text_quality_node)
+    builder.add_node("escalate", escalate_node)
     builder.add_node("confirm", confirm_node)
     builder.add_node("script_gen", script_gen_node)
     builder.add_node("script_validity", script_validity_node)
@@ -73,7 +82,15 @@ def _build_full_graph() -> "CompiledStateGraph":
     builder.add_node("report", report_node)
 
     builder.set_entry_point("read")
-    builder.add_edge("read", "confirm")
+    # Cycle-1 escalation edge: loop from text_quality → escalate while
+    # garbage chapters remain, otherwise continue to confirm.
+    builder.add_edge("read", "text_quality")
+    builder.add_conditional_edges(
+        "text_quality",
+        text_quality_route,
+        {"escalate": "escalate", "confirm": "confirm"},
+    )
+    builder.add_edge("escalate", "text_quality")
     builder.add_edge("confirm", "script_gen")
     builder.add_edge("script_gen", "script_validity")
     # Cycle-2 reroute edge: loop back to script_gen when the validity judge
@@ -99,17 +116,24 @@ def _build_full_graph() -> "CompiledStateGraph":
 def _build_process_graph() -> "CompiledStateGraph":
     builder: StateGraph = StateGraph(GraphState)
     builder.add_node("read", read_node)
+    builder.add_node("text_quality", text_quality_node)
+    builder.add_node("escalate", escalate_node)
     builder.add_node("confirm", confirm_node)
     builder.add_node("script_gen", script_gen_node)
     builder.add_node("script_validity", script_validity_node)
     builder.add_node("report", report_node)
 
     builder.set_entry_point("read")
-    builder.add_edge("read", "confirm")
+    builder.add_edge("read", "text_quality")
+    builder.add_conditional_edges(
+        "text_quality",
+        text_quality_route,
+        {"escalate": "escalate", "confirm": "confirm"},
+    )
+    builder.add_edge("escalate", "text_quality")
     builder.add_edge("confirm", "script_gen")
     builder.add_edge("script_gen", "script_validity")
-    # Cycle-2 reroute edge applies in process mode too — catch LLM errors
-    # before TTS spend. Downstream target differs: report instead of synth.
+    # Cycle-2 reroute edge applies in process mode too.
     builder.add_conditional_edges(
         "script_validity",
         script_validity_route,
@@ -151,11 +175,14 @@ def run_graph(creator: "AudiobookCreator") -> Path:
     """
     mode = getattr(creator, "mode", "full")
 
+    creator.progress.set_phase("Starting pipeline")
+
     # Preflight guard: matches the legacy
     # ``_verify_tts_provider_available`` calls in
     # ``create_audiobook_series`` and ``_synthesize_from_existing_scripts``.
     # Skipped for ``"process"`` since no TTS happens.
     if mode != "process":
+        creator.progress.set_phase("Verifying TTS provider")
         creator._verify_tts_provider_available()
 
     graph = build_graph(mode)
@@ -169,11 +196,13 @@ def run_graph(creator: "AudiobookCreator") -> Path:
         "retry_budget": {},
         "best_wer": {},
         "flags": {},
+        "pending_escalation": [],
         "pending_reroute": [],
         "pending_retry": [],
         "episodes_to_check": [],
     }
 
+    creator.progress.set_phase("Running pipeline")
     graph.invoke(initial_state, {"recursion_limit": _RECURSION_LIMIT})
     return Path(creator.audiobook_path)
 
@@ -192,12 +221,21 @@ def render_mermaid(output_path: Path = Path("docs/graph.md")) -> None:
     output_path.write_text(
         "# QA Pipeline Graph\n\n"
         "Topology of the LangGraph QA pipeline in `full` mode "
-        "(`read → confirm → script_gen → script_validity → "
-        "synthesize → fidelity → assemble → report`).\n\n"
+        "(`read → text_quality → escalate ↔ text_quality → confirm → "
+        "script_gen → script_validity → synthesize → fidelity → "
+        "assemble → report`).\n\n"
         f"```mermaid\n{diagram}\n```\n\n"
+        "## Cycle 1 — text-quality escalation edge\n\n"
+        "`text_quality` inspects each chapter from the reader with cheap "
+        "heuristics (empty-after-clean, mojibake ratio, whitespace ratio, "
+        "non-word ratio). Garbage chapters trigger an escalation back-edge "
+        "to `escalate`, which re-extracts using a more capable parser "
+        "(raw ebooklib walking for EPUB, sort-mode PyMuPDF or OCR for PDF). "
+        "Bounded to 3 attempts per chapter; on exhaustion the best-effort "
+        "text is kept and the chapter is flagged in the report.\n\n"
         "## Cycle 2 — script-validity reroute edge\n\n"
         "`script_validity` sits between `script_gen` and `synthesize`. It uses "
-        "a duration-based pre-filter and an LLM judge to check each generated "
+        "a word-count pre-filter and an LLM judge to check each generated "
         "script for faithfulness (no summaries, refusals, or error messages) "
         "and policy compliance (no raw code blocks read aloud). When it detects "
         "a bad script it loops back to `script_gen` on a reroute edge, bounded "
@@ -213,12 +251,14 @@ def render_mermaid(output_path: Path = Path("docs/graph.md")) -> None:
         "the run never aborts.\n\n"
         "## Sub-graphs\n\n"
         "* **`process` mode** (`--process-only`): "
-        "`read → confirm → script_gen → script_validity → report → END` — "
-        "no TTS, no M4B; cycle-2 applies to catch LLM errors before TTS spend.\n"
+        "`read → text_quality → escalate ↔ text_quality → confirm → "
+        "script_gen → script_validity → report → END` — "
+        "no TTS, no M4B; cycle-1 and cycle-2 apply, cycle-3 (fidelity) "
+        "is skipped because no synthesis occurs.\n"
         "* **`synthesize` mode** (`--synthesize-only`): "
         "`load_scripts → synthesize → fidelity → assemble → report → END` — "
-        "scripts are loaded from a previous `--process-only` run; the cycle-3 "
-        "retry edge applies here too.\n"
+        "scripts are loaded from a previous `--process-only` run; only cycle-3 "
+        "applies.\n"
     )
     print(f"Graph diagram written to {output_path}")
 

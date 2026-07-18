@@ -38,6 +38,13 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 - **Docker & Docker Compose** (for API services)
 - **CUDA-capable GPU** (recommended for optimal performance)
 
+### For OCR / PDF Escalation (Optional)
+
+- **Tesseract OCR** -- system binary for text extraction from scanned PDFs:
+  - Linux: `sudo apt install tesseract-ocr`
+  - macOS: `brew install tesseract`
+  - Windows: [GitHub releases](https://github.com/UB-Mannheim/tesseract/wiki)
+
 ### For Cloud TTS Providers (Optional)
 
 - **OpenAI TTS**: OpenAI API key ([get one here](https://platform.openai.com/api-keys))
