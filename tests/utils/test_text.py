@@ -7,6 +7,7 @@ from audify.utils.text import (
     break_too_long_sentences,
     clean_text,
     combine_small_sentences,
+    format_title_announcement,
     get_audio_duration,
     get_file_extension,
     get_file_name_title,
@@ -80,3 +81,21 @@ def test_get_file_name_title():
     title = "This is a Test Title!"
     expected = "this_is_a_test_title"
     assert get_file_name_title(title) == expected
+
+
+def test_format_title_announcement_adds_final_period():
+    assert format_title_announcement("Chapter One") == "Chapter One."
+
+
+@pytest.mark.parametrize("title", ["What Now?", "Onward!", "The End."])
+def test_format_title_announcement_keeps_existing_punctuation(title):
+    assert format_title_announcement(title) == title
+
+
+def test_format_title_announcement_normalizes_whitespace_and_underscores():
+    assert format_title_announcement("  my_article   title ") == "my article title."
+
+
+@pytest.mark.parametrize("title", ["", "   ", "___"])
+def test_format_title_announcement_blank_titles(title):
+    assert format_title_announcement(title) == ""

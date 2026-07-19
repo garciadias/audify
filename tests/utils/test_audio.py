@@ -365,6 +365,55 @@ class TestAudioProcessor:
             assert len(chunks) == 1
             assert chunks[0] == file_paths
 
+    def test_prepend_audio_with_pause_combines_in_order(self, tmp_path):
+        """Intro + silence + main are concatenated, overwriting main in place."""
+        from pydub import AudioSegment
+
+        intro_path = tmp_path / "intro.wav"
+        main_path = tmp_path / "main.wav"
+        AudioSegment.silent(duration=500).export(str(intro_path), format="wav")
+        AudioSegment.silent(duration=1000).export(str(main_path), format="wav")
+
+        result = AudioProcessor.prepend_audio_with_pause(
+            intro_path, main_path, pause_ms=250
+        )
+
+        assert result == main_path
+        combined_ms = len(AudioSegment.from_wav(str(main_path)))
+        assert abs(combined_ms - 1750) <= 10
+
+    def test_prepend_audio_with_pause_custom_output(self, tmp_path):
+        """A custom output path leaves the main audio untouched."""
+        from pydub import AudioSegment
+
+        intro_path = tmp_path / "intro.wav"
+        main_path = tmp_path / "main.wav"
+        output_path = tmp_path / "combined.wav"
+        AudioSegment.silent(duration=500).export(str(intro_path), format="wav")
+        AudioSegment.silent(duration=1000).export(str(main_path), format="wav")
+
+        result = AudioProcessor.prepend_audio_with_pause(
+            intro_path, main_path, pause_ms=500, output_path=output_path
+        )
+
+        assert result == output_path
+        assert abs(len(AudioSegment.from_wav(str(output_path))) - 2000) <= 10
+        # Original main audio is unchanged.
+        assert abs(len(AudioSegment.from_wav(str(main_path))) - 1000) <= 10
+
+    def test_prepend_audio_with_pause_negative_pause_clamped(self, tmp_path):
+        """Negative pauses are clamped to zero silence."""
+        from pydub import AudioSegment
+
+        intro_path = tmp_path / "intro.wav"
+        main_path = tmp_path / "main.wav"
+        AudioSegment.silent(duration=300).export(str(intro_path), format="wav")
+        AudioSegment.silent(duration=700).export(str(main_path), format="wav")
+
+        AudioProcessor.prepend_audio_with_pause(intro_path, main_path, pause_ms=-100)
+
+        assert abs(len(AudioSegment.from_wav(str(main_path))) - 1000) <= 10
+
     def test_create_temp_audio_file_success(self, tmp_path):
         """Test successful creation of temporary audio file."""
         file_paths = [Path("file1.mp3"), Path("file2.mp3")]
