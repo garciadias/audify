@@ -632,6 +632,8 @@ class EpubSynthesizer(BaseSynthesizer):
         # Announce the chapter title (with a short pause) so the listener
         # knows a new chapter has started.
         chapter_title = str(self.reader.get_chapter_title(chapter_content) or "")
+        if chapter_title == "Unknown":
+            chapter_title = ""
         self._prepend_title_announcement(
             chapter_title or f"Chapter {chapter_number}", chapter_wav_path
         )

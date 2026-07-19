@@ -317,7 +317,16 @@ class AudioProcessor:
         destination = output_path or main_path
         export_format = destination.suffix.lstrip(".").lower() or "wav"
         destination.parent.mkdir(parents=True, exist_ok=True)
-        combined.export(str(destination), format=export_format)
+
+        # Export to a temporary file first, then atomically replace to prevent
+        # corrupting the main audio if the export fails mid-write.
+        temp_dest = destination.with_suffix(f".tmp{destination.suffix}")
+        try:
+            combined.export(str(temp_dest), format=export_format)
+            temp_dest.replace(destination)
+        finally:
+            temp_dest.unlink(missing_ok=True)
+
         return destination
 
     @staticmethod
