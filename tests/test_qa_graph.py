@@ -18,6 +18,7 @@ from audify.qa.nodes.assemble import assemble_node
 from audify.qa.nodes.script_gen import script_gen_node
 from audify.qa.nodes.synthesize import synthesize_node
 from audify.readers.pdf import PdfReader
+from audify.utils.text import format_title_announcement
 
 
 def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMock:
@@ -56,7 +57,7 @@ def _make_creator(tmp_path: Path, chapters: list[str] | None = None) -> MagicMoc
     creator.generate_audiobook_script.side_effect = _gen_script
 
     # synthesize_episode creates a dummy mp3 file
-    def _synth(script: str, episode_number: int) -> Path:
+    def _synth(script: str, episode_number: int, **kwargs) -> Path:
         p = tmp_path / f"episode_{episode_number:03d}.mp3"
         p.write_bytes(b"FAKE")
         return p
@@ -992,6 +993,7 @@ class _FidelityCreator:
         self._truncate_after = truncate_after
         self._attempts: dict[int, int] = {}
         self.synth_calls: list[tuple[int, int | None]] = []
+        self.synth_titles: list[str | None] = []
         self.m4b_calls = 0
 
     def _verify_tts_provider_available(self):
@@ -1005,8 +1007,11 @@ class _FidelityCreator:
         cfg.max_text_length = 4000
         return cfg
 
-    def synthesize_episode(self, script, episode_number, max_text_length=None):
+    def synthesize_episode(
+        self, script, episode_number, max_text_length=None, title=None
+    ):
         self.synth_calls.append((episode_number, max_text_length))
+        self.synth_titles.append(title)
         self._attempts[episode_number] = self._attempts.get(episode_number, 0) + 1
         path = self.episodes_path / f"episode_{episode_number:03d}.mp3"
         words = script.split()
@@ -1014,6 +1019,11 @@ class _FidelityCreator:
             content = " ".join(words[: len(words) // 2])  # drop the tail
         else:
             content = script  # re-chunk restored full fidelity
+        # Mirror production audio: the episode opens with the spoken
+        # chapter-title announcement followed by the narration.
+        announcement = format_title_announcement(title or "")
+        if announcement:
+            content = f"{announcement} {content}"
         path.write_text(content)
         return path
 
@@ -1062,9 +1072,10 @@ class TestFidelityCycle:
         assert flag["cycle"] == "cycle_3_retry"
         assert flag["exhausted"] is False
 
-        # The re-chunked audio on disk now carries the full script.
+        # The re-chunked audio on disk now carries the full script (the
+        # chapter-title announcement is still prepended, as in production).
         final = (creator.episodes_path / "episode_001.mp3").read_text()
-        assert final == _SCRIPT_20
+        assert final == f"Chapter 1. {_SCRIPT_20}"
 
     def test_clean_episode_never_triggers_cycle(self, tmp_path, fixed_duration):
         """An episode that transcribes faithfully raises no flag, no retry."""
@@ -1077,6 +1088,38 @@ class TestFidelityCycle:
         chapter = report["chapters"]["chapter_1"]
         assert chapter["verdict"] == "clean"
         assert chapter["flags"] == []
+
+    def test_title_announcement_does_not_trip_head_window(
+        self, tmp_path, fixed_duration
+    ):
+        """Audio opening with the spoken chapter title passes the head check.
+
+        The synthesize node passes the chapter title through so the episode
+        audio begins with the announcement; the fidelity node must include
+        that announcement in its head-window reference or every announced
+        episode would be flagged as truncated.
+        """
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=0)
+
+        run_graph(creator)
+
+        # The synthesize node passed the chapter title through.
+        assert creator.synth_titles == ["Chapter 1"]
+        # The audio on disk really does open with the announcement.
+        audio_text = (creator.episodes_path / "episode_001.mp3").read_text()
+        assert audio_text.startswith("Chapter 1.")
+        # And the fidelity check still reports the episode as clean.
+        assert creator.synth_calls == [(1, None)]  # no retry scheduled
+        report = self._load_report(creator)
+        assert report["chapters"]["chapter_1"]["verdict"] == "clean"
+
+    def test_title_passed_through_on_rechunk_retry(self, tmp_path, fixed_duration):
+        """The re-chunk retry keeps announcing the chapter title."""
+        creator = _FidelityCreator(tmp_path, {1: _SCRIPT_20}, truncate_after=1)
+
+        run_graph(creator)
+
+        assert creator.synth_titles == ["Chapter 1", "Chapter 1"]
 
     def test_exhaustion_keeps_best_effort_and_never_aborts(
         self, tmp_path, fixed_duration
@@ -1718,7 +1761,7 @@ class TestScriptValidityCycle:
         creator.llm_client = llm
 
         # synthesize needs to create a file
-        def _synth(script, episode_number):
+        def _synth(script, episode_number, **kwargs):
             p = tmp_path / "out" / f"episode_{episode_number:03d}.mp3"
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(b"FAKE")

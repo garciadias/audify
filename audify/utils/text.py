@@ -128,6 +128,25 @@ def break_text_into_sentences(
     return result
 
 
+def format_title_announcement(title: str) -> str:
+    """Normalize a chapter title into the sentence spoken to announce it.
+
+    Replaces underscores with spaces (file-stem titles), collapses whitespace,
+    and guarantees sentence-final punctuation so the TTS engine reads the title
+    as a complete sentence. Returns an empty string for blank titles.
+
+    Used both by the synthesizers (to build the spoken announcement) and by the
+    QA fidelity check (to build the head-window reference that matches the
+    announced audio).
+    """
+    announcement = " ".join(title.replace("_", " ").split())
+    if not announcement:
+        return ""
+    if announcement[-1] not in ".!?":
+        announcement += "."
+    return announcement
+
+
 def get_audio_duration(file_path: str) -> float:
     """Get audio duration in seconds. Delegates to AudioProcessor.get_duration."""
     return AudioProcessor.get_duration(file_path)

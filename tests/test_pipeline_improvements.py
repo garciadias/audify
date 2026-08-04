@@ -259,7 +259,7 @@ class TestSynthesizeFromExistingScripts:
             file_name=Path("test"),
         )
 
-        def fake_synthesize(script, num):
+        def fake_synthesize(script, num, **kwargs):
             path = episodes / f"episode_{num:03d}.mp3"
             path.write_bytes(b"fake-mp3")
             return path
