@@ -7,7 +7,7 @@ services:
     ports:
       - "11434:11434"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/version" ]
+      test: ["CMD-SHELL", "perl -MIO::Socket::INET -e 'IO::Socket::INET->new(PeerAddr=>\"127.0.0.1:11434\",Timeout=>2) or exit 1'"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -22,7 +22,7 @@ services:
               capabilities: [ gpu ]
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
+    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest-cu128
     ports:
       - "8887:8880"
     healthcheck:
