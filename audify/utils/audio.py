@@ -151,7 +151,7 @@ class AudioProcessor:
             export_params["bitrate"] = "192k"
         elif output_format == "mp4":
             export_params["codec"] = "aac"
-            export_params["bitrate"] = "64k"
+            export_params["bitrate"] = "40k"
 
         logger.info(f"Exporting combined audio to {output_path}")
         combined_audio.export(str(output_path), **export_params)

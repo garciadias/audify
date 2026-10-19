@@ -6,6 +6,12 @@ services:
       - $HOME/.ollama:/root/.ollama
     ports:
       - "11434:11434"
+    environment:
+      # 8-bit KV cache (needs flash attention): halves qwen3.8's 128k-context
+      # cache from ~8 GB to ~4.3 GB, so the 27B model stays 100% on a 32 GB GPU
+      # next to kokoro and stt (measured: 26 -> ~100 tok/s).
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_KV_CACHE_TYPE=q8_0
     healthcheck:
       test: ["CMD-SHELL", "perl -MIO::Socket::INET -e 'IO::Socket::INET->new(PeerAddr=>\"127.0.0.1:11434\",Timeout=>2) or exit 1'"]
       interval: 30s
