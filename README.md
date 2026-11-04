@@ -577,8 +577,13 @@ curl -X POST http://localhost:8000/audiobook \
   -F "file=@book.epub" \
   -F "voice=af_bella" \
   -F "language=en" \
+  -F "llm_model=qwen3.5:4b" \
+  -F "graph=true" \
   --output book.m4b
 ```
+
+`graph=true` runs the LangGraph pipeline, the same as the CLI's `--graph`
+flag (experimental, off by default).
 
 ### API Reference
 
