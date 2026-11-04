@@ -260,7 +260,7 @@ class TestAudioProcessor:
             )
 
             mock_combined.export.assert_called_once_with(
-                str(output_path), format="mp4", codec="aac", bitrate="64k"
+                str(output_path), format="mp4", codec="aac", bitrate="40k"
             )
 
     def test_combine_audio_files_decode_error(self, tmp_path):
