@@ -74,6 +74,7 @@ autodoc_mock_imports = [
     "fastapi",
     "litellm",
     "numpy",
+    "prometheus_fastapi_instrumentator",
     "pydub",
     "pypdf",
     "tqdm",

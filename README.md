@@ -554,6 +554,7 @@ The API runs on `http://localhost:8000` by default.
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
+| `GET` | `/metrics` | Prometheus metrics (request counts, latencies) |
 | `GET` | `/providers` | List available TTS providers |
 | `GET` | `/voices?provider=kokoro&language=en` | List voices for a provider |
 | `POST` | `/synthesize` | Convert EPUB or PDF to MP3 |
@@ -582,6 +583,12 @@ curl -X POST http://localhost:8000/audiobook \
 ### API Reference
 
 Interactive docs are available at `http://localhost:8000/docs` (Swagger UI) once the server is running.
+
+### Container image
+
+Every push to `main` publishes the API image to GHCR as
+`ghcr.io/garciadias/audify-api:latest` and `ghcr.io/garciadias/audify-api:sha-<commit>`.
+Pin the `sha-` tag in deployments that should not move on their own.
 
 ## 🏗️ Architecture
 

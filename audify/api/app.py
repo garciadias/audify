@@ -7,6 +7,7 @@ creation) as a Docker-deployable FastAPI service.
 Endpoints
 ---------
 GET  /health            – liveness probe
+GET  /metrics           – Prometheus metrics (request counts and latencies)
 GET  /voices            – list voices available from the configured TTS provider
 GET  /providers         – list all supported TTS providers
 POST /synthesize        – convert an uploaded EPUB/PDF to MP3 (simple TTS)
@@ -23,6 +24,7 @@ from typing import Optional
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.background import BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from audify.utils.api_config import get_tts_config
 from audify.utils.constants import (
@@ -48,6 +50,12 @@ app = FastAPI(
         "and LLM-powered script generation."
     ),
     version=_version,
+)
+
+# Request count, latency and in-flight metrics for Prometheus. Counters live in
+# process memory, so the container runs a single uvicorn worker.
+Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(
+    app, include_in_schema=False
 )
 
 # ---------------------------------------------------------------------------

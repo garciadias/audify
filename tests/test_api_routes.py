@@ -319,3 +319,15 @@ def test_synthesize_no_output_file(tmp_path):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Synthesis produced no output file"
+
+
+def test_metrics_exposes_request_counters():
+    client.get("/providers")
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "http_requests_total" in response.text
+    assert 'handler="/providers"' in response.text
+
+
+def test_metrics_excluded_from_schema():
+    assert "/metrics" not in client.get("/openapi.json").json()["paths"]
