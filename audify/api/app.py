@@ -245,6 +245,13 @@ def create_audiobook(
     max_chapters: Optional[int] = Form(
         None, description="Limit number of chapters (useful for testing)"
     ),
+    graph: bool = Form(
+        False,
+        description=(
+            "Run the LangGraph pipeline instead of the legacy orchestrator "
+            "(same as the CLI's --graph; experimental)"
+        ),
+    ),
 ) -> FileResponse:
     """Convert an uploaded EPUB or PDF to an M4B audiobook using LLM script generation.
 
@@ -293,7 +300,16 @@ def create_audiobook(
                     tts_provider=tts_provider,
                 )
 
-            result_path = creator.synthesize()
+            if graph:
+                from audify.qa.graph import run_graph
+
+                try:
+                    creator.progress.start()
+                    result_path = run_graph(creator)
+                finally:
+                    creator.progress.stop()
+            else:
+                result_path = creator.synthesize()
 
             # Find the M4B inside the result directory
             m4b_files = list(result_path.glob("*.m4b"))

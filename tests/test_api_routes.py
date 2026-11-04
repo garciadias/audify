@@ -205,6 +205,59 @@ def test_audiobook_epub_happy_path(tmp_path):
     assert response.headers["content-type"].startswith("audio/mp4")
 
 
+def test_audiobook_graph_runs_langgraph_pipeline(tmp_path):
+    """POST /audiobook with graph=true uses run_graph, not synthesize()."""
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "book.m4b").write_bytes(b"fake m4b")
+
+    mock_creator = MagicMock()
+
+    with patch("audify.api.app.os.remove"):
+        with patch(
+            "audify.audiobook_creator.AudiobookEpubCreator",
+            return_value=mock_creator,
+        ):
+            with patch(
+                "audify.qa.graph.run_graph", return_value=output_dir
+            ) as run_graph:
+                response = client.post(
+                    "/audiobook",
+                    files=_epub_upload(),
+                    data={"voice": "af_bella", "language": "en", "graph": "true"},
+                )
+
+    assert response.status_code == 200
+    run_graph.assert_called_once_with(mock_creator)
+    mock_creator.synthesize.assert_not_called()
+    mock_creator.progress.start.assert_called_once()
+    mock_creator.progress.stop.assert_called_once()
+
+
+def test_audiobook_graph_defaults_off(tmp_path):
+    """Without the graph field, /audiobook keeps the legacy orchestrator."""
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "book.m4b").write_bytes(b"fake m4b")
+
+    mock_creator = MagicMock()
+    mock_creator.synthesize.return_value = output_dir
+
+    with patch("audify.api.app.os.remove"):
+        with patch(
+            "audify.audiobook_creator.AudiobookEpubCreator",
+            return_value=mock_creator,
+        ):
+            with patch("audify.qa.graph.run_graph") as run_graph:
+                response = client.post(
+                    "/audiobook", files=_epub_upload(), data={"voice": "af_bella"}
+                )
+
+    assert response.status_code == 200
+    run_graph.assert_not_called()
+    mock_creator.synthesize.assert_called_once()
+
+
 def test_audiobook_pdf_happy_path(tmp_path):
     """POST /audiobook with PDF returns an M4B FileResponse."""
     output_dir = tmp_path / "out"
