@@ -51,7 +51,7 @@ mypy ./audify ./tests --ignore-missing-imports
 
 - Linter: ruff (rules: I, F, E, W, PT)
 - Type checker: mypy
-- Python: 3.10–3.13
+- Python: 3.11–3.13
 - Package manager: uv
 - CI: GitHub Actions runs `uv run task test` on Python 3.11
 

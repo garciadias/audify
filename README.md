@@ -28,7 +28,7 @@ Audify is a pipeline and REST API that transforms written content into high-qual
 
 ### Core Requirements
 
-- **Python 3.10-3.13**
+- **Python 3.11-3.13**
 - **UV package manager** ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
 
 ### For Local TTS Providers (Optional)
