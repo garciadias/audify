@@ -562,6 +562,29 @@ Accepted fields: `title`, `subtitle`, `authors`, `narrators`, `series`,
 `genres`, `tags`, `published_date`, `publisher`, `description`, `isbn`,
 `language`.
 
+### Adopting books made before Library items existed
+
+Older runs left the M4B inside the work directory without book tags. Turn them
+into Library items without new TTS:
+
+```bash
+# Dry run: prints, per book, the matched ebook, target folder and files.
+audify publish --adopt --output data/output --library-root ~/Audiobooks \
+    --ebooks ~/Documents/Books --narrator "Kokoro (af_bella)"
+
+# Same plan, carried out.
+audify publish --adopt --apply --output data/output --library-root ~/Audiobooks \
+    --ebooks ~/Documents/Books --narrator "Kokoro (af_bella)"
+```
+
+Each old output is paired with the ebook whose file name it was made from
+(`_part1`, `_part2`, ... become Parts of one book). A
+`metadata.override.json` in the old folder is applied first, so wrong titles
+can be fixed before applying. Once the Library item exists, only the old M4B
+and `cover.jpg` are removed; the folder keeps its scripts and episodes.
+Outputs with no ebook are published without one and reported. Running it
+again does nothing.
+
 ## 🛠️ Development
 
 ### Available Tasks
