@@ -77,15 +77,21 @@ def check_separate(library_root: Path, work_dir: Path) -> None:
         )
 
 
-def item_relative_dir(metadata: BookMetadata) -> Path:
-    """``Author/[Series/]Title`` for a Library item."""
+def item_relative_dir(
+    metadata: BookMetadata, folder_title: Optional[str] = None
+) -> Path:
+    """``Author/[Series/]Title`` for a Library item.
+
+    *folder_title* replaces the title in the last folder name, for a
+    Translated rendition (``Title [pt]``) whose title stays the ebook's.
+    """
     author = safe_name(metadata.authors[0]) if metadata.authors else ""
     parts = [author or UNKNOWN_AUTHOR]
     if metadata.series:
         series = safe_name(metadata.series[0].name)
         if series:
             parts.append(series)
-    title = safe_name(metadata.title) or "Untitled"
+    title = safe_name(folder_title or metadata.title) or "Untitled"
     parts.append(title)
     return Path(*parts)
 
@@ -303,6 +309,7 @@ def publish_library_item(
     chapters: Optional[Sequence[ChapterMark]] = None,
     identity: Optional[ItemIdentity] = None,
     manifest_extra: Optional[dict[str, Any]] = None,
+    folder_title: Optional[str] = None,
 ) -> Path:
     """Publish a Library item under *library_root*, or Re-publish an existing one.
 
@@ -317,6 +324,7 @@ def publish_library_item(
         identity: The Item identity. When an item with this identity already
             exists, it is updated in place and keeps its folder path.
         manifest_extra: Extra keys for the Item manifest (provenance, ...).
+        folder_title: Folder name used instead of the title (``Title [pt]``).
 
     Returns:
         The Library item folder.
@@ -339,7 +347,7 @@ def publish_library_item(
                 library_root, existing, planned, identity, ebook, manifest_extra
             )
 
-    final_dir = library_root / item_relative_dir(metadata)
+    final_dir = library_root / item_relative_dir(metadata, folder_title)
     if final_dir.exists():
         raise FileExistsError(f"Library item already exists: {final_dir}")
 

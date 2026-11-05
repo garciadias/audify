@@ -26,6 +26,7 @@ from audify.library.publish import (
     publish_library_item,
     resolve_library_root,
 )
+from audify.library.rendition import apply_rendition, rendition_kind
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer, TTSSynthesisError
@@ -416,7 +417,15 @@ class AudiobookCreator(BaseSynthesizer):
             metadata.title = str(self.title)
         if not metadata.language:
             metadata.language = self.language
-        return metadata
+        rendition = apply_rendition(
+            metadata,
+            task=getattr(self, "task_name", "audiobook"),
+            requires_llm=getattr(self, "_requires_llm", True),
+            translate_to=getattr(self, "translate", None),
+        )
+        self.item_folder_title = rendition.folder_title
+        self.include_ebook = rendition.include_ebook
+        return rendition.metadata
 
     def _book_tags(
         self, track: Optional[int] = None, total_tracks: Optional[int] = None
@@ -1416,7 +1425,7 @@ class AudiobookCreator(BaseSynthesizer):
             return None
         return ItemIdentity(
             book_key=key,
-            task=getattr(self, "task_name", "audiobook"),
+            task=rendition_kind(getattr(self, "task_name", "audiobook")),
             language=getattr(self, "translate", None) or None,
         )
 
@@ -1433,15 +1442,17 @@ class AudiobookCreator(BaseSynthesizer):
         if not outputs:
             logger.error("No complete M4B output; nothing published to the library.")
             return None
+        ebook = self.path if getattr(self, "include_ebook", True) else None
         try:
             item = publish_library_item(
                 library_root,
                 self.book_metadata,
                 outputs,
-                source_ebook=self.path,
+                source_ebook=ebook,
                 cover=getattr(self, "cover_image_path", None),
                 chapters=self._whole_book_chapters(),
                 identity=self._item_identity(),
+                folder_title=getattr(self, "item_folder_title", None),
             )
         except FileExistsError as e:
             logger.error(f"{e}. Not overwriting it.")

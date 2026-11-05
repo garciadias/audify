@@ -210,8 +210,11 @@ without conditional edges.
   keeps the key. A different edition, with different text, gets a new key.
   _Avoid_: whole-file hash (any metadata edit changes it). See ADR-0004.
 - **Item identity:** what Re-publish matches on. It is the Book key plus the
-  rendition kind (task, and translation target language if any). So a book's
-  Book rendition, its Translated rendition and its Derived works are distinct
+  rendition kind and the translation target language, if any. The `audiobook`
+  and `direct` tasks share the kind `book`: a book has one Book rendition per
+  language, so running the other task re-publishes that item (same folder,
+  progress kept). Each Derived work task is its own kind. So a book's Book
+  rendition, its Translated rendition and its Derived works are distinct
   Library items that share one Book key.
 - **Part:** one M4B file of a long book. A book over 14 hours is split into
   parts. Every part carries the same title tags and a track number `n/N`, so
