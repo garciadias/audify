@@ -5,10 +5,16 @@ from pathlib import Path
 from typing import Any, List, Optional, Union
 
 from bs4 import BeautifulSoup
+from ebooklib import epub
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 from rich.progress import track
 
+from audify.library.metadata import (
+    BookMetadata,
+    book_metadata_from_epub,
+    narrator_label,
+)
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer, TTSSynthesisError
@@ -240,6 +246,8 @@ class AudiobookCreator(BaseSynthesizer):
 
     # Class-level default so tests that bypass __init__ still have a valid mode.
     mode: str = "full"
+    # Number of M4B parts in the current run; None until a long book is split.
+    _chunk_count: Optional[int] = None
 
     def __init_progress(self) -> None:
         """Initialize progress indicator if not already done."""
@@ -363,6 +371,41 @@ class AudiobookCreator(BaseSynthesizer):
         else:
             self.cover_image_path = None
         self.chapter_titles: List[str] = []
+        self.book_metadata = self._build_book_metadata()
+
+    def _build_book_metadata(self) -> BookMetadata:
+        """Book metadata from the Source ebook, plus the Narrator.
+
+        A PDF has no OPF, so it gets only the file-name title and the
+        language; Metadata enrichment fills the rest later.
+        """
+        narrators = [
+            narrator_label(
+                getattr(self, "tts_provider", DEFAULT_TTS_PROVIDER),
+                getattr(self, "speaker", None),
+            )
+        ]
+        reader_book = getattr(self.reader, "book", None)
+        if isinstance(self.reader, EpubReader) and isinstance(
+            reader_book, epub.EpubBook
+        ):
+            metadata = book_metadata_from_epub(reader_book, narrators=narrators)
+        else:
+            metadata = BookMetadata(narrators=narrators)
+        if not metadata.title:
+            metadata.title = str(self.title)
+        if not metadata.language:
+            metadata.language = self.language
+        return metadata
+
+    def _book_tags(
+        self, track: Optional[int] = None, total_tracks: Optional[int] = None
+    ) -> dict:
+        """Global M4B tags for this book (empty when no metadata exists)."""
+        metadata = getattr(self, "book_metadata", None)
+        if not isinstance(metadata, BookMetadata):
+            return {}
+        return metadata.m4b_tags(track=track, total_tracks=total_tracks)
 
     def _resolve_task_prompt(self) -> None:
         """Resolve the prompt and LLM params from task name or prompt file."""
@@ -1133,7 +1176,7 @@ class AudiobookCreator(BaseSynthesizer):
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
         self.metadata_path = self.audiobook_path / "chapters.txt"
-        write_metadata_header(self.metadata_path)
+        write_metadata_header(self.metadata_path, self._book_tags())
 
     def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
         """Calculate total duration of MP3 files in seconds."""
@@ -1201,7 +1244,10 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(
             f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
         )
-        write_metadata_header(chunk_metadata_path)
+        write_metadata_header(
+            chunk_metadata_path,
+            self._book_tags(track=chunk_index + 1, total_tracks=self._chunk_count),
+        )
         current_start_ms = 0
         for mp3_file in chunk_files:
             try:
@@ -1256,6 +1302,7 @@ class AudiobookCreator(BaseSynthesizer):
             )
             chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
             logger.info(f"Split into {len(chunks)} chunks")
+            self._chunk_count = len(chunks)
 
             for chunk_index, chunk_files in enumerate(chunks):
                 chunk_duration = self._calculate_total_duration(chunk_files) / 3600
