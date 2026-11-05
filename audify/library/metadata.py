@@ -273,7 +273,8 @@ def title_from_filename(path: Path) -> str:
     """A readable title from a file name: ``the_wandering-earth`` becomes
     ``The Wandering Earth``. Used only when the source has no title."""
     words = re.sub(r"[_\-.]+", " ", Path(path).stem).split()
-    return " ".join(w if w.isupper() else w.capitalize() for w in words)
+    # Lowercase words are capitalised; "NLP" and "iPhone" keep their casing.
+    return " ".join(w if w != w.lower() else w.capitalize() for w in words)
 
 
 _PDF_PLACEHOLDERS = {"untitled", "untitled document", "anonymous", "unknown", "user"}
@@ -287,21 +288,32 @@ def book_metadata_from_pdf(
     the rest."""
     import pypdf
 
-    info: dict[str, Any] = {}
+    info: dict[str, str] = {}
     try:
         with open(path, "rb") as f:
-            info = dict(pypdf.PdfReader(f).metadata or {})
+            raw: Any = pypdf.PdfReader(f).metadata or {}
+            # Resolve while the file is open: an indirect value is read from
+            # the stream on first use. A PDF null means the field is absent.
+            for key in ("/Title", "/Author", "/Subject", "/Keywords"):
+                value = raw.get(key)
+                if isinstance(value, pypdf.generic.IndirectObject):
+                    value = value.get_object()
+                if value is not None and not isinstance(
+                    value, pypdf.generic.NullObject
+                ):
+                    info[key] = str(value).strip()
     except Exception as e:
         logger.warning(f"Could not read PDF metadata from {path}: {e}")
 
     def text(key: str) -> str:
-        value = info.get(key)
-        value = str(value).strip() if value else ""
+        value = info.get(key, "")
         # PDF generators fill unset fields with placeholders.
         return "" if value.casefold() in _PDF_PLACEHOLDERS else value
 
     authors = [
-        a.strip() for a in re.split(r";|\band\b|&", text("/Author")) if a.strip()
+        a.strip()
+        for a in re.split(r";|\band\b|&", text("/Author"), flags=re.IGNORECASE)
+        if a.strip()
     ]
     keywords = [k.strip() for k in re.split(r"[;,]", text("/Keywords")) if k.strip()]
     title = text("/Title")

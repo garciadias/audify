@@ -1,7 +1,7 @@
 """Tests for PDF as Source ebook: metadata, Book key and publishing."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from reportlab.pdfgen import canvas
 
@@ -79,8 +79,62 @@ def test_unreadable_pdf_still_gets_a_title(tmp_path):
     assert book_metadata_from_pdf(path).title == "Broken Book"
 
 
-def test_title_from_filename_keeps_acronyms():
+def test_title_from_filename_keeps_acronyms_and_mixed_case():
     assert title_from_filename(Path("intro_to_NLP.pdf")) == "Intro To NLP"
+    assert title_from_filename(Path("iPhone_Guide.pdf")) == "iPhone Guide"
+
+
+def _pypdf_file(path: Path, info: dict[str, Any]) -> Path:
+    """A PDF whose info entries are written raw (null and indirect values
+    included); add_metadata would turn them into text."""
+    from pypdf import PdfWriter
+    from pypdf.generic import NameObject, TextStringObject
+
+    writer = PdfWriter()
+    writer.add_blank_page(100, 100)
+    entries: Any = writer._info.get_object() if writer._info else None
+    assert entries is not None
+    for key, value in info.items():
+        if isinstance(value, str):
+            value = TextStringObject(value)
+        entries[NameObject(key)] = value
+    writer.write(path)
+    return path
+
+
+def test_null_info_values_are_absent(tmp_path):
+    from pypdf.generic import NullObject
+
+    path = _pypdf_file(
+        tmp_path / "null_title.pdf", {"/Title": NullObject(), "/Author": NullObject()}
+    )
+    meta = book_metadata_from_pdf(path)
+    assert meta.title == "Null Title"
+    assert meta.authors == []
+
+
+def test_indirect_title_is_resolved(tmp_path):
+    from pypdf.generic import IndirectObject, TextStringObject
+
+    def build(path: Path) -> Path:
+        from pypdf import PdfWriter
+        from pypdf.generic import NameObject
+
+        writer = PdfWriter()
+        writer.add_blank_page(100, 100)
+        ref: IndirectObject = writer._add_object(TextStringObject("Indirect Title"))
+        entries: Any = writer._info.get_object() if writer._info else None
+        entries[NameObject("/Title")] = ref
+        writer.write(path)
+        return path
+
+    path = build(tmp_path / "x.pdf")
+    assert book_metadata_from_pdf(path).title == "Indirect Title"
+
+
+def test_author_separator_is_case_insensitive(tmp_path):
+    path = _pypdf_file(tmp_path / "x.pdf", {"/Author": "Jane Doe AND John Smith"})
+    assert book_metadata_from_pdf(path).authors == ["Jane Doe", "John Smith"]
 
 
 def _creator(pdf: Path) -> AudiobookCreator:
