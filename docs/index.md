@@ -37,6 +37,8 @@ commercial-apis
 graph
 adr/0001-qa-loop-as-cyclic-graph-not-central-llm
 adr/0002-langgraph-as-cyclic-graph-substrate
+adr/0003-work-directory-separate-from-library-root
+adr/0004-book-key-is-a-hash-of-the-book-text
 ```
 
 ```{toctree}
