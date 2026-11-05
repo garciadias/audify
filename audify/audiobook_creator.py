@@ -15,6 +15,11 @@ from audify.library.metadata import (
     book_metadata_from_epub,
     narrator_label,
 )
+from audify.library.publish import (
+    check_separate,
+    publish_library_item,
+    resolve_library_root,
+)
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer, TTSSynthesisError
@@ -248,6 +253,10 @@ class AudiobookCreator(BaseSynthesizer):
     mode: str = "full"
     # Number of M4B parts in the current run; None until a long book is split.
     _chunk_count: Optional[int] = None
+    # Finished M4B files (one, or every Part) and the published Library item.
+    m4b_outputs: List[Path] = []
+    library_root: Optional[Path] = None
+    published_item: Optional[Path] = None
 
     def __init_progress(self) -> None:
         """Initialize progress indicator if not already done."""
@@ -285,6 +294,7 @@ class AudiobookCreator(BaseSynthesizer):
         mode: str = "full",
         warn_stop: bool = False,
         fidelity_check: bool = False,
+        library_root: Optional[str | Path] = None,
     ):
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
@@ -320,6 +330,9 @@ class AudiobookCreator(BaseSynthesizer):
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
+        self.library_root = resolve_library_root(library_root)
+        if self.library_root is not None:
+            check_separate(self.library_root, self.output_base_dir)
 
         self.audiobook_title = f"Audiobook - {self.title}"
         self.file_name = Path(get_file_name_title(file_path.stem))
@@ -1295,6 +1308,8 @@ class AudiobookCreator(BaseSynthesizer):
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
+            if self.final_m4b_path.exists():
+                self.m4b_outputs = [self.final_m4b_path]
         else:
             logger.info(
                 f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
@@ -1303,6 +1318,7 @@ class AudiobookCreator(BaseSynthesizer):
             chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
             logger.info(f"Split into {len(chunks)} chunks")
             self._chunk_count = len(chunks)
+            parts: List[Path] = []
 
             for chunk_index, chunk_files in enumerate(chunks):
                 chunk_duration = self._calculate_total_duration(chunk_files) / 3600
@@ -1338,12 +1354,47 @@ class AudiobookCreator(BaseSynthesizer):
                         getattr(self, "cover_image_path", None),
                     )
                     chunk_metadata_path.unlink(missing_ok=True)
+                    parts.append(chunk_final_path)
                 except Exception as e:
                     logger.error(
                         f"M4B creation failed for chunk {chunk_index + 1}: {e}"
                     )
 
             logger.info(f"Created {len(chunks)} M4B files for long audiobook")
+            # A book with a missing Part is not a complete Library item.
+            self.m4b_outputs = parts if len(parts) == len(chunks) else []
+
+        self._publish_library_item()
+
+    def _publish_library_item(self) -> Optional[Path]:
+        """Publish the finished book into the Library root, when one is set.
+
+        The M4B stays in the Work directory either way, so a publishing
+        failure is logged rather than raised: the run's output is not lost.
+        """
+        library_root = getattr(self, "library_root", None)
+        outputs = getattr(self, "m4b_outputs", [])
+        if library_root is None:
+            return None
+        if not outputs:
+            logger.error("No complete M4B output; nothing published to the library.")
+            return None
+        try:
+            item = publish_library_item(
+                library_root,
+                self.book_metadata,
+                outputs,
+                source_ebook=self.path,
+                cover=getattr(self, "cover_image_path", None),
+            )
+        except FileExistsError as e:
+            logger.error(f"{e}. Not overwriting it.")
+            return None
+        except Exception as e:
+            logger.error(f"Publishing the Library item failed: {e}", exc_info=True)
+            return None
+        self.published_item = item
+        return item
 
     def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
         """Create a single M4B file from all audiobook episodes."""
