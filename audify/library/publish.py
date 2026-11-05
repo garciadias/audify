@@ -7,6 +7,7 @@ half-built book (ADR-0003). See CONTEXT.md, "Library delivery".
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
+from audify.library.identity import ItemIdentity
 from audify.library.metadata import BookMetadata
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,8 @@ LIBRARY_ROOT_ENV = "AUDIFY_LIBRARY_ROOT"
 UNKNOWN_AUTHOR = "Unknown Author"
 METADATA_JSON = "metadata.json"
 COVER_NAME = "cover.jpg"
+MANIFEST = ".audify.json"
+MANIFEST_VERSION = 1
 _TMP_PREFIX = ".audify-publishing-"
 
 # Characters that are invalid on Windows or FAT/exFAT SD cards (the library is
@@ -142,6 +146,154 @@ def abs_metadata(
     return data
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _planned_files(
+    metadata: BookMetadata,
+    audio_files: Sequence[Path],
+    source_ebook: Optional[Path],
+    cover: Optional[Path],
+    chapters: Optional[Sequence[ChapterMark]],
+) -> dict[str, Path | bytes]:
+    """Every file Audify writes into a Library item: name to source or content."""
+    planned: dict[str, Path | bytes] = dict(
+        zip(audio_names(metadata, audio_files), audio_files)
+    )
+    if source_ebook is not None:
+        planned[source_ebook.name] = source_ebook
+    if cover is not None and cover.exists():
+        planned[COVER_NAME] = cover
+    planned[METADATA_JSON] = (
+        json.dumps(abs_metadata(metadata, chapters), indent=2, ensure_ascii=False)
+        + "\n"
+    ).encode("utf-8")
+    return planned
+
+
+def _write(dest: Path, source: Path | bytes) -> None:
+    """Write *dest* atomically: a hidden temporary sibling, then a rename."""
+    tmp = dest.with_name(f".{dest.name}.audify-tmp")
+    try:
+        if isinstance(source, bytes):
+            tmp.write_bytes(source)
+        else:
+            shutil.copy2(source, tmp)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def read_manifest(item_dir: Path) -> Optional[dict[str, Any]]:
+    """The Item manifest of *item_dir*, or None when it has none."""
+    path = item_dir / MANIFEST
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Unreadable item manifest {path}: {e}")
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_manifest(
+    item_dir: Path,
+    folder: str,
+    identity: Optional[ItemIdentity],
+    files: dict[str, str],
+    ebook: Optional[str],
+    extra: Optional[dict[str, Any]] = None,
+) -> None:
+    manifest: dict[str, Any] = {
+        "manifest_version": MANIFEST_VERSION,
+        "identity": identity.to_json() if identity else None,
+        "folder": folder,
+        "ebook": ebook,
+        "files": dict(sorted(files.items())),
+    }
+    if extra:
+        manifest.update(extra)
+    _write(
+        item_dir / MANIFEST,
+        (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+    )
+
+
+def find_library_item(library_root: Path, identity: ItemIdentity) -> Optional[Path]:
+    """The existing Library item with *identity*, found through its manifest."""
+    if not library_root.is_dir():
+        return None
+    for manifest_path in library_root.rglob(MANIFEST):
+        item_dir = manifest_path.parent
+        if any(
+            part.startswith(".") for part in item_dir.relative_to(library_root).parts
+        ):
+            continue  # a staging folder, or hidden by the user
+        manifest = read_manifest(item_dir)
+        if not manifest or not manifest.get("identity"):
+            continue
+        if ItemIdentity.from_json(manifest["identity"]) == identity:
+            return item_dir
+    return None
+
+
+def _republish(
+    library_root: Path,
+    item_dir: Path,
+    planned: dict[str, Path | bytes],
+    identity: Optional[ItemIdentity],
+    ebook: Optional[str],
+    extra: Optional[dict[str, Any]],
+) -> Path:
+    """Update an existing Library item in place, keeping its folder path.
+
+    A file whose hash differs from what Audify last wrote was edited by hand:
+    it is kept and dropped from the manifest, so it stays the user's from then
+    on. Files Audify never wrote are untouched. The Source ebook is never
+    replaced or deleted.
+    """
+    manifest = read_manifest(item_dir) or {}
+    recorded: dict[str, str] = dict(manifest.get("files") or {})
+    old_ebook = manifest.get("ebook")
+    written: dict[str, str] = {}
+
+    for name, source in planned.items():
+        dest = item_dir / name
+        if dest.exists():
+            if name not in recorded:
+                logger.info(f"Keeping {dest.name}: not written by Audify.")
+                continue
+            if _sha256(dest) != recorded[name]:
+                logger.warning(
+                    f"Keeping {dest.name}: edited by hand since last publish."
+                )
+                continue
+            if name in (ebook, old_ebook):
+                written[name] = recorded[name]
+                continue
+        _write(dest, source)
+        written[name] = _sha256(dest)
+
+    for name, digest in recorded.items():
+        if name in planned or name in (ebook, old_ebook):
+            continue
+        stale = item_dir / name
+        if stale.exists() and _sha256(stale) == digest:
+            stale.unlink()
+            logger.info(f"Removed {name}: no longer part of this book.")
+
+    folder = manifest.get("folder") or item_dir.relative_to(library_root).as_posix()
+    _write_manifest(item_dir, folder, identity, written, ebook or old_ebook, extra)
+    logger.info(f"Re-published Library item: {item_dir}")
+    return item_dir
+
+
 def publish_library_item(
     library_root: Path,
     metadata: BookMetadata,
@@ -149,8 +301,10 @@ def publish_library_item(
     source_ebook: Optional[Path] = None,
     cover: Optional[Path] = None,
     chapters: Optional[Sequence[ChapterMark]] = None,
+    identity: Optional[ItemIdentity] = None,
+    manifest_extra: Optional[dict[str, Any]] = None,
 ) -> Path:
-    """Assemble a Library item and move it into place under *library_root*.
+    """Publish a Library item under *library_root*, or Re-publish an existing one.
 
     Args:
         library_root: The folder the audiobook server scans.
@@ -160,18 +314,31 @@ def publish_library_item(
             server's ebook. None for a Derived work.
         cover: Cover image, copied as ``cover.jpg``.
         chapters: The whole-book chapter list for metadata.json.
+        identity: The Item identity. When an item with this identity already
+            exists, it is updated in place and keeps its folder path.
+        manifest_extra: Extra keys for the Item manifest (provenance, ...).
 
     Returns:
-        The final Library item folder.
+        The Library item folder.
 
     Raises:
-        FileExistsError: When the item folder already exists (Re-publish is
-            handled separately).
+        FileExistsError: When the target folder exists but is not this book's
+            Library item (no matching manifest).
         ValueError: When there is no audio to publish.
     """
     if not audio_files:
         raise ValueError("No audio files to publish.")
     library_root.mkdir(parents=True, exist_ok=True)
+    planned = _planned_files(metadata, audio_files, source_ebook, cover, chapters)
+    ebook = source_ebook.name if source_ebook is not None else None
+
+    if identity is not None:
+        existing = find_library_item(library_root, identity)
+        if existing is not None:
+            return _republish(
+                library_root, existing, planned, identity, ebook, manifest_extra
+            )
+
     final_dir = library_root / item_relative_dir(metadata)
     if final_dir.exists():
         raise FileExistsError(f"Library item already exists: {final_dir}")
@@ -180,17 +347,14 @@ def publish_library_item(
     staging.mkdir()
     created_parents = [p for p in final_dir.parents if not p.exists()]
     try:
-        for name, audio in zip(audio_names(metadata, audio_files), audio_files):
-            shutil.copy2(audio, staging / name)
-        if source_ebook is not None:
-            shutil.copy2(source_ebook, staging / source_ebook.name)
-        if cover is not None and cover.exists():
-            shutil.copy2(cover, staging / COVER_NAME)
-        (staging / METADATA_JSON).write_text(
-            json.dumps(abs_metadata(metadata, chapters), indent=2, ensure_ascii=False)
-            + "\n",
-            encoding="utf-8",
-        )
+        written: dict[str, str] = {}
+        for name, source in planned.items():
+            _write(staging / name, source)
+            written[name] = _sha256(staging / name)
+        # The manifest goes in before the rename, so the item never appears
+        # in the library without it.
+        folder = final_dir.relative_to(library_root).as_posix()
+        _write_manifest(staging, folder, identity, written, ebook, manifest_extra)
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         os.rename(staging, final_dir)
     except BaseException:

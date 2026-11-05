@@ -20,9 +20,23 @@ from audify.library.publish import (
 )
 
 ABS_KEYS = {
-    "tags", "title", "subtitle", "authors", "narrators", "series", "genres",
-    "publishedYear", "publishedDate", "publisher", "description", "isbn",
-    "asin", "language", "explicit", "abridged", "chapters",
+    "tags",
+    "title",
+    "subtitle",
+    "authors",
+    "narrators",
+    "series",
+    "genres",
+    "publishedYear",
+    "publishedDate",
+    "publisher",
+    "description",
+    "isbn",
+    "asin",
+    "language",
+    "explicit",
+    "abridged",
+    "chapters",
 }
 
 
@@ -102,6 +116,7 @@ def test_publish_creates_complete_item(tmp_path):
 
     assert item == root / "Clara E. Mattei" / "A Ordem do Capital"
     assert sorted(p.name for p in item.iterdir()) == [
+        ".audify.json",
         "A Ordem do Capital.m4b",
         "book.epub",
         "cover.jpg",

@@ -10,6 +10,11 @@ from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 from rich.progress import track
 
+from audify.library.identity import (
+    ItemIdentity,
+    book_key_from_epub,
+    book_key_from_text,
+)
 from audify.library.metadata import (
     BookMetadata,
     book_metadata_from_epub,
@@ -1366,6 +1371,22 @@ class AudiobookCreator(BaseSynthesizer):
 
         self._publish_library_item()
 
+    def _item_identity(self) -> Optional[ItemIdentity]:
+        """Book key plus rendition kind, or None when the key cannot be made."""
+        try:
+            if isinstance(self.reader, PdfReader):
+                key = book_key_from_text(self.reader.cleaned_text)
+            else:
+                key = book_key_from_epub(self.path)
+        except Exception as e:
+            logger.warning(f"Could not compute the Book key: {e}")
+            return None
+        return ItemIdentity(
+            book_key=key,
+            task=getattr(self, "task_name", "audiobook"),
+            language=getattr(self, "translate", None) or None,
+        )
+
     def _publish_library_item(self) -> Optional[Path]:
         """Publish the finished book into the Library root, when one is set.
 
@@ -1386,6 +1407,7 @@ class AudiobookCreator(BaseSynthesizer):
                 outputs,
                 source_ebook=self.path,
                 cover=getattr(self, "cover_image_path", None),
+                identity=self._item_identity(),
             )
         except FileExistsError as e:
             logger.error(f"{e}. Not overwriting it.")

@@ -179,9 +179,21 @@ def test_tags_survive_into_m4b(tmp_path):
     raw = tmp_path / "in.tmp.m4b"
     subprocess.run(
         [
-            "ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi",
-            "-i", "anullsrc=r=22050:cl=mono", "-t", "1", "-c:a", "aac",
-            "-f", "mp4", str(raw),
+            "ffmpeg",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=22050:cl=mono",
+            "-t",
+            "1",
+            "-c:a",
+            "aac",
+            "-f",
+            "mp4",
+            str(raw),
         ],
         check=True,
     )
@@ -199,8 +211,14 @@ def test_tags_survive_into_m4b(tmp_path):
 
     probe = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-show_entries", "format_tags",
-            "-of", "default=nw=1", str(out),
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format_tags",
+            "-of",
+            "default=nw=1",
+            str(out),
         ],
         capture_output=True,
         text=True,
