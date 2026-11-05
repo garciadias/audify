@@ -33,8 +33,10 @@ A **Quality Check** is a verdict on a produced artifact. Each check is either
 - **Coverage check:** was every source chapter actually produced? A set
   difference between source chapters and produced episodes — no audio analysis.
   Cyclic. (Today's structural verifier in `verify.py` is the seed of this.)
-- **Metadata check:** are chapter names / cover / ordering correct? Mixed: name
-  correctness is cyclic (see infer-and-fill); cover presence is terminal.
+- **Metadata check:** are chapter names, cover, ordering, and Book metadata
+  correct and complete? Mixed: chapter-name correctness and empty Book
+  metadata fields are cyclic (see infer-and-fill and Metadata enrichment). A
+  cover still missing after enrichment is terminal.
 
 ## Where errors are actually born
 
@@ -115,6 +117,114 @@ without conditional edges.
 - **Graph state:** the shared object LangGraph carries between nodes and across
   back-edges — per-chapter retry budget, best-so-far WER, and the flags that
   feed the final quality report.
+
+## Library delivery
+
+- **Library item:** Audify's final deliverable. It is one self-contained folder
+  that an audiobook server (Audiobookshelf) imports as a single book. It holds
+  the M4B (or every part of it), the Source ebook, `cover.jpg`, and a metadata
+  sidecar. The folder sits at `Author/[Series/]Title/`, so it can be dropped
+  into the library root unchanged. One Library item is one book. The M4B and
+  the ebook of the same book never live in separate folders, because the server
+  would then list them as two books.
+- **Source ebook:** the EPUB or PDF a run was made from. A Book rendition
+  copies it into the Library item as the server's ebook. Its Book metadata
+  comes from the EPUB's OPF, or from a PDF's info dictionary, which is often
+  empty and leaves more to Metadata enrichment.
+- **Metadata override:** a small per-book file of field values, kept in the
+  Work directory, that a person writes deliberately. It wins over every other
+  source. It is the place to correct a book: edits made in the audiobook
+  server's UI are overwritten by the next Re-publish, because the server ranks
+  `metadata.json` highest. The precedence is override > Source ebook >
+  catalogue > LLM.
+- **Book metadata:** the single record of a book's identity (title, subtitle,
+  authors, narrators, series and position, genres, published date, publisher,
+  description, ISBN, language). Every **metadata carrier** is generated from
+  it, and none is edited by hand.
+- **Metadata carrier:** a place where Book metadata is written for a reader to
+  find. A Library item has two: the tags embedded in the M4B (read by any
+  player) and the `metadata.json` sidecar (read by Audiobookshelf, and the one
+  that wins there).
+- **Metadata enrichment:** filling empty Book metadata fields. It is the
+  escalation edge of **infer-and-fill** applied to book-level fields, in two
+  rungs: (1) **catalogue lookup** in a public catalogue (Open Library first,
+  then Google Books), matched by ISBN, or by title and author when there is no
+  ISBN; (2) **LLM inference** for whatever is still empty (for example a
+  description summarised from the text, or guessed genres). Policy is **fill
+  gaps only**: a value present in a Metadata override or the Source ebook is
+  never replaced, and rung 2 never replaces rung 1. Every filled field records
+  its **provenance**: `override`, `ebook`, the catalogue's name, or `llm`. A
+  missing cover is filled by rung 1 only (Open Library, by ISBN). A cover is
+  never generated.
+- **Text-derivable field:** a Book metadata field that the book's own text can
+  support: description, genres, tags, and a subtitle shown on the title page.
+  Only these may come from LLM inference. **Factual fields** (ISBN, published
+  date, publisher, series and position, authors) come only from an override,
+  the Source ebook or a catalogue, and otherwise stay empty. An empty factual
+  field is correct; an invented one is a defect.
+- **Book rendition:** a Library item that is the book itself, read whole. Only
+  the `audiobook` and `direct` tasks produce one. It holds the Source ebook.
+- **Derived work:** a Library item made from a book but not the book itself.
+  The `podcast`, `summary`, `lecture` and `meditation` tasks produce one. It is
+  its own Library item titled `Title (Task)`, for example `The Three-Body
+  Problem (Podcast)`. It carries a tag naming the task and contains no ebook,
+  so it never merges into the book's Library item.
+- **Narrator:** the TTS engine and voice that spoke the audio, written as
+  `Engine (voice)`, for example `Kokoro (af_bella)`. There is never a human
+  narrator.
+- **LLM-script tag:** the tag `llm-script`, set on a Book rendition from the
+  `audiobook` task, whose audio speaks an LLM-rewritten Script rather than the
+  verbatim text. A `direct` rendition carries no such tag because it is
+  verbatim. The Narrator field alone says the voice is synthetic. The
+  `abridged` flag stays false. _Avoid_: `ai-narrated` (it reads as "synthetic
+  voice", which every rendition is).
+- **Translated rendition:** a Book rendition whose audio is in a different
+  language from its Source ebook (`--translate`). Its language field is the
+  translation target. Its title stays the ebook's title (no machine-translated
+  title is invented). It still holds the Source ebook, and it carries the tag
+  `translated-from-<lang>`. It lives in its own folder, `Title [<lang>]`, so it
+  never merges with an untranslated rendition of the same book.
+- **Work directory:** where a run keeps its working files (Scripts, episodes,
+  TTS batches, temporary M4B parts). It is never synced and never scanned by
+  the audiobook server.
+- **Library root:** the configured folder that the audiobook server scans
+  (today the Syncthing folder mirrored to `/sdcard/Audiobooks`). It only ever
+  receives complete Library items.
+- **Publish:** the final step of a run. It assembles the Library item under a
+  hidden temporary name inside the Library root, then renames it into place
+  (ADR-0003).
+- **Re-publish:** Publish into a Library item that already exists. It replaces
+  the M4B, `metadata.json` and `cover.jpg`, keeps the Source ebook, and keeps
+  every file Audify did not create. The folder path does not change, so the
+  server keeps the same book and every listener's progress.
+- **Item manifest:** `.audify.json` inside a Library item (the dot prefix keeps
+  the server from scanning it). It records the item's identity, the folder path
+  fixed at first Publish, and every file Audify wrote together with its hash.
+  Re-publish uses it in two ways. It finds the existing item, so a later change
+  of title or author never moves the folder; only `metadata.json` changes. It
+  also detects hand edits: a file whose hash no longer matches was edited by
+  hand, so it is kept and the skip is logged.
+- **Book key:** the identity of a book across runs. It is the hash of the
+  book's text: the EPUB spine (chapter content, excluding the OPF metadata and
+  the cover), or the extracted text of a PDF. A metadata fix made in Calibre
+  keeps the key. A different edition, with different text, gets a new key.
+  _Avoid_: whole-file hash (any metadata edit changes it). See ADR-0004.
+- **Item identity:** what Re-publish matches on. It is the Book key plus the
+  rendition kind (task, and translation target language if any). So a book's
+  Book rendition, its Translated rendition and its Derived works are distinct
+  Library items that share one Book key.
+- **Part:** one M4B file of a long book. A book over 14 hours is split into
+  parts. Every part carries the same title tags and a track number `n/N`, so
+  the server plays them in order. The book's one continuous **chapter list**
+  (offsets across all parts) lives in `metadata.json`, not only in each part's
+  embedded chapters.
+- **Adopt:** Publish applied to an output made before Library items existed
+  (`audify publish --adopt`). It needs no new TTS. It pairs the old M4B with
+  its Source ebook by Book key, writes tags, `metadata.json` and the Item
+  manifest, and moves the result into the `Author/Title` layout. The old folder
+  is removed only after the new item is in place. The server treats the new
+  folder as a new book, so listening progress on the old item does not carry
+  over.
 
 ## Quality report schema
 
