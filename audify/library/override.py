@@ -87,8 +87,6 @@ def apply_override(metadata: BookMetadata, data: dict[str, Any]) -> BookMetadata
         else:
             new = "" if value is None else str(value)
         setattr(metadata, name, new)
-        if new:
-            metadata.provenance[name] = "override"
-        else:
-            metadata.provenance.pop(name, None)
+        # Kept even for a cleared field: it tells enrichment to leave it empty.
+        metadata.provenance[name] = "override"
     return metadata

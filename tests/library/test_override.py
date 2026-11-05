@@ -40,7 +40,7 @@ def test_override_wins_and_is_marked(tmp_path):
 def test_override_can_clear_a_wrong_value():
     meta = apply_override(_ebook_meta(), {"publisher": None})
     assert meta.publisher == ""
-    assert "publisher" not in meta.provenance
+    assert meta.provenance["publisher"] == "override"
 
 
 def test_override_accepts_strings_for_list_fields():

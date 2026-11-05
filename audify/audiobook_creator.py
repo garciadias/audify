@@ -10,6 +10,11 @@ from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 from rich.progress import track
 
+from audify.library.catalogue import (
+    enrich_from_catalogues,
+    fetch_cover,
+    lookup_enabled,
+)
 from audify.library.identity import (
     ItemIdentity,
     book_key_from_epub,
@@ -426,6 +431,7 @@ class AudiobookCreator(BaseSynthesizer):
         if not metadata.language:
             metadata.language = self.language
             metadata.mark("audify", ["language"])
+        self._enrich_from_catalogues(metadata)
         rendition = apply_rendition(
             metadata,
             task=getattr(self, "task_name", "audiobook"),
@@ -435,6 +441,22 @@ class AudiobookCreator(BaseSynthesizer):
         self.item_folder_title = rendition.folder_title
         self.include_ebook = rendition.include_ebook
         return rendition.metadata
+
+    def _enrich_from_catalogues(self, metadata: BookMetadata) -> None:
+        """Rung 1 of Metadata enrichment, for runs that publish to a library.
+
+        Fills empty fields from public catalogues and, when the ebook has no
+        cover, fetches one. Never fails the run.
+        """
+        if getattr(self, "library_root", None) is None or not lookup_enabled():
+            return
+        records = enrich_from_catalogues(metadata)
+        audiobook_path = getattr(self, "audiobook_path", None)
+        if getattr(self, "cover_image_path", None) is None and audiobook_path:
+            cover = fetch_cover(records, Path(audiobook_path) / "cover.catalogue.jpg")
+            if cover is not None:
+                self.cover_image_path = cover
+                metadata.provenance["cover"] = records[0].source
 
     def _book_tags(
         self, track: Optional[int] = None, total_tracks: Optional[int] = None

@@ -547,6 +547,12 @@ lookup, and `null` clears a wrong value:
 }
 ```
 
+Empty fields are then filled from public catalogues (Open Library, then Google
+Books when `GOOGLE_BOOKS_API_KEY` is set), matched by ISBN or by title and
+author. Existing values are never replaced, a missing cover is fetched from Open
+Library by ISBN, and `.audify.json` records where each field came from. Set
+`AUDIFY_METADATA_LOOKUP=0` to turn lookups off.
+
 Accepted fields: `title`, `subtitle`, `authors`, `narrators`, `series`,
 `genres`, `tags`, `published_date`, `publisher`, `description`, `isbn`,
 `language`.

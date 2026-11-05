@@ -1,0 +1,99 @@
+{
+ "description": {
+  "type": "/type/text",
+  "value": "A young man arrives in the Ukraine, clutching in his hand a tattered photograph. He is searching for the woman who fifty years ago saved his grandfather from the Nazis. Unfortunately, however, he is aided in his quest by Alex, a translator with an uncanny ability to mangle English into new forms; a 'blind' old man haunted by memories of the war; and an undersexed guide dog named Sammy Davis, Jr, Jr. What they are looking for seems elusive - a truth hidden behind veils of time, language and the horrors of war. What they find turns all their worlds upside down.."
+ },
+ "title": "Everything Is Illuminated",
+ "covers": [
+  27640,
+  13208226,
+  10325599,
+  10905366,
+  11036142,
+  11288214
+ ],
+ "subject_places": [
+  "Ukraine",
+  "Amerikaner",
+  "Juden"
+ ],
+ "subjects": [
+  "Humorous stories",
+  "Grandfathers",
+  "Novelists",
+  "Fiction",
+  "Jewish families",
+  "Literature",
+  "Americans",
+  "World War, 1939-1945",
+  "Young men",
+  "Domestic fiction",
+  "History",
+  "Luftangriff",
+  "Vergangenheitsbewältigung",
+  "Reise",
+  "World War (1939-1945) fast (OCoLC)fst01180924",
+  "Amerikaner",
+  "Familie",
+  "Juden",
+  "Stetl",
+  "Fiction, coming of age",
+  "Fiction, humorous",
+  "Ukraine, fiction",
+  "World war, 1939-1945, fiction",
+  "Authors, fiction",
+  "Grandparents, fiction",
+  "Fiction, family life",
+  "Fiction, jewish",
+  "Jews, fiction",
+  "Judenvernichtung",
+  "Roman",
+  "Fiction, humorous, general",
+  "Belletristische Darstellung",
+  "Vergangenheitsbewa ltigung",
+  "Fiction, historical",
+  "Literature and fiction (general)",
+  "Littérature américaine",
+  "Traductions françaises",
+  "Roman américain",
+  "Judenvernichtung <Motiv>",
+  "Bildungsromans",
+  "Jewish fiction",
+  "Holocaust survivors"
+ ],
+ "key": "/works/OL5738260W",
+ "authors": [
+  {
+   "type": {
+    "key": "/type/author_role"
+   },
+   "author": {
+    "key": "/authors/OL1394901A"
+   }
+  }
+ ],
+ "subject_times": [
+  "German occupation 1941-1944",
+  "Geschichte 1997",
+  "Geschichte 1942",
+  "Geschichte 1791-1942"
+ ],
+ "type": {
+  "key": "/type/work"
+ },
+ "genres": [
+  "/tags/OL172T",
+  "/tags/OL174T",
+  "/tags/OL170T"
+ ],
+ "latest_revision": 21,
+ "revision": 21,
+ "created": {
+  "type": "/type/datetime",
+  "value": "2009-12-10T11:11:21.289926"
+ },
+ "last_modified": {
+  "type": "/type/datetime",
+  "value": "2026-08-30T20:07:16.673858"
+ }
+}
