@@ -21,6 +21,7 @@ from audify.library.metadata import (
     narrator_label,
 )
 from audify.library.publish import (
+    ChapterMark,
     check_separate,
     publish_library_item,
     resolve_library_root,
@@ -34,6 +35,7 @@ from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     CHAPTER_TITLE_PAUSE_MS,
     DEFAULT_TTS_PROVIDER,
+    MAX_PART_HOURS,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OUTPUT_BASE_DIR,
@@ -1221,7 +1223,7 @@ class AudiobookCreator(BaseSynthesizer):
         )
 
     def _split_episodes_by_duration(
-        self, episode_mp3_files: List[Path], max_hours: float = 14.0
+        self, episode_mp3_files: List[Path], max_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """Split episode MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
@@ -1309,7 +1311,7 @@ class AudiobookCreator(BaseSynthesizer):
         # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
         # hours, but ~15h is the practical ceiling across common audiobook
         # players. Only split when above 14h to leave a small safety margin.
-        if total_duration_hours <= 14.0:
+        if total_duration_hours <= MAX_PART_HOURS:
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
@@ -1320,7 +1322,9 @@ class AudiobookCreator(BaseSynthesizer):
                 f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
                 f"splitting into multiple M4B files for player compatibility"
             )
-            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
+            chunks = self._split_episodes_by_duration(
+                episode_mp3_files, max_hours=MAX_PART_HOURS
+            )
             logger.info(f"Split into {len(chunks)} chunks")
             self._chunk_count = len(chunks)
             parts: List[Path] = []
@@ -1371,6 +1375,35 @@ class AudiobookCreator(BaseSynthesizer):
 
         self._publish_library_item()
 
+    def _whole_book_chapters(self) -> List[ChapterMark]:
+        """One chapter per episode, with offsets running across every Part.
+
+        Parts are cut at episode boundaries in episode order, so the
+        cumulative episode durations are also the offsets within the whole
+        book, whichever Part an episode ended up in.
+        """
+        episodes_path = getattr(self, "episodes_path", None)
+        if episodes_path is None:
+            return []
+        marks: List[ChapterMark] = []
+        start = 0.0
+        for mp3_file in sorted(Path(episodes_path).glob("episode_*.mp3")):
+            try:
+                duration = AudioProcessor.get_duration(str(mp3_file))
+                number = int(mp3_file.stem.split("_")[1])
+            except Exception as e:
+                logger.warning(f"Skipping {mp3_file.name} in the chapter list: {e}")
+                continue
+            if duration <= 0:
+                continue
+            titles = getattr(self, "chapter_titles", [])
+            title = (titles[number - 1] if 0 < number <= len(titles) else None) or (
+                f"Episode {number}"
+            )
+            marks.append(ChapterMark(title, start, start + duration))
+            start += duration
+        return marks
+
     def _item_identity(self) -> Optional[ItemIdentity]:
         """Book key plus rendition kind, or None when the key cannot be made."""
         try:
@@ -1407,6 +1440,7 @@ class AudiobookCreator(BaseSynthesizer):
                 outputs,
                 source_ebook=self.path,
                 cover=getattr(self, "cover_image_path", None),
+                chapters=self._whole_book_chapters(),
                 identity=self._item_identity(),
             )
         except FileExistsError as e:
@@ -2002,7 +2036,7 @@ class DirectoryAudiobookCreator:
         return total_duration
 
     def _split_episodes_by_duration(
-        self, episode_mp3_files: List[Path], max_hours: float = 14.0
+        self, episode_mp3_files: List[Path], max_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """Split episode MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
@@ -2090,7 +2124,7 @@ class DirectoryAudiobookCreator:
         # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
         # hours, but ~15h is the practical ceiling across common audiobook
         # players. Only split when above 14h to leave a small safety margin.
-        if total_duration_hours <= 14.0:
+        if total_duration_hours <= MAX_PART_HOURS:
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
@@ -2099,7 +2133,9 @@ class DirectoryAudiobookCreator:
                 f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
                 f"splitting into multiple M4B files for player compatibility"
             )
-            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
+            chunks = self._split_episodes_by_duration(
+                episode_mp3_files, max_hours=MAX_PART_HOURS
+            )
             logger.info(f"Split into {len(chunks)} chunks")
 
             for chunk_index, chunk_files in enumerate(chunks):

@@ -15,6 +15,8 @@ import tqdm
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 
+from audify.utils.constants import MAX_PART_HOURS
+
 logger = logging.getLogger(__name__)
 
 
@@ -160,7 +162,7 @@ class AudioProcessor:
 
     @staticmethod
     def split_audio_by_duration(
-        file_paths: List[Path], max_duration_hours: float = 14.0
+        file_paths: List[Path], max_duration_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """
         Split a list of audio files into chunks based on total duration.

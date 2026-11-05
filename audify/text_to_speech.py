@@ -32,6 +32,7 @@ from audify.utils.constants import (
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
     KOKORO_API_BASE_URL,
+    MAX_PART_HOURS,
     OUTPUT_BASE_DIR,
 )
 from audify.utils.logging_utils import setup_logging
@@ -681,7 +682,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return total_duration
 
     def _split_chapters_by_duration(
-        self, chapter_mp3_files: List[Path], max_hours: float = 14.0
+        self, chapter_mp3_files: List[Path], max_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """Split chapter MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(chapter_mp3_files, max_hours)
@@ -759,7 +760,7 @@ class EpubSynthesizer(BaseSynthesizer):
         # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
         # hours, but ~15h is the practical ceiling across common audiobook
         # players. Only split when above 14h to leave a small safety margin.
-        if total_duration_hours <= 14.0:
+        if total_duration_hours <= MAX_PART_HOURS:
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._create_single_m4b(chapter_mp3_files)
         else:
@@ -794,7 +795,9 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _create_multiple_m4bs(self, chapter_mp3_files: List[Path]) -> None:
         """Create multiple M4B files by splitting chapters into chunks."""
-        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=14.0)
+        chunks = self._split_chapters_by_duration(
+            chapter_mp3_files, max_hours=MAX_PART_HOURS
+        )
         logger.info(f"Split into {len(chunks)} chunks")
         self._chunk_count = len(chunks)
 
