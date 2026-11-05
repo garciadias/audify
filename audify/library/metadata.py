@@ -8,11 +8,15 @@ Audiobookshelf ``metadata.json`` sidecar. See CONTEXT.md, "Library delivery".
 from __future__ import annotations
 
 import html
+import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from ebooklib import epub
+
+logger = logging.getLogger(__name__)
 
 _ISBN_RE = re.compile(r"(97[89][\d-]{10,14}|\d[\d-]{8,11}[\dXx])")
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -225,3 +229,57 @@ def narrator_label(engine: str, voice: Optional[str]) -> str:
     """The Narrator, ``Engine (voice)``, for example ``Kokoro (af_bella)``."""
     pretty = engine.strip().capitalize() if engine else "TTS"
     return f"{pretty} ({voice})" if voice else pretty
+
+
+def title_from_filename(path: Path) -> str:
+    """A readable title from a file name: ``the_wandering-earth`` becomes
+    ``The Wandering Earth``. Used only when the source has no title."""
+    words = re.sub(r"[_\-.]+", " ", Path(path).stem).split()
+    return " ".join(w if w.isupper() else w.capitalize() for w in words)
+
+
+_PDF_PLACEHOLDERS = {"untitled", "untitled document", "anonymous", "unknown", "user"}
+
+
+def book_metadata_from_pdf(
+    path: Path, narrators: Optional[list[str]] = None
+) -> BookMetadata:
+    """Book metadata from a PDF's info dictionary (Title, Author, Subject,
+    Keywords). An empty dictionary yields a file-name title; enrichment fills
+    the rest."""
+    import pypdf
+
+    info: dict[str, Any] = {}
+    try:
+        with open(path, "rb") as f:
+            info = dict(pypdf.PdfReader(f).metadata or {})
+    except Exception as e:
+        logger.warning(f"Could not read PDF metadata from {path}: {e}")
+
+    def text(key: str) -> str:
+        value = info.get(key)
+        value = str(value).strip() if value else ""
+        # PDF generators fill unset fields with placeholders.
+        return "" if value.casefold() in _PDF_PLACEHOLDERS else value
+
+    authors = [
+        a.strip() for a in re.split(r";|\band\b|&", text("/Author")) if a.strip()
+    ]
+    keywords = [k.strip() for k in re.split(r"[;,]", text("/Keywords")) if k.strip()]
+    title = text("/Title")
+    # Word processors write the document file name as the title.
+    if re.match(r"(?i)^microsoft word\s*-|.*\.(docx?|pdf|tex|odt)$", title):
+        title = ""
+    metadata = BookMetadata(
+        title=title,
+        authors=authors,
+        description=text("/Subject"),
+        tags=keywords,
+        narrators=list(narrators or []),
+    )
+    metadata.mark("ebook", [f for f in metadata.filled_fields() if f != "narrators"])
+    metadata.mark("audify", ["narrators"])
+    if not metadata.title:
+        metadata.title = title_from_filename(path)
+        metadata.mark("filename", ["title"])
+    return metadata

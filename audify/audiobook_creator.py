@@ -23,6 +23,7 @@ from audify.library.identity import (
 from audify.library.metadata import (
     BookMetadata,
     book_metadata_from_epub,
+    book_metadata_from_pdf,
     narrator_label,
 )
 from audify.library.override import OVERRIDE_FILE, apply_override, load_override
@@ -403,8 +404,8 @@ class AudiobookCreator(BaseSynthesizer):
     def _build_book_metadata(self) -> BookMetadata:
         """Book metadata from the Source ebook, plus the Narrator.
 
-        A PDF has no OPF, so it gets only the file-name title and the
-        language; Metadata enrichment fills the rest later.
+        A PDF has no OPF: its info dictionary is read instead, with a
+        file-name title when it has none; Metadata enrichment fills the rest.
         """
         narrators = [
             narrator_label(
@@ -417,6 +418,8 @@ class AudiobookCreator(BaseSynthesizer):
             reader_book, epub.EpubBook
         ):
             metadata = book_metadata_from_epub(reader_book, narrators=narrators)
+        elif isinstance(self.reader, PdfReader):
+            metadata = book_metadata_from_pdf(self.reader.path, narrators=narrators)
         else:
             metadata = BookMetadata(narrators=narrators)
         audiobook_path = getattr(self, "audiobook_path", None)
