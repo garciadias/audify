@@ -57,6 +57,7 @@ class TestGetCreator:
                 mode="full",
                 warn_stop=False,
                 fidelity_check=False,
+                library_root=None,
             )
 
     def test_get_creator_pdf(self):
@@ -97,6 +98,7 @@ class TestGetCreator:
                 mode="full",
                 warn_stop=False,
                 fidelity_check=False,
+                library_root=None,
                 # Note: max_chapters is not passed to PDF creator
             )
 

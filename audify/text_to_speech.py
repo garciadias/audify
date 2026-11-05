@@ -11,6 +11,11 @@ import requests
 from pydub import AudioSegment
 from rich.progress import track
 
+from audify.library.metadata import (
+    BookMetadata,
+    book_metadata_from_epub,
+    narrator_label,
+)
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.translate import translate_sentence
@@ -27,6 +32,7 @@ from audify.utils.constants import (
     DEFAULT_SPEAKER,
     DEFAULT_TTS_PROVIDER,
     KOKORO_API_BASE_URL,
+    MAX_PART_HOURS,
     OUTPUT_BASE_DIR,
 )
 from audify.utils.logging_utils import setup_logging
@@ -502,6 +508,9 @@ class BaseSynthesizer:
 class EpubSynthesizer(BaseSynthesizer):
     """Synthesizer for EPUB files, creating an M4B audiobook."""
 
+    # Number of M4B parts in the current run; None until a long book is split.
+    _chunk_count: Optional[int] = None
+
     def __init__(
         self,
         path: str | Path,
@@ -559,6 +568,30 @@ class EpubSynthesizer(BaseSynthesizer):
         self.cover_image_path: Optional[Path] = self.reader.get_cover_image(
             self.audiobook_path
         )
+        # Book metadata needs the TTS settings (the Narrator), which exist only
+        # after BaseSynthesizer.__init__, so the header is rewritten with tags.
+        self.book_metadata = book_metadata_from_epub(
+            self.reader.book,
+            narrators=[
+                narrator_label(
+                    getattr(self, "tts_provider", ""), getattr(self, "speaker", None)
+                )
+            ],
+        )
+        if not self.book_metadata.title:
+            self.book_metadata.title = str(self.reader.title)
+        if not self.book_metadata.language:
+            self.book_metadata.language = language
+        self._initialize_metadata_file()
+
+    def _book_tags(
+        self, track: Optional[int] = None, total_tracks: Optional[int] = None
+    ) -> dict:
+        """Global M4B tags for this book (empty before metadata exists)."""
+        metadata = getattr(self, "book_metadata", None)
+        if not isinstance(metadata, BookMetadata):
+            return {}
+        return metadata.m4b_tags(track=track, total_tracks=total_tracks)
 
     def _setup_paths(self, file_name_base: str) -> None:
         """Sets up the necessary output paths."""
@@ -574,7 +607,7 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
-        write_metadata_header(self.list_of_contents_path)
+        write_metadata_header(self.list_of_contents_path, self._book_tags())
 
     def synthesize_chapter(self, chapter_content: str, chapter_number: int) -> Path:
         """Synthesizes a single chapter into an MP3 file."""
@@ -649,7 +682,7 @@ class EpubSynthesizer(BaseSynthesizer):
         return total_duration
 
     def _split_chapters_by_duration(
-        self, chapter_mp3_files: List[Path], max_hours: float = 14.0
+        self, chapter_mp3_files: List[Path], max_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """Split chapter MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(chapter_mp3_files, max_hours)
@@ -690,7 +723,10 @@ class EpubSynthesizer(BaseSynthesizer):
         logger.info(
             f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
         )
-        write_metadata_header(chunk_metadata_path)
+        write_metadata_header(
+            chunk_metadata_path,
+            self._book_tags(track=chunk_index + 1, total_tracks=self._chunk_count),
+        )
         current_start_ms = 0
         for mp3_file in chunk_files:
             try:
@@ -724,7 +760,7 @@ class EpubSynthesizer(BaseSynthesizer):
         # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
         # hours, but ~15h is the practical ceiling across common audiobook
         # players. Only split when above 14h to leave a small safety margin.
-        if total_duration_hours <= 14.0:
+        if total_duration_hours <= MAX_PART_HOURS:
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._create_single_m4b(chapter_mp3_files)
         else:
@@ -759,8 +795,11 @@ class EpubSynthesizer(BaseSynthesizer):
 
     def _create_multiple_m4bs(self, chapter_mp3_files: List[Path]) -> None:
         """Create multiple M4B files by splitting chapters into chunks."""
-        chunks = self._split_chapters_by_duration(chapter_mp3_files, max_hours=14.0)
+        chunks = self._split_chapters_by_duration(
+            chapter_mp3_files, max_hours=MAX_PART_HOURS
+        )
         logger.info(f"Split into {len(chunks)} chunks")
+        self._chunk_count = len(chunks)
 
         for chunk_index, chunk_files in enumerate(chunks):
             chunk_duration = self._calculate_total_duration(chunk_files) / 3600

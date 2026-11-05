@@ -1770,7 +1770,7 @@ class TestAudiobookCreatorM4BCreation:
             assert result == expected_path
 
             # Verify header written
-            mock_write_header.assert_called_once_with(expected_path)
+            mock_write_header.assert_called_once_with(expected_path, {})
 
             # Verify durations fetched
             assert mock_get_duration.call_count == 2

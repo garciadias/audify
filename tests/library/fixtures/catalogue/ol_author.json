@@ -1,0 +1,45 @@
+{
+ "name": "Jonathan Safran Foer",
+ "birth_date": "1977-02-21",
+ "remote_ids": {
+  "viaf": "85500702",
+  "wikidata": "Q359548",
+  "isni": "0000000122825618",
+  "musicbrainz": "2ac4df8c-9f39-4e94-8cec-f02e5dda0cbb",
+  "goodreads": "2617",
+  "imdb": "nm1583636",
+  "lc_naf": "no2001058572",
+  "librarything": "foerjonathansafran",
+  "opac_sbn": "TO0V447094"
+ },
+ "source_records": [
+  "amazon:1501259199",
+  "amazon:8363855316",
+  "amazon:9507318984",
+  "amazon:9736895181",
+  "amazon:8466402551",
+  "promise:bwb_daily_pallets_2024-01-31:P9-BNW-237",
+  "promise:bwb_daily_pallets_2022-03-17"
+ ],
+ "personal_name": "Jonathan Safran Foer",
+ "type": {
+  "key": "/type/author"
+ },
+ "photos": [
+  14568627
+ ],
+ "alternate_names": [
+  "Jonathan S. Foer"
+ ],
+ "key": "/authors/OL1394901A",
+ "latest_revision": 12,
+ "revision": 12,
+ "created": {
+  "type": "/type/datetime",
+  "value": "2008-04-01T03:28:50.625462"
+ },
+ "last_modified": {
+  "type": "/type/datetime",
+  "value": "2025-07-31T18:05:18.263781"
+ }
+}

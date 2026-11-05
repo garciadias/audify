@@ -5,10 +5,34 @@ from pathlib import Path
 from typing import Any, List, Optional, Union
 
 from bs4 import BeautifulSoup
+from ebooklib import epub
 from pydub import AudioSegment
 from pydub.exceptions import CouldntDecodeError
 from rich.progress import track
 
+from audify.library.catalogue import (
+    enrich_from_catalogues,
+    fetch_cover,
+    lookup_enabled,
+)
+from audify.library.identity import (
+    ItemIdentity,
+    book_key_from_epub,
+    book_key_from_text,
+)
+from audify.library.metadata import (
+    BookMetadata,
+    book_metadata_from_epub,
+    narrator_label,
+)
+from audify.library.override import OVERRIDE_FILE, apply_override, load_override
+from audify.library.publish import (
+    ChapterMark,
+    check_separate,
+    publish_library_item,
+    resolve_library_root,
+)
+from audify.library.rendition import apply_rendition, rendition_kind
 from audify.readers.ebook import EpubReader
 from audify.readers.pdf import PdfReader
 from audify.text_to_speech import BaseSynthesizer, TTSSynthesisError
@@ -18,6 +42,7 @@ from audify.utils.audio import AudioProcessor
 from audify.utils.constants import (
     CHAPTER_TITLE_PAUSE_MS,
     DEFAULT_TTS_PROVIDER,
+    MAX_PART_HOURS,
     OLLAMA_API_BASE_URL,
     OLLAMA_DEFAULT_MODEL,
     OUTPUT_BASE_DIR,
@@ -240,6 +265,12 @@ class AudiobookCreator(BaseSynthesizer):
 
     # Class-level default so tests that bypass __init__ still have a valid mode.
     mode: str = "full"
+    # Number of M4B parts in the current run; None until a long book is split.
+    _chunk_count: Optional[int] = None
+    # Finished M4B files (one, or every Part) and the published Library item.
+    m4b_outputs: List[Path] = []
+    library_root: Optional[Path] = None
+    published_item: Optional[Path] = None
 
     def __init_progress(self) -> None:
         """Initialize progress indicator if not already done."""
@@ -277,6 +308,7 @@ class AudiobookCreator(BaseSynthesizer):
         mode: str = "full",
         warn_stop: bool = False,
         fidelity_check: bool = False,
+        library_root: Optional[str | Path] = None,
     ):
         self.reader: Union[EpubReader, PdfReader]
         file_path = Path(path)
@@ -312,6 +344,9 @@ class AudiobookCreator(BaseSynthesizer):
         self.output_base_dir = Path(output_dir or OUTPUT_BASE_DIR).resolve()
         if not self.output_base_dir.exists():
             self.output_base_dir.mkdir(parents=True, exist_ok=True)
+        self.library_root = resolve_library_root(library_root)
+        if self.library_root is not None:
+            check_separate(self.library_root, self.output_base_dir)
 
         self.audiobook_title = f"Audiobook - {self.title}"
         self.file_name = Path(get_file_name_title(file_path.stem))
@@ -363,6 +398,74 @@ class AudiobookCreator(BaseSynthesizer):
         else:
             self.cover_image_path = None
         self.chapter_titles: List[str] = []
+        self.book_metadata = self._build_book_metadata()
+
+    def _build_book_metadata(self) -> BookMetadata:
+        """Book metadata from the Source ebook, plus the Narrator.
+
+        A PDF has no OPF, so it gets only the file-name title and the
+        language; Metadata enrichment fills the rest later.
+        """
+        narrators = [
+            narrator_label(
+                getattr(self, "tts_provider", DEFAULT_TTS_PROVIDER),
+                getattr(self, "speaker", None),
+            )
+        ]
+        reader_book = getattr(self.reader, "book", None)
+        if isinstance(self.reader, EpubReader) and isinstance(
+            reader_book, epub.EpubBook
+        ):
+            metadata = book_metadata_from_epub(reader_book, narrators=narrators)
+        else:
+            metadata = BookMetadata(narrators=narrators)
+        audiobook_path = getattr(self, "audiobook_path", None)
+        if audiobook_path is not None:
+            override = load_override(Path(audiobook_path) / OVERRIDE_FILE)
+            if override:
+                apply_override(metadata, override)
+                logger.info(f"Applied metadata override: {', '.join(override)}")
+        if not metadata.title:
+            metadata.title = str(self.title)
+            metadata.mark("filename", ["title"])
+        if not metadata.language:
+            metadata.language = self.language
+            metadata.mark("audify", ["language"])
+        self._enrich_from_catalogues(metadata)
+        rendition = apply_rendition(
+            metadata,
+            task=getattr(self, "task_name", "audiobook"),
+            requires_llm=getattr(self, "_requires_llm", True),
+            translate_to=getattr(self, "translate", None),
+        )
+        self.item_folder_title = rendition.folder_title
+        self.include_ebook = rendition.include_ebook
+        return rendition.metadata
+
+    def _enrich_from_catalogues(self, metadata: BookMetadata) -> None:
+        """Rung 1 of Metadata enrichment, for runs that publish to a library.
+
+        Fills empty fields from public catalogues and, when the ebook has no
+        cover, fetches one. Never fails the run.
+        """
+        if getattr(self, "library_root", None) is None or not lookup_enabled():
+            return
+        records = enrich_from_catalogues(metadata)
+        audiobook_path = getattr(self, "audiobook_path", None)
+        if getattr(self, "cover_image_path", None) is None and audiobook_path:
+            cover = fetch_cover(records, Path(audiobook_path) / "cover.catalogue.jpg")
+            if cover is not None:
+                self.cover_image_path = cover
+                metadata.provenance["cover"] = records[0].source
+
+    def _book_tags(
+        self, track: Optional[int] = None, total_tracks: Optional[int] = None
+    ) -> dict:
+        """Global M4B tags for this book (empty when no metadata exists)."""
+        metadata = getattr(self, "book_metadata", None)
+        if not isinstance(metadata, BookMetadata):
+            return {}
+        return metadata.m4b_tags(track=track, total_tracks=total_tracks)
 
     def _resolve_task_prompt(self) -> None:
         """Resolve the prompt and LLM params from task name or prompt file."""
@@ -1133,7 +1236,7 @@ class AudiobookCreator(BaseSynthesizer):
     def _initialize_metadata_file(self) -> None:
         """Writes the initial header to the FFmpeg metadata file."""
         self.metadata_path = self.audiobook_path / "chapters.txt"
-        write_metadata_header(self.metadata_path)
+        write_metadata_header(self.metadata_path, self._book_tags())
 
     def _calculate_total_duration(self, mp3_files: List[Path]) -> float:
         """Calculate total duration of MP3 files in seconds."""
@@ -1160,7 +1263,7 @@ class AudiobookCreator(BaseSynthesizer):
         )
 
     def _split_episodes_by_duration(
-        self, episode_mp3_files: List[Path], max_hours: float = 14.0
+        self, episode_mp3_files: List[Path], max_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """Split episode MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
@@ -1201,7 +1304,10 @@ class AudiobookCreator(BaseSynthesizer):
         logger.info(
             f"Creating metadata file for chunk {chunk_index + 1}: {chunk_metadata_path}"
         )
-        write_metadata_header(chunk_metadata_path)
+        write_metadata_header(
+            chunk_metadata_path,
+            self._book_tags(track=chunk_index + 1, total_tracks=self._chunk_count),
+        )
         current_start_ms = 0
         for mp3_file in chunk_files:
             try:
@@ -1245,17 +1351,23 @@ class AudiobookCreator(BaseSynthesizer):
         # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
         # hours, but ~15h is the practical ceiling across common audiobook
         # players. Only split when above 14h to leave a small safety margin.
-        if total_duration_hours <= 14.0:
+        if total_duration_hours <= MAX_PART_HOURS:
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
+            if self.final_m4b_path.exists():
+                self.m4b_outputs = [self.final_m4b_path]
         else:
             logger.info(
                 f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
                 f"splitting into multiple M4B files for player compatibility"
             )
-            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
+            chunks = self._split_episodes_by_duration(
+                episode_mp3_files, max_hours=MAX_PART_HOURS
+            )
             logger.info(f"Split into {len(chunks)} chunks")
+            self._chunk_count = len(chunks)
+            parts: List[Path] = []
 
             for chunk_index, chunk_files in enumerate(chunks):
                 chunk_duration = self._calculate_total_duration(chunk_files) / 3600
@@ -1291,12 +1403,97 @@ class AudiobookCreator(BaseSynthesizer):
                         getattr(self, "cover_image_path", None),
                     )
                     chunk_metadata_path.unlink(missing_ok=True)
+                    parts.append(chunk_final_path)
                 except Exception as e:
                     logger.error(
                         f"M4B creation failed for chunk {chunk_index + 1}: {e}"
                     )
 
             logger.info(f"Created {len(chunks)} M4B files for long audiobook")
+            # A book with a missing Part is not a complete Library item.
+            self.m4b_outputs = parts if len(parts) == len(chunks) else []
+
+        self._publish_library_item()
+
+    def _whole_book_chapters(self) -> List[ChapterMark]:
+        """One chapter per episode, with offsets running across every Part.
+
+        Parts are cut at episode boundaries in episode order, so the
+        cumulative episode durations are also the offsets within the whole
+        book, whichever Part an episode ended up in.
+        """
+        episodes_path = getattr(self, "episodes_path", None)
+        if episodes_path is None:
+            return []
+        marks: List[ChapterMark] = []
+        start = 0.0
+        for mp3_file in sorted(Path(episodes_path).glob("episode_*.mp3")):
+            try:
+                duration = AudioProcessor.get_duration(str(mp3_file))
+                number = int(mp3_file.stem.split("_")[1])
+            except Exception as e:
+                logger.warning(f"Skipping {mp3_file.name} in the chapter list: {e}")
+                continue
+            if duration <= 0:
+                continue
+            titles = getattr(self, "chapter_titles", [])
+            title = (titles[number - 1] if 0 < number <= len(titles) else None) or (
+                f"Episode {number}"
+            )
+            marks.append(ChapterMark(title, start, start + duration))
+            start += duration
+        return marks
+
+    def _item_identity(self) -> Optional[ItemIdentity]:
+        """Book key plus rendition kind, or None when the key cannot be made."""
+        try:
+            if isinstance(self.reader, PdfReader):
+                key = book_key_from_text(self.reader.cleaned_text)
+            else:
+                key = book_key_from_epub(self.path)
+        except Exception as e:
+            logger.warning(f"Could not compute the Book key: {e}")
+            return None
+        return ItemIdentity(
+            book_key=key,
+            task=rendition_kind(getattr(self, "task_name", "audiobook")),
+            language=getattr(self, "translate", None) or None,
+        )
+
+    def _publish_library_item(self) -> Optional[Path]:
+        """Publish the finished book into the Library root, when one is set.
+
+        The M4B stays in the Work directory either way, so a publishing
+        failure is logged rather than raised: the run's output is not lost.
+        """
+        library_root = getattr(self, "library_root", None)
+        outputs = getattr(self, "m4b_outputs", [])
+        if library_root is None:
+            return None
+        if not outputs:
+            logger.error("No complete M4B output; nothing published to the library.")
+            return None
+        ebook = self.path if getattr(self, "include_ebook", True) else None
+        try:
+            item = publish_library_item(
+                library_root,
+                self.book_metadata,
+                outputs,
+                source_ebook=ebook,
+                cover=getattr(self, "cover_image_path", None),
+                chapters=self._whole_book_chapters(),
+                identity=self._item_identity(),
+                folder_title=getattr(self, "item_folder_title", None),
+                manifest_extra={"provenance": dict(self.book_metadata.provenance)},
+            )
+        except FileExistsError as e:
+            logger.error(f"{e}. Not overwriting it.")
+            return None
+        except Exception as e:
+            logger.error(f"Publishing the Library item failed: {e}", exc_info=True)
+            return None
+        self.published_item = item
+        return item
 
     def _create_single_m4b(self, episode_mp3_files: List[Path]) -> None:
         """Create a single M4B file from all audiobook episodes."""
@@ -1882,7 +2079,7 @@ class DirectoryAudiobookCreator:
         return total_duration
 
     def _split_episodes_by_duration(
-        self, episode_mp3_files: List[Path], max_hours: float = 14.0
+        self, episode_mp3_files: List[Path], max_hours: float = MAX_PART_HOURS
     ) -> List[List[Path]]:
         """Split episode MP3 files into chunks with maximum duration in hours."""
         return AudioProcessor.split_audio_by_duration(episode_mp3_files, max_hours)
@@ -1970,7 +2167,7 @@ class DirectoryAudiobookCreator:
         # M4B/MP4 with AAC at 64 kbps can technically hold well over a hundred
         # hours, but ~15h is the practical ceiling across common audiobook
         # players. Only split when above 14h to leave a small safety margin.
-        if total_duration_hours <= 14.0:
+        if total_duration_hours <= MAX_PART_HOURS:
             logger.info("Creating single M4B file (duration <= 14 hours)")
             self._initialize_metadata_file()
             self._create_single_m4b(episode_mp3_files)
@@ -1979,7 +2176,9 @@ class DirectoryAudiobookCreator:
                 f"Duration ({total_duration_hours:.2f}h) exceeds 14 hours, "
                 f"splitting into multiple M4B files for player compatibility"
             )
-            chunks = self._split_episodes_by_duration(episode_mp3_files, max_hours=14.0)
+            chunks = self._split_episodes_by_duration(
+                episode_mp3_files, max_hours=MAX_PART_HOURS
+            )
             logger.info(f"Split into {len(chunks)} chunks")
 
             for chunk_index, chunk_files in enumerate(chunks):

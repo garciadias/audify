@@ -312,6 +312,15 @@ def _contains_audio_artifacts(output_path: Path) -> bool:
     help="Output directory or file path for the result.",
 )
 @click.option(
+    "--library-root",
+    type=click.Path(file_okay=False),
+    default=None,
+    envvar="AUDIFY_LIBRARY_ROOT",
+    help="Folder the audiobook server scans. When set, a finished book is "
+    "published there as a Library item (Author/Title/ with the M4B, the source "
+    "ebook, cover.jpg and metadata.json). Must be separate from --output.",
+)
+@click.option(
     "--tts-provider",
     "-tp",
     type=click.Choice(AVAILABLE_TTS_PROVIDERS, case_sensitive=False),
@@ -437,6 +446,7 @@ def cli(
     max_chapters: int | None,
     confirm: bool,
     output: str | None,
+    library_root: str | None,
     tts_provider: str,
     task: str,
     prompt_file: str | None,
@@ -779,6 +789,7 @@ def cli(
                 mode=mode,
                 warn_stop=warn_stop,
                 fidelity_check=fidelity_check,
+                library_root=library_root,
             )
             if graph:
                 from audify.qa.graph import run_graph

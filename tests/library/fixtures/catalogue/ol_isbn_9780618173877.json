@@ -1,0 +1,115 @@
+{
+ "publishers": [
+  "Houghton Mifflin Co."
+ ],
+ "identifiers": {
+  "librarything": [
+   "840"
+  ],
+  "goodreads": [
+   "493967"
+  ]
+ },
+ "subtitle": "a novel",
+ "isbn_10": [
+  "0618173870"
+ ],
+ "subject_place": [
+  "Ukraine"
+ ],
+ "pagination": "276 p. :",
+ "covers": [
+  393664
+ ],
+ "lc_classifications": [
+  "PS3606.O38 E84 2002",
+  "PS3606.O38E84 2002"
+ ],
+ "key": "/books/OL3953594M",
+ "authors": [
+  {
+   "key": "/authors/OL1394901A"
+  }
+ ],
+ "ocaid": "everythingisi00foer",
+ "publish_places": [
+  "Boston"
+ ],
+ "lccn": [
+  "2001051610"
+ ],
+ "uri_descriptions": [
+  "Sample text",
+  "Reading group guide",
+  "Publisher description"
+ ],
+ "genres": [
+  "Fiction."
+ ],
+ "source_records": [
+  "ia:everythingisi00foer",
+  "ia:everythingisillu00foer_050",
+  "marc:marc_loc_2016/BooksAll.2016.part28.utf8:228191199:1412",
+  "bwb:9780618173877",
+  "marc:marc_columbia/Columbia-extract-20221130-007.mrc:252686816:1546",
+  "ia:everythingisillu00foer_1",
+  "marc:harvard_bibliographic_metadata/20220215_039.bib.mrc:140175387:5955"
+ ],
+ "title": "Everything is illuminated",
+ "url": [
+  "http://www.loc.gov/catdir/samples/hm051/2001051610.html",
+  "http://www.houghtonmifflinbooks.com/readers_guides/foer/",
+  "http://www.loc.gov/catdir/description/hm021/2001051610.html"
+ ],
+ "number_of_pages": 276,
+ "languages": [
+  {
+   "key": "/languages/eng"
+  }
+ ],
+ "dewey_decimal_class": [
+  "813/.6"
+ ],
+ "subjects": [
+  "Americans -- Ukraine -- Fiction.",
+  "World War, 1939-1945 -- Ukraine -- Fiction.",
+  "Jewish families -- Fiction.",
+  "Grandfathers -- Fiction.",
+  "Novelists -- Fiction.",
+  "Young men -- Fiction.",
+  "Ukraine -- Fiction."
+ ],
+ "publish_date": "2002",
+ "publish_country": "mau",
+ "by_statement": "Jonathan Safran Foer.",
+ "works": [
+  {
+   "key": "/works/OL5738260W"
+  }
+ ],
+ "type": {
+  "key": "/type/edition"
+ },
+ "uris": [
+  "http://www.loc.gov/catdir/samples/hm051/2001051610.html",
+  "http://www.houghtonmifflinbooks.com/readers_guides/foer/",
+  "http://www.loc.gov/catdir/description/hm021/2001051610.html"
+ ],
+ "oclc_numbers": [
+  "48144414"
+ ],
+ "description": {
+  "type": "/type/text",
+  "value": "\"With only a yellowing photograph in hand, a young man - also named Jonathan Safran Foer - sets out to find the woman who might or might not have saved his grandfather from the Nazis. Accompanied by an old man haunted by memories of the war, an amorous dog named Sammy Davis, Junior, Junior, and the unforgettable Alex, a young Ukranian translator who speaks in a sublimely butchered English, Jonathan is led on a quixotic journey over a devastated landscape and into an unexpected past.\".\n\n\"As their adventure unfolds, Jonathan imagines the history of his grandfather's village, conjuring a magical fable of startling symmetries that unite generations across time.\"--BOOK JACKET."
+ },
+ "latest_revision": 14,
+ "revision": 14,
+ "created": {
+  "type": "/type/datetime",
+  "value": "2008-04-01T03:28:50.625462"
+ },
+ "last_modified": {
+  "type": "/type/datetime",
+  "value": "2026-05-19T01:03:36.880433"
+ }
+}

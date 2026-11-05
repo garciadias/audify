@@ -140,3 +140,10 @@ DEFAULT_LANGUAGE_LIST = [
 DEFAULT_SPEAKER = "ef_dora"
 DEFAULT_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 DEFAULT_ENGINE = "kokoro"
+
+# Longest single M4B Audify writes, in hours. MP4 with AAC can hold far more,
+# but about 15 h is the practical ceiling across common audiobook players, so
+# longer books are split into Parts with a small safety margin. A Library item
+# holds every Part, tagged track n/N, and metadata.json carries one chapter
+# list across all of them.
+MAX_PART_HOURS = 14.0

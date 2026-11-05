@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import IO, List, Optional, Tuple
+from typing import IO, List, Mapping, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,37 @@ _FFMETADATA_HEADER = (
 )
 
 
-def write_metadata_header(metadata_path: Path) -> None:
-    """Write the standard FFmpeg metadata header to *metadata_path*."""
+def escape_ffmetadata(value: str) -> str:
+    """Escape a value for an FFmpeg metadata file.
+
+    FFmpeg treats ``=``, ``;``, ``#``, ``\\`` and newlines as syntax, so each
+    is preceded by a backslash. A newline is escaped rather than dropped, which
+    keeps multi-line descriptions intact.
+    """
+    escaped = value.replace("\\", "\\\\")
+    for char in ("=", ";", "#"):
+        escaped = escaped.replace(char, "\\" + char)
+    return escaped.replace("\r", "").replace("\n", "\\\n")
+
+
+def write_metadata_header(
+    metadata_path: Path, tags: Optional[Mapping[str, str]] = None
+) -> None:
+    """Write the standard FFmpeg metadata header to *metadata_path*.
+
+    Args:
+        metadata_path: The FFmpeg metadata file to create.
+        tags: Optional global tags (title, artist, ...). They must precede
+            every ``[CHAPTER]`` section, so they are written here, with the
+            header. Empty values are skipped.
+    """
     logger.info(f"Initializing metadata file: {metadata_path}")
     try:
         with open(metadata_path, "w") as f:
             f.write(_FFMETADATA_HEADER)
+            for key, value in (tags or {}).items():
+                if value:
+                    f.write(f"{key}={escape_ffmetadata(str(value))}\n")
     except IOError as e:
         logger.error(f"Failed to initialize metadata file: {e}", exc_info=True)
         raise

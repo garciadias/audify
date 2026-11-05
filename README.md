@@ -499,6 +499,64 @@ data/output/
     └── [directory_name].m4b    # Combined audiobook
 ```
 
+## 📚 Publishing to an audiobook library (Audiobookshelf)
+
+`data/output` is Audify's **work directory**: scripts, episodes and temporary
+files live there. To deliver finished books to an audiobook server, point
+`--library-root` (or the `AUDIFY_LIBRARY_ROOT` environment variable) at the
+folder the server scans. It must be a different folder from `--output`.
+
+```bash
+audify book.epub --library-root ~/Audiobooks
+```
+
+At the end of a successful run, Audify publishes one **Library item** per book:
+
+```text
+~/Audiobooks/
+└── Clara E. Mattei/                     # first author ("Unknown Author" if none)
+    └── [Series/]A Ordem do Capital/     # series folder only when known
+        ├── A Ordem do Capital.m4b       # or "... - Part 01.m4b", "... - Part 02.m4b"
+        ├── A Ordem do Capital.epub      # the source ebook, so the server shows both
+        ├── cover.jpg
+        ├── metadata.json                # Audiobookshelf metadata (wins over tags)
+        └── .audify.json                 # item manifest (identity, file hashes)
+```
+
+The M4B carries the same metadata as standard MP4 tags, so other players show
+it too. Re-running the same book updates the same folder, so listening progress
+is kept, even when the title or author changed. Files you replaced by hand (for
+example `cover.jpg`) are kept. Other tasks publish separate items:
+`Title (Podcast)` for derived works, and `Title [pt]` for `--translate pt`.
+
+### Correcting a book's metadata
+
+Do not fix a book in the Audiobookshelf web UI: the next re-run rewrites
+`metadata.json` and overwrites that edit. Put corrections in
+`metadata.override.json` inside the book's folder in the work directory
+(next to `scripts/`), then re-run. Override values win over the ebook and every
+lookup, and `null` clears a wrong value:
+
+```json
+{
+  "title": "A Ordem do Capital",
+  "authors": ["Clara E. Mattei"],
+  "series": ["Ensaios #2"],
+  "published_date": "2023",
+  "publisher": null
+}
+```
+
+Empty fields are then filled from public catalogues (Open Library, then Google
+Books when `GOOGLE_BOOKS_API_KEY` is set), matched by ISBN or by title and
+author. Existing values are never replaced, a missing cover is fetched from Open
+Library by ISBN, and `.audify.json` records where each field came from. Set
+`AUDIFY_METADATA_LOOKUP=0` to turn lookups off.
+
+Accepted fields: `title`, `subtitle`, `authors`, `narrators`, `series`,
+`genres`, `tags`, `published_date`, `publisher`, `description`, `isbn`,
+`language`.
+
 ## 🛠️ Development
 
 ### Available Tasks
