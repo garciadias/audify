@@ -139,6 +139,44 @@ def _clean(text: str) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
+OPF_NS = "http://www.idpf.org/2007/opf"
+
+
+def _authors(book: epub.EpubBook) -> list[str]:
+    """dc:creator entries that are authors, split and tidied.
+
+    Creators with an OPF role other than ``aut`` (translator, editor,
+    illustrator) are not authors. Some tools write several names into one
+    creator separated by ";", or leave a trailing separator.
+    """
+    # EPUB 3 states roles in <meta refines="#id" property="role">; EPUB 2 in
+    # an opf:role attribute on the creator itself.
+    refined: dict[str, str] = {}
+    all_meta = getattr(book, "metadata", None)
+    for namespace in (OPF_NS, None):
+        section = all_meta.get(namespace) if isinstance(all_meta, dict) else None
+        entries = section.get("meta", []) if isinstance(section, dict) else []
+        for value, attrs in entries:
+            attrs = attrs if isinstance(attrs, dict) else {}
+            if attrs.get("property") == "role" and attrs.get("refines") and value:
+                refined[str(attrs["refines"]).lstrip("#")] = str(value)
+    authors: list[str] = []
+    for value, attrs in _dc(book, "creator"):
+        if not value:
+            continue
+        attrs = attrs or {}
+        role = refined.get(str(attrs.get("id", "")), "") or next(
+            (str(v) for k, v in attrs.items() if str(k).endswith("role")), ""
+        )
+        if role and role.lower() != "aut":
+            continue
+        for name in _clean(str(value)).split(";"):
+            name = name.strip(" ,;")
+            if name and name not in authors:
+                authors.append(name)
+    return authors
+
+
 def _dc(book: epub.EpubBook, name: str) -> list[tuple[Any, dict]]:
     try:
         return list(book.get_metadata("DC", name) or [])
@@ -210,7 +248,7 @@ def book_metadata_from_epub(
     """
     metadata = BookMetadata(
         title=_first(_dc(book, "title")),
-        authors=[_clean(str(v)) for v, _ in _dc(book, "creator") if v],
+        authors=_authors(book),
         narrators=list(narrators or []),
         series=_series(book),
         genres=[_clean(str(v)) for v, _ in _dc(book, "subject") if v],

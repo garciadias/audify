@@ -265,3 +265,14 @@ def test_creator_builds_tags_from_a_real_epub(tmp_path):
     assert tags["composer"] == "Kokoro (af_bella)"
     assert tags["date"] == "2002"
     assert tags["track"] == "2/3"
+
+
+def test_authors_drop_separators_and_non_author_roles():
+    from audify.library.metadata import OPF_NS, _authors
+
+    book = epub.EpubBook()
+    book.add_author("Clara E. Mattei;", role="aut", uid="c1")
+    book.add_author("A. Translator", role="trl", uid="c2")  # EPUB 3 refines
+    book.add_author("Ann One; Bob Two", uid="c3")
+    book.add_metadata("DC", "creator", "E. Ditor", {"{%s}role" % OPF_NS: "edt"})
+    assert _authors(book) == ["Clara E. Mattei", "Ann One", "Bob Two"]
