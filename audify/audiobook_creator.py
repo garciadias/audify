@@ -19,7 +19,9 @@ from audify.library.identity import (
     ItemIdentity,
     book_key_from_epub,
     book_key_from_text,
+    epub_spine_text,
 )
+from audify.library.inference import infer_text_fields
 from audify.library.metadata import (
     BookMetadata,
     book_metadata_from_epub,
@@ -435,6 +437,7 @@ class AudiobookCreator(BaseSynthesizer):
             metadata.language = self.language
             metadata.mark("audify", ["language"])
         self._enrich_from_catalogues(metadata)
+        self._infer_from_text(metadata)
         rendition = apply_rendition(
             metadata,
             task=getattr(self, "task_name", "audiobook"),
@@ -460,6 +463,39 @@ class AudiobookCreator(BaseSynthesizer):
             if cover is not None:
                 self.cover_image_path = cover
                 metadata.provenance["cover"] = records[0].source
+
+    def _infer_from_text(self, metadata: BookMetadata) -> None:
+        """Rung 2 of Metadata enrichment: Text-derivable fields from the LLM.
+
+        Runs after the catalogues, for runs that publish to a library, and
+        never fails the run.
+        """
+        llm_client = getattr(self, "llm_client", None)
+        if (
+            getattr(self, "library_root", None) is None
+            or not lookup_enabled()
+            or llm_client is None
+        ):
+            return
+        try:
+            if isinstance(self.reader, PdfReader):
+                text = self.reader.cleaned_text
+            else:
+                text = epub_spine_text(self.reader.book)
+        except Exception as e:
+            logger.info(f"Skipping LLM metadata inference: no book text ({e}).")
+            return
+
+        def generate(system_prompt: str, user_prompt: str) -> str:
+            # The config directly, not generate_script: its text cleaning
+            # would mangle the JSON reply.
+            return llm_client.config.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                **_DEFAULT_LLM_PARAMS,
+            )
+
+        infer_text_fields(metadata, text, generate)
 
     def _book_tags(
         self, track: Optional[int] = None, total_tracks: Optional[int] = None
