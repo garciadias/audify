@@ -83,7 +83,14 @@ def apply_rendition(
         language = translate_to
         folder_title = f"{title} [{translate_to}]"
 
-    adjusted = dataclasses.replace(metadata, title=title, tags=tags, language=language)
+    adjusted = dataclasses.replace(
+        metadata,
+        title=title,
+        tags=tags,
+        language=language,
+        provenance=dict(metadata.provenance),
+    )
+    adjusted.mark("audify", ["tags"])
     return Rendition(
         metadata=adjusted, folder_title=folder_title, include_ebook=is_book
     )

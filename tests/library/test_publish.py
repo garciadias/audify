@@ -188,6 +188,8 @@ def test_creator_publishes_after_m4b(tmp_path):
     assert item is not None
     assert (item / "A Ordem do Capital.m4b").exists()
     assert (item / "book.epub").exists()
+    manifest = json.loads((item / ".audify.json").read_text())
+    assert manifest["provenance"] == creator.book_metadata.provenance
 
 
 def test_creator_without_library_root_publishes_nothing(tmp_path):

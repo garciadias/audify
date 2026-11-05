@@ -31,6 +31,22 @@ class SeriesEntry:
         return f"{self.name} #{self.sequence}" if self.sequence else self.name
 
 
+METADATA_FIELDS = (
+    "title",
+    "subtitle",
+    "authors",
+    "narrators",
+    "series",
+    "genres",
+    "tags",
+    "published_date",
+    "publisher",
+    "description",
+    "isbn",
+    "language",
+)
+
+
 @dataclass
 class BookMetadata:
     """Identity of one book. Empty fields stay empty, never placeholders."""
@@ -47,6 +63,20 @@ class BookMetadata:
     description: str = ""
     isbn: str = ""
     language: str = ""
+    # Where each non-empty field came from: "override", "ebook", a catalogue's
+    # name, or "llm". Recorded in the Item manifest, not in any carrier.
+    provenance: dict[str, str] = field(default_factory=dict, compare=False)
+
+    def filled_fields(self) -> list[str]:
+        """Names of the metadata fields that currently hold a value."""
+        return [name for name in METADATA_FIELDS if getattr(self, name)]
+
+    def mark(self, source: str, names: Optional[Iterable[str]] = None) -> None:
+        """Record *source* as the provenance of *names* (default: every filled
+        field that has no provenance yet)."""
+        for name in names if names is not None else self.filled_fields():
+            if getattr(self, name) and name not in self.provenance:
+                self.provenance[name] = source
 
     @property
     def published_year(self) -> str:
@@ -174,7 +204,7 @@ def book_metadata_from_epub(
         narrators: The Narrator, as ``Engine (voice)``. There is never a human
             narrator, so the caller supplies it from the TTS settings.
     """
-    return BookMetadata(
+    metadata = BookMetadata(
         title=_first(_dc(book, "title")),
         authors=[_clean(str(v)) for v, _ in _dc(book, "creator") if v],
         narrators=list(narrators or []),
@@ -186,6 +216,9 @@ def book_metadata_from_epub(
         isbn=_isbn(book),
         language=_first(_dc(book, "language")),
     )
+    metadata.mark("ebook", [f for f in metadata.filled_fields() if f != "narrators"])
+    metadata.mark("audify", ["narrators"])
+    return metadata
 
 
 def narrator_label(engine: str, voice: Optional[str]) -> str:

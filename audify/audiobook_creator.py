@@ -20,6 +20,7 @@ from audify.library.metadata import (
     book_metadata_from_epub,
     narrator_label,
 )
+from audify.library.override import OVERRIDE_FILE, apply_override, load_override
 from audify.library.publish import (
     ChapterMark,
     check_separate,
@@ -413,10 +414,18 @@ class AudiobookCreator(BaseSynthesizer):
             metadata = book_metadata_from_epub(reader_book, narrators=narrators)
         else:
             metadata = BookMetadata(narrators=narrators)
+        audiobook_path = getattr(self, "audiobook_path", None)
+        if audiobook_path is not None:
+            override = load_override(Path(audiobook_path) / OVERRIDE_FILE)
+            if override:
+                apply_override(metadata, override)
+                logger.info(f"Applied metadata override: {', '.join(override)}")
         if not metadata.title:
             metadata.title = str(self.title)
+            metadata.mark("filename", ["title"])
         if not metadata.language:
             metadata.language = self.language
+            metadata.mark("audify", ["language"])
         rendition = apply_rendition(
             metadata,
             task=getattr(self, "task_name", "audiobook"),
@@ -1453,6 +1462,7 @@ class AudiobookCreator(BaseSynthesizer):
                 chapters=self._whole_book_chapters(),
                 identity=self._item_identity(),
                 folder_title=getattr(self, "item_folder_title", None),
+                manifest_extra={"provenance": dict(self.book_metadata.provenance)},
             )
         except FileExistsError as e:
             logger.error(f"{e}. Not overwriting it.")
