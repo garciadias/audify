@@ -550,12 +550,40 @@ lookup, and `null` clears a wrong value:
 Empty fields are then filled from public catalogues (Open Library, then Google
 Books when `GOOGLE_BOOKS_API_KEY` is set), matched by ISBN or by title and
 author. Existing values are never replaced, a missing cover is fetched from Open
-Library by ISBN, and `.audify.json` records where each field came from. Set
-`AUDIFY_METADATA_LOOKUP=0` to turn lookups off.
+Library by ISBN, and `.audify.json` records where each field came from. Fields
+still empty that can be read off the text (description, genres, tags,
+subtitle) are then inferred by the run's LLM from the opening of the book;
+facts such as ISBN, date, publisher, series and authors are never guessed.
+Small local models can get details of a blurb wrong, so review fields marked
+`llm` in `.audify.json` and correct them in the override. Set
+`AUDIFY_METADATA_LOOKUP=0` to turn both lookups off.
 
 Accepted fields: `title`, `subtitle`, `authors`, `narrators`, `series`,
 `genres`, `tags`, `published_date`, `publisher`, `description`, `isbn`,
 `language`.
+
+### Adopting books made before Library items existed
+
+Older runs left the M4B inside the work directory without book tags. Turn them
+into Library items without new TTS:
+
+```bash
+# Dry run: prints, per book, the matched ebook, target folder and files.
+audify publish --adopt --output data/output --library-root ~/Audiobooks \
+    --ebooks ~/Documents/Books --narrator "Kokoro (af_bella)"
+
+# Same plan, carried out.
+audify publish --adopt --apply --output data/output --library-root ~/Audiobooks \
+    --ebooks ~/Documents/Books --narrator "Kokoro (af_bella)"
+```
+
+Each old output is paired with the ebook whose file name it was made from
+(`_part1`, `_part2`, ... become Parts of one book). A
+`metadata.override.json` in the old folder is applied first, so wrong titles
+can be fixed before applying. Once the Library item exists, only the old M4B
+and `cover.jpg` are removed; the folder keeps its scripts and episodes.
+Outputs with no ebook are published without one and reported. Running it
+again does nothing.
 
 ## 🛠️ Development
 

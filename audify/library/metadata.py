@@ -8,11 +8,15 @@ Audiobookshelf ``metadata.json`` sidecar. See CONTEXT.md, "Library delivery".
 from __future__ import annotations
 
 import html
+import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from ebooklib import epub
+
+logger = logging.getLogger(__name__)
 
 _ISBN_RE = re.compile(r"(97[89][\d-]{10,14}|\d[\d-]{8,11}[\dXx])")
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -135,6 +139,44 @@ def _clean(text: str) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
+OPF_NS = "http://www.idpf.org/2007/opf"
+
+
+def _authors(book: epub.EpubBook) -> list[str]:
+    """dc:creator entries that are authors, split and tidied.
+
+    Creators with an OPF role other than ``aut`` (translator, editor,
+    illustrator) are not authors. Some tools write several names into one
+    creator separated by ";", or leave a trailing separator.
+    """
+    # EPUB 3 states roles in <meta refines="#id" property="role">; EPUB 2 in
+    # an opf:role attribute on the creator itself.
+    refined: dict[str, str] = {}
+    all_meta = getattr(book, "metadata", None)
+    for namespace in (OPF_NS, None):
+        section = all_meta.get(namespace) if isinstance(all_meta, dict) else None
+        entries = section.get("meta", []) if isinstance(section, dict) else []
+        for value, attrs in entries:
+            attrs = attrs if isinstance(attrs, dict) else {}
+            if attrs.get("property") == "role" and attrs.get("refines") and value:
+                refined[str(attrs["refines"]).lstrip("#")] = str(value)
+    authors: list[str] = []
+    for value, attrs in _dc(book, "creator"):
+        if not value:
+            continue
+        attrs = attrs or {}
+        role = refined.get(str(attrs.get("id", "")), "") or next(
+            (str(v) for k, v in attrs.items() if str(k).endswith("role")), ""
+        )
+        if role and role.lower() != "aut":
+            continue
+        for name in _clean(str(value)).split(";"):
+            name = name.strip(" ,;")
+            if name and name not in authors:
+                authors.append(name)
+    return authors
+
+
 def _dc(book: epub.EpubBook, name: str) -> list[tuple[Any, dict]]:
     try:
         return list(book.get_metadata("DC", name) or [])
@@ -206,7 +248,7 @@ def book_metadata_from_epub(
     """
     metadata = BookMetadata(
         title=_first(_dc(book, "title")),
-        authors=[_clean(str(v)) for v, _ in _dc(book, "creator") if v],
+        authors=_authors(book),
         narrators=list(narrators or []),
         series=_series(book),
         genres=[_clean(str(v)) for v, _ in _dc(book, "subject") if v],
@@ -225,3 +267,69 @@ def narrator_label(engine: str, voice: Optional[str]) -> str:
     """The Narrator, ``Engine (voice)``, for example ``Kokoro (af_bella)``."""
     pretty = engine.strip().capitalize() if engine else "TTS"
     return f"{pretty} ({voice})" if voice else pretty
+
+
+def title_from_filename(path: Path) -> str:
+    """A readable title from a file name: ``the_wandering-earth`` becomes
+    ``The Wandering Earth``. Used only when the source has no title."""
+    words = re.sub(r"[_\-.]+", " ", Path(path).stem).split()
+    # Lowercase words are capitalised; "NLP" and "iPhone" keep their casing.
+    return " ".join(w if w != w.lower() else w.capitalize() for w in words)
+
+
+_PDF_PLACEHOLDERS = {"untitled", "untitled document", "anonymous", "unknown", "user"}
+
+
+def book_metadata_from_pdf(
+    path: Path, narrators: Optional[list[str]] = None
+) -> BookMetadata:
+    """Book metadata from a PDF's info dictionary (Title, Author, Subject,
+    Keywords). An empty dictionary yields a file-name title; enrichment fills
+    the rest."""
+    import pypdf
+
+    info: dict[str, str] = {}
+    try:
+        with open(path, "rb") as f:
+            raw: Any = pypdf.PdfReader(f).metadata or {}
+            # Resolve while the file is open: an indirect value is read from
+            # the stream on first use. A PDF null means the field is absent.
+            for key in ("/Title", "/Author", "/Subject", "/Keywords"):
+                value = raw.get(key)
+                if isinstance(value, pypdf.generic.IndirectObject):
+                    value = value.get_object()
+                if value is not None and not isinstance(
+                    value, pypdf.generic.NullObject
+                ):
+                    info[key] = str(value).strip()
+    except Exception as e:
+        logger.warning(f"Could not read PDF metadata from {path}: {e}")
+
+    def text(key: str) -> str:
+        value = info.get(key, "")
+        # PDF generators fill unset fields with placeholders.
+        return "" if value.casefold() in _PDF_PLACEHOLDERS else value
+
+    authors = [
+        a.strip()
+        for a in re.split(r";|\band\b|&", text("/Author"), flags=re.IGNORECASE)
+        if a.strip()
+    ]
+    keywords = [k.strip() for k in re.split(r"[;,]", text("/Keywords")) if k.strip()]
+    title = text("/Title")
+    # Word processors write the document file name as the title.
+    if re.match(r"(?i)^microsoft word\s*-|.*\.(docx?|pdf|tex|odt)$", title):
+        title = ""
+    metadata = BookMetadata(
+        title=title,
+        authors=authors,
+        description=text("/Subject"),
+        tags=keywords,
+        narrators=list(narrators or []),
+    )
+    metadata.mark("ebook", [f for f in metadata.filled_fields() if f != "narrators"])
+    metadata.mark("audify", ["narrators"])
+    if not metadata.title:
+        metadata.title = title_from_filename(path)
+        metadata.mark("filename", ["title"])
+    return metadata

@@ -15,6 +15,7 @@ import os
 import shutil
 import warnings
 from pathlib import Path
+from typing import Optional
 
 import click
 import requests
@@ -45,6 +46,13 @@ class SubcommandAwareGroup(click.Group):
     parses e.g. "list-tasks" as the PATH value instead of recognising it
     as a subcommand.  This override detects the situation and re-routes.
     """
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # With interspersed options the group would claim the subcommand's
+        # options (--help, --output, ...) or reject the ones it lacks.
+        if args and args[0] in self.commands:
+            ctx.allow_interspersed_args = False
+        return super().parse_args(ctx, args)
 
     def invoke(self, ctx: click.Context) -> None:
         path_value = ctx.params.get("path")
@@ -695,9 +703,7 @@ def cli(
             )
 
             if mode != "process":
-                if output_path.exists() and not _contains_audio_artifacts(
-                    output_path
-                ):
+                if output_path.exists() and not _contains_audio_artifacts(output_path):
                     message = (
                         "No audio artifacts were generated in the output "
                         "directory. Check TTS/LLM logs for errors and verify "
@@ -807,9 +813,7 @@ def cli(
             )
 
             if mode != "process":
-                if output_path.exists() and not _contains_audio_artifacts(
-                    output_path
-                ):
+                if output_path.exists() and not _contains_audio_artifacts(output_path):
                     message = (
                         "No audio artifacts were generated in the output "
                         "directory. Check TTS/LLM logs for errors and verify "
@@ -944,6 +948,7 @@ def compare(source_file: str, audiobook_file: str, json: bool, verbose: bool):
 
         if json:
             import json as json_module
+
             report = verifier.generate_report()
             click.echo(json_module.dumps(report, indent=2))
         else:
@@ -959,3 +964,77 @@ def compare(source_file: str, audiobook_file: str, json: bool, verbose: bool):
 
 if __name__ == "__main__":
     cli()
+
+
+@cli.command("publish")
+@click.option(
+    "--adopt",
+    is_flag=True,
+    required=True,
+    help="Turn outputs made before Library items existed into Library items.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="data/output",
+    show_default=True,
+    help="Folder holding the old outputs (the work directory).",
+)
+@click.option(
+    "--library-root",
+    type=click.Path(file_okay=False, path_type=Path),
+    envvar="AUDIFY_LIBRARY_ROOT",
+    required=True,
+    help="Folder the audiobook server scans. Env: AUDIFY_LIBRARY_ROOT.",
+)
+@click.option(
+    "--ebooks",
+    "ebook_dirs",
+    type=click.Path(file_okay=False, path_type=Path),
+    multiple=True,
+    help="Folder to search for the source EPUB/PDF files (repeatable).",
+)
+@click.option(
+    "--narrator",
+    default=None,
+    help='Narrator label for adopted books, e.g. "Kokoro (af_bella)".',
+)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    default=False,
+    help="Carry out the plan. Without it, only print what would happen.",
+)
+def publish(
+    adopt: bool,
+    output_dir: Path,
+    library_root: Path,
+    ebook_dirs: tuple[Path, ...],
+    narrator: Optional[str],
+    apply_changes: bool,
+):
+    """Publish existing outputs into the Library root without new TTS.
+
+    Pairs each old M4B with its source ebook, writes book tags,
+    metadata.json and the item manifest, and moves it into the
+    Author/Title layout. Dry run unless --apply is given; the old work
+    folders keep their scripts and episodes, only the old M4B goes.
+    """
+    from audify.library.adopt import adopt as run_adopt
+    from audify.library.publish import check_separate
+
+    try:
+        check_separate(library_root, output_dir)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    run_adopt(
+        output_dir,
+        library_root,
+        list(ebook_dirs),
+        apply=apply_changes,
+        narrators=[narrator] if narrator else None,
+        echo=click.echo,
+    )

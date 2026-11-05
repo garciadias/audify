@@ -1,8 +1,10 @@
 """Progress indicator for long-running tasks."""
 
+import atexit
 import sys
 import threading
 import time
+import weakref
 from itertools import cycle
 from typing import Optional
 
@@ -34,6 +36,25 @@ PHASE_EMOJIS = {
     "Converting": "🔄",
     "Assembling": "🔗",
 }
+
+
+# Every started indicator, so the ones never stopped can be stopped at exit.
+_RUNNING: "weakref.WeakSet[ProgressIndicator]" = weakref.WeakSet()
+
+
+@atexit.register
+def _stop_all() -> None:
+    """Stop spinners left running before the interpreter shuts down.
+
+    A daemon spinner thread still writing to stderr while Python finalizes
+    races the shutdown and aborts the process ("could not acquire lock for
+    <stderr> at interpreter shutdown"), which turns a passing run into a
+    crash.
+    """
+    for indicator in list(_RUNNING):
+        indicator._running = False
+        if indicator._thread is not None:
+            indicator._thread.join(timeout=1.0)
 
 
 class ProgressIndicator:
@@ -76,6 +97,7 @@ class ProgressIndicator:
 
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
+        _RUNNING.add(self)
         self._thread.start()
 
     def stop(self) -> None:
@@ -84,6 +106,7 @@ class ProgressIndicator:
             return
 
         self._running = False
+        _RUNNING.discard(self)
         if self._thread:
             self._thread.join(timeout=1.0)
 
